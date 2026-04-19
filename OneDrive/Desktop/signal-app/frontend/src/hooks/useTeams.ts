@@ -183,9 +183,13 @@ export function useDeleteTeam(id: string): UseMutationResult<void, Error, void> 
 export function useInviteTeamMember(
   id: string,
 ): UseMutationResult<TeamInvite, Error, InviteMemberInput> {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: InviteMemberInput) =>
       inviteTeamMemberRequest(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invitesKey(id) });
+    },
   });
 }
 

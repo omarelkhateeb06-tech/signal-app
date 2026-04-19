@@ -15,6 +15,7 @@ import {
   useTeamMembers,
 } from "@/hooks/useTeams";
 import { extractApiError } from "@/lib/api";
+import { PendingInvites } from "@/components/teams/PendingInvites";
 import type { TeamInvite, TeamRole } from "@/types/team";
 
 const inviteSchema = z.object({
@@ -165,6 +166,8 @@ export default function TeamMembersPage(): JSX.Element {
           </form>
         </section>
       )}
+
+      <PendingInvites teamId={teamId} isAdmin={isAdmin} />
 
       <section className="rounded-lg border border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-6 py-3 text-sm font-semibold text-slate-900">
