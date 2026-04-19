@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,7 +58,7 @@ function InviteSummary({ metadata }: { metadata: InviteMetadata }): JSX.Element 
   );
 }
 
-export default function JoinTeamPage(): JSX.Element {
+function JoinTeamInner(): JSX.Element {
   const searchParams = useSearchParams();
   const token = searchParams?.get("token") ?? "";
   const router = useRouter();
@@ -372,5 +372,23 @@ function StateMessage({
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <p className="text-sm text-slate-600">{body}</p>
     </div>
+  );
+}
+
+export default function JoinTeamPage(): JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <CardShell>
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </CardShell>
+      }
+    >
+      <JoinTeamInner />
+    </Suspense>
   );
 }
