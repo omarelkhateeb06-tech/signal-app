@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { TeamSwitcher } from "@/components/layout/TeamSwitcher";
 
 function initials(name: string | null | undefined, email: string): string {
   const source = name?.trim() || email;
@@ -55,6 +56,7 @@ export function Header(): JSX.Element {
           <Link href="/feed" className="text-muted-foreground hover:text-foreground">
             Feed
           </Link>
+          {user && <TeamSwitcher />}
           <button
             type="button"
             onClick={() => router.push("/search")}
