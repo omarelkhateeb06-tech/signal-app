@@ -1438,6 +1438,7 @@ describe("teams endpoints", () => {
           role: "member",
           expiresAt: new Date(Date.now() + 60_000),
           usedAt: null,
+          revokedAt: null,
           createdAt: new Date(),
           invitedBy: adminId,
         },
@@ -1447,6 +1448,7 @@ describe("teams endpoints", () => {
           role: "viewer",
           expiresAt: new Date(Date.now() - 60_000),
           usedAt: null,
+          revokedAt: null,
           createdAt: new Date(),
           invitedBy: adminId,
         },
@@ -1456,6 +1458,17 @@ describe("teams endpoints", () => {
           role: "member",
           expiresAt: new Date(Date.now() + 60_000),
           usedAt: new Date(),
+          revokedAt: null,
+          createdAt: new Date(),
+          invitedBy: adminId,
+        },
+        {
+          id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+          email: "d@example.com",
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+          revokedAt: new Date(),
           createdAt: new Date(),
           invitedBy: adminId,
         },
@@ -1466,10 +1479,12 @@ describe("teams endpoints", () => {
         .set(...auth(adminToken));
       expect(res.status).toBe(200);
       const { invites } = res.body.data;
-      expect(invites).toHaveLength(3);
+      expect(invites).toHaveLength(4);
       expect(invites[0].status).toBe("pending");
       expect(invites[1].status).toBe("expired");
       expect(invites[2].status).toBe("used");
+      expect(invites[3].status).toBe("revoked");
+      expect(invites[3].revoked_at).not.toBeNull();
     });
   });
 
@@ -1536,11 +1551,11 @@ describe("teams endpoints", () => {
       expect(res.status).toBe(403);
     });
 
-    it("soft-deletes a pending invite so its token is no longer accepted", async () => {
+    it("marks a pending invite revoked without touching used_at", async () => {
       mock.queueSelect([teamRow()]);
       mock.queueSelect([{ id: "m1", role: "admin" }]);
       mock.queueSelect([
-        { id: targetInviteId, teamId, usedAt: null },
+        { id: targetInviteId, teamId, usedAt: null, revokedAt: null },
       ]);
 
       const res = await request(app)
@@ -1549,7 +1564,36 @@ describe("teams endpoints", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.success).toBe(true);
       expect(mock.state.updatedRows).toHaveLength(1);
-      expect(mock.state.updatedRows[0]).toHaveProperty("usedAt");
+      expect(mock.state.updatedRows[0]).toHaveProperty("revokedAt");
+      expect(mock.state.updatedRows[0]).not.toHaveProperty("usedAt");
+    });
+
+    it("is a no-op for an already-accepted invite (used_at set)", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        { id: targetInviteId, teamId, usedAt: new Date(), revokedAt: null },
+      ]);
+
+      const res = await request(app)
+        .delete(`/api/v1/teams/${teamId}/invites/${targetInviteId}`)
+        .set(...auth(adminToken));
+      expect(res.status).toBe(200);
+      expect(mock.state.updatedRows).toHaveLength(0);
+    });
+
+    it("is a no-op for an already-revoked invite", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        { id: targetInviteId, teamId, usedAt: null, revokedAt: new Date() },
+      ]);
+
+      const res = await request(app)
+        .delete(`/api/v1/teams/${teamId}/invites/${targetInviteId}`)
+        .set(...auth(adminToken));
+      expect(res.status).toBe(200);
+      expect(mock.state.updatedRows).toHaveLength(0);
     });
   });
 });
