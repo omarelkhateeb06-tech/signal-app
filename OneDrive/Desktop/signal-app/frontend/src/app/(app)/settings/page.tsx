@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   extractApiError,
   getMyProfileRequest,
+  updateEmailPreferencesRequest,
   updateMeRequest,
   updateMyProfileRequest,
 } from "@/lib/api";
@@ -151,16 +152,9 @@ export default function SettingsPage(): JSX.Element {
   };
 
   const saveEmailPreferences = async (): Promise<void> => {
-    if (sectors.length === 0 || !role || goals.length === 0) {
-      showToast("Complete your interests first", "error");
-      return;
-    }
     setSavingEmail(true);
     try {
-      await updateMyProfileRequest({
-        sectors,
-        role,
-        goals,
+      await updateEmailPreferencesRequest({
         email_frequency: emailFrequency,
         email_unsubscribed: emailUnsubscribed,
       });

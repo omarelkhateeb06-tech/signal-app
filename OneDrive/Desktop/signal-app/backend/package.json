@@ -14,7 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "ts-node src/db/seed.ts"
+    "db:seed": "ts-node src/db/seed.ts",
+    "send-digest-now": "ts-node src/scripts/sendDigestNow.ts"
   },
   "dependencies": {
     "@sendgrid/mail": "^8.1.4",

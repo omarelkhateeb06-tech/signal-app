@@ -6,6 +6,7 @@ import { notFoundHandler } from "./middleware/notFoundHandler";
 import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
+import { emailsRouter } from "./routes/emails";
 import { storiesRouter } from "./routes/stories";
 import { usersRouter } from "./routes/users";
 
@@ -23,6 +24,7 @@ export function createApp(): Express {
   app.use("/api/v1/users", usersRouter);
   app.use("/api/v1/stories", storiesRouter);
   app.use("/api/v1/comments", commentsRouter);
+  app.use("/api/v1/emails", emailsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
