@@ -13,7 +13,7 @@ jest.mock("../src/db", () => ({
 }));
 
 import { createApp } from "../src/app";
-import { generateToken } from "../src/services/authService";
+import { generateToken, hashPassword } from "../src/services/authService";
 import { signInviteToken } from "../src/services/teamInviteService";
 
 const app = createApp();
@@ -1001,6 +1001,458 @@ describe("teams endpoints", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.sectors).toEqual([]);
       expect(res.body.data.stories_by_sector).toEqual([]);
+    });
+  });
+
+  // ---------- Phase 9b-3: invite metadata ----------
+
+  describe("GET /api/v1/teams/invite/metadata", () => {
+    it("returns 400 for an invalid token signature", async () => {
+      const res = await request(app).get(
+        "/api/v1/teams/invite/metadata?token=bogus.token",
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("INVALID_INVITE");
+    });
+
+    it("returns metadata with status=valid for a live invite", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app).get(
+        `/api/v1/teams/invite/metadata?token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("valid");
+      expect(res.body.data.team_name).toBe("Acme");
+      expect(res.body.data.email).toBe(inviteeEmail);
+      expect(res.body.data.role).toBe("member");
+    });
+
+    it("returns status=expired without error for a DB-expired invite", async () => {
+      // Token signed with long TTL so signature verifies; DB row has past expiresAt.
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() - 60_000),
+          usedAt: null,
+        },
+      ]);
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app).get(
+        `/api/v1/teams/invite/metadata?token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("expired");
+    });
+
+    it("returns status=used without error for a consumed invite", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: new Date(),
+        },
+      ]);
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app).get(
+        `/api/v1/teams/invite/metadata?token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("used");
+    });
+  });
+
+  // ---------- Phase 9b-3: invite accept ----------
+
+  describe("POST /api/v1/teams/invite/accept", () => {
+    it("returns 400 for an invalid token signature", async () => {
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token: "bogus.token", password: "longenough", name: "New User" });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("INVALID_INVITE");
+    });
+
+    it("returns 410 for a used invite (replay)", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: new Date(),
+        },
+      ]);
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" });
+      expect(res.status).toBe(410);
+      expect(res.body.error.code).toBe("INVITE_USED");
+    });
+
+    it("returns 410 when DB marks the invite expired", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() - 60_000),
+          usedAt: null,
+        },
+      ]);
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" });
+      expect(res.status).toBe(410);
+      expect(res.body.error.code).toBe("INVITE_EXPIRED");
+    });
+
+    it("creates a new user and joins the team when no user exists", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      // 1) invite row lookup
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      // 2) existingUser lookup — none
+      mock.queueSelect([]);
+      // 3) inside txn: insert user → returning([...])
+      mock.queueInsert([{ id: outsiderId, email: inviteeEmail, name: "Newbie" }]);
+      // 4) loadTeam (after accept) — first the team row fetch
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough", name: "Newbie" });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.created).toBe(true);
+      expect(res.body.data.user.email).toBe(inviteeEmail);
+      expect(res.body.data.user.name).toBe("Newbie");
+      expect(res.body.data.team.id).toBe(teamId);
+      expect(res.body.data.role).toBe("member");
+      expect(typeof res.body.data.token).toBe("string");
+      expect(mock.state.updatedRows).toHaveLength(1);
+      expect(mock.state.updatedRows[0]).toHaveProperty("usedAt");
+    });
+
+    it("requires password + name when creating a new user", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      // no existing user
+      mock.queueSelect([]);
+
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" }); // missing name
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("SIGNUP_REQUIRED");
+    });
+
+    it("authenticates an existing user with matching password and joins the team", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      const passwordHash = await hashPassword("longenough");
+
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      mock.queueSelect([
+        {
+          id: outsiderId,
+          email: inviteeEmail,
+          name: "Invitee",
+          passwordHash,
+        },
+      ]);
+      // inside txn: membership lookup (none) → insert member happens
+      mock.queueSelect([]);
+      // loadTeam team row after accept
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.created).toBe(false);
+      expect(res.body.data.user.id).toBe(outsiderId);
+      expect(typeof res.body.data.token).toBe("string");
+      expect(mock.state.updatedRows).toHaveLength(1);
+    });
+
+    it("rejects an existing user with a wrong password", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      const passwordHash = await hashPassword("correcthorse");
+
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      mock.queueSelect([
+        {
+          id: outsiderId,
+          email: inviteeEmail,
+          name: "Invitee",
+          passwordHash,
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "wrongpassword" });
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe("INVALID_CREDENTIALS");
+    });
+
+    it("rejects a logged-in user whose JWT email does not match the invite", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+        },
+      ]);
+      const wrongToken = generateToken(outsiderId, "someone-else@example.com");
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .set(...auth(wrongToken))
+        .send({ token });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("INVITE_EMAIL_MISMATCH");
+    });
+  });
+
+  // ---------- Phase 9b-3: invites management ----------
+
+  describe("GET /api/v1/teams/:team_id/invites", () => {
+    it("returns 403 for non-admin", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/invites`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("returns invites with derived status for admin", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        {
+          id: inviteId,
+          email: "a@example.com",
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+          createdAt: new Date(),
+          invitedBy: adminId,
+        },
+        {
+          id: "ddddddddd-dddd-dddd-dddd-dddddddddddd",
+          email: "b@example.com",
+          role: "viewer",
+          expiresAt: new Date(Date.now() - 60_000),
+          usedAt: null,
+          createdAt: new Date(),
+          invitedBy: adminId,
+        },
+        {
+          id: "eeeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          email: "c@example.com",
+          role: "member",
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: new Date(),
+          createdAt: new Date(),
+          invitedBy: adminId,
+        },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/invites`)
+        .set(...auth(adminToken));
+      expect(res.status).toBe(200);
+      const { invites } = res.body.data;
+      expect(invites).toHaveLength(3);
+      expect(invites[0].status).toBe("pending");
+      expect(invites[1].status).toBe("expired");
+      expect(invites[2].status).toBe("used");
+    });
+  });
+
+  describe("POST /api/v1/teams/:team_id/invites/:invite_id/resend", () => {
+    const existingInviteId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+    it("returns 403 for non-admin", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/invites/${existingInviteId}/resend`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("marks the old invite used and issues a new one", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        {
+          id: existingInviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          usedAt: null,
+        },
+      ]);
+      // Inside txn: update old (tracked) then insert new → returning.
+      mock.queueInsert([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          usedAt: null,
+        },
+      ]);
+      // Inviter lookup
+      mock.queueSelect([{ name: "Admin", email: adminEmail }]);
+
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/invites/${existingInviteId}/resend`)
+        .set(...auth(adminToken));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.invite.email).toBe(inviteeEmail);
+      expect(res.body.data.invite.role).toBe("member");
+      // Old invite was marked used inside the txn.
+      expect(mock.state.updatedRows).toHaveLength(1);
+      expect(mock.state.updatedRows[0]).toHaveProperty("usedAt");
+    });
+  });
+
+  describe("DELETE /api/v1/teams/:team_id/invites/:invite_id", () => {
+    const targetInviteId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+
+    it("returns 403 for non-admin", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      const res = await request(app)
+        .delete(`/api/v1/teams/${teamId}/invites/${targetInviteId}`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("soft-deletes a pending invite so its token is no longer accepted", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        { id: targetInviteId, teamId, usedAt: null },
+      ]);
+
+      const res = await request(app)
+        .delete(`/api/v1/teams/${teamId}/invites/${targetInviteId}`)
+        .set(...auth(adminToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.success).toBe(true);
+      expect(mock.state.updatedRows).toHaveLength(1);
+      expect(mock.state.updatedRows[0]).toHaveProperty("usedAt");
     });
   });
 });

@@ -8,6 +8,7 @@ import {
   teams,
   teamMembers,
   teamInvites,
+  userProfiles,
   userSaves,
   users,
   writers,
@@ -22,6 +23,13 @@ import {
   verifyInviteToken,
   type InviteRole,
 } from "../services/teamInviteService";
+import {
+  generateToken,
+  hashPassword,
+  verifyPassword,
+  verifyToken,
+  type JwtPayload,
+} from "../services/authService";
 import { enqueueEmail } from "../jobs/emailQueue";
 import { renderTeamInviteEmail } from "../emails/teamInviteEmail";
 
@@ -989,6 +997,490 @@ export async function getTeamDashboard(
         })),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------- Phase 9b-3: invite accept/metadata + invites management ----------
+
+const inviteIdParamSchema = z.object({
+  team_id: z.string().uuid(),
+  invite_id: z.string().uuid(),
+});
+
+const inviteMetadataQuerySchema = z.object({ token: z.string().min(10) });
+
+const inviteAcceptSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8).optional(),
+  name: z.string().trim().min(1).optional(),
+});
+
+type InviteStatus = "pending" | "expired" | "used";
+
+function deriveInviteStatus(row: {
+  usedAt: Date | null;
+  expiresAt: Date;
+}): InviteStatus {
+  if (row.usedAt) return "used";
+  if (row.expiresAt.getTime() <= Date.now()) return "expired";
+  return "pending";
+}
+
+export async function inviteMetadata(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { token } = inviteMetadataQuerySchema.parse(req.query);
+
+    // Pass now=0 to bypass expiry check — we want to return metadata even for
+    // expired tokens (with status="expired"). Signature is still verified.
+    const verified = verifyInviteToken(token, 0);
+    if (!verified) {
+      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
+    }
+
+    const [inviteRow] = await db
+      .select({
+        id: teamInvites.id,
+        teamId: teamInvites.teamId,
+        email: teamInvites.email,
+        role: teamInvites.role,
+        expiresAt: teamInvites.expiresAt,
+        usedAt: teamInvites.usedAt,
+      })
+      .from(teamInvites)
+      .where(eq(teamInvites.token, token))
+      .limit(1);
+
+    if (!inviteRow) {
+      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
+    }
+
+    const [teamRow] = await db
+      .select({ id: teams.id, name: teams.name, slug: teams.slug })
+      .from(teams)
+      .where(eq(teams.id, inviteRow.teamId))
+      .limit(1);
+
+    if (!teamRow) {
+      throw new AppError("TEAM_NOT_FOUND", "Team not found", 404);
+    }
+
+    const status: InviteStatus = deriveInviteStatus({
+      usedAt: inviteRow.usedAt,
+      expiresAt: inviteRow.expiresAt,
+    });
+
+    res.json({
+      data: {
+        team_name: teamRow.name,
+        team_slug: teamRow.slug,
+        email: inviteRow.email,
+        role: inviteRow.role,
+        expires_at: inviteRow.expiresAt,
+        status: status === "pending" ? "valid" : status,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function inviteAccept(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const body = inviteAcceptSchema.parse(req.body);
+    const { token, password, name } = body;
+
+    const verified = verifyInviteToken(token);
+    if (!verified) {
+      throw new AppError("INVALID_INVITE", "Invite is invalid or expired", 400);
+    }
+
+    const [inviteRow] = await db
+      .select({
+        id: teamInvites.id,
+        teamId: teamInvites.teamId,
+        email: teamInvites.email,
+        role: teamInvites.role,
+        expiresAt: teamInvites.expiresAt,
+        usedAt: teamInvites.usedAt,
+      })
+      .from(teamInvites)
+      .where(eq(teamInvites.token, token))
+      .limit(1);
+
+    if (!inviteRow) {
+      throw new AppError("INVALID_INVITE", "Invite is invalid or expired", 400);
+    }
+    if (inviteRow.usedAt) {
+      throw new AppError("INVITE_USED", "Invite has already been used", 410);
+    }
+    if (inviteRow.expiresAt.getTime() <= Date.now()) {
+      throw new AppError("INVITE_EXPIRED", "Invite has expired", 410);
+    }
+
+    const inviteEmail = inviteRow.email.toLowerCase();
+
+    // Optional Authorization header — if present and valid, skip the password
+    // path. If present but email mismatches the invite, hard-fail so a logged-in
+    // user doesn't accidentally consume an invite for a different identity.
+    let authedPayload: JwtPayload | null = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        authedPayload = verifyToken(authHeader.slice(7));
+      } catch {
+        authedPayload = null;
+      }
+      if (authedPayload && authedPayload.email.toLowerCase() !== inviteEmail) {
+        throw new AppError(
+          "INVITE_EMAIL_MISMATCH",
+          "Authenticated email does not match invite",
+          403,
+        );
+      }
+    }
+
+    const [existingUser] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        passwordHash: users.passwordHash,
+      })
+      .from(users)
+      .where(eq(users.email, inviteEmail))
+      .limit(1);
+
+    let acceptedUser: { id: string; email: string; name: string | null };
+    let created = false;
+
+    if (authedPayload) {
+      if (!existingUser || existingUser.id !== authedPayload.userId) {
+        throw new AppError(
+          "INVITE_EMAIL_MISMATCH",
+          "Authenticated user does not match invite",
+          403,
+        );
+      }
+      acceptedUser = {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: existingUser.name,
+      };
+      await db.transaction(async (tx) => {
+        const [membership] = await tx
+          .select({ id: teamMembers.id })
+          .from(teamMembers)
+          .where(
+            and(
+              eq(teamMembers.teamId, inviteRow.teamId),
+              eq(teamMembers.userId, acceptedUser.id),
+            ),
+          )
+          .limit(1);
+        if (!membership) {
+          await tx.insert(teamMembers).values({
+            teamId: inviteRow.teamId,
+            userId: acceptedUser.id,
+            role: inviteRow.role,
+          });
+        }
+        await tx
+          .update(teamInvites)
+          .set({ usedAt: new Date() })
+          .where(eq(teamInvites.id, inviteRow.id));
+      });
+    } else if (existingUser) {
+      if (!password) {
+        throw new AppError("PASSWORD_REQUIRED", "Password required to accept invite", 401);
+      }
+      if (!existingUser.passwordHash) {
+        throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+      }
+      const ok = await verifyPassword(password, existingUser.passwordHash);
+      if (!ok) {
+        throw new AppError("INVALID_CREDENTIALS", "Invalid email or password", 401);
+      }
+      acceptedUser = {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: existingUser.name,
+      };
+      await db.transaction(async (tx) => {
+        const [membership] = await tx
+          .select({ id: teamMembers.id })
+          .from(teamMembers)
+          .where(
+            and(
+              eq(teamMembers.teamId, inviteRow.teamId),
+              eq(teamMembers.userId, acceptedUser.id),
+            ),
+          )
+          .limit(1);
+        if (!membership) {
+          await tx.insert(teamMembers).values({
+            teamId: inviteRow.teamId,
+            userId: acceptedUser.id,
+            role: inviteRow.role,
+          });
+        }
+        await tx
+          .update(teamInvites)
+          .set({ usedAt: new Date() })
+          .where(eq(teamInvites.id, inviteRow.id));
+      });
+    } else {
+      if (!password || !name) {
+        throw new AppError(
+          "SIGNUP_REQUIRED",
+          "password and name are required to sign up",
+          400,
+        );
+      }
+      // Hash outside the txn — pure CPU, no DB work, matches authController.
+      const passwordHash = await hashPassword(password);
+      const createdUser = await db.transaction(async (tx) => {
+        const [newUser] = await tx
+          .insert(users)
+          .values({ email: inviteEmail, passwordHash, name })
+          .returning({ id: users.id, email: users.email, name: users.name });
+        if (!newUser) {
+          throw new AppError("SIGNUP_FAILED", "Failed to create user", 500);
+        }
+        await tx.insert(userProfiles).values({ userId: newUser.id });
+        await tx.insert(teamMembers).values({
+          teamId: inviteRow.teamId,
+          userId: newUser.id,
+          role: inviteRow.role,
+        });
+        await tx
+          .update(teamInvites)
+          .set({ usedAt: new Date() })
+          .where(eq(teamInvites.id, inviteRow.id));
+        return newUser;
+      });
+      acceptedUser = createdUser;
+      created = true;
+    }
+
+    const [teamRow] = await db
+      .select({ id: teams.id, name: teams.name, slug: teams.slug })
+      .from(teams)
+      .where(eq(teams.id, inviteRow.teamId))
+      .limit(1);
+    if (!teamRow) {
+      throw new AppError("TEAM_NOT_FOUND", "Team not found", 404);
+    }
+
+    const jwt = generateToken(acceptedUser.id, acceptedUser.email);
+
+    res.status(created ? 201 : 200).json({
+      data: {
+        token: jwt,
+        user: {
+          id: acceptedUser.id,
+          email: acceptedUser.email,
+          name: acceptedUser.name,
+        },
+        team: { id: teamRow.id, name: teamRow.name, slug: teamRow.slug },
+        role: inviteRow.role,
+        created,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listInvites(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const actingUserId = requireUserId(req);
+    const { team_id: teamId } = teamIdParamSchema.parse(req.params);
+    await loadTeam(teamId);
+    await requireAdmin(teamId, actingUserId);
+
+    const rows = await db
+      .select({
+        id: teamInvites.id,
+        email: teamInvites.email,
+        role: teamInvites.role,
+        expiresAt: teamInvites.expiresAt,
+        usedAt: teamInvites.usedAt,
+        createdAt: teamInvites.createdAt,
+        invitedBy: teamInvites.invitedBy,
+      })
+      .from(teamInvites)
+      .where(eq(teamInvites.teamId, teamId))
+      .orderBy(desc(teamInvites.createdAt));
+
+    const invites = rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      role: r.role,
+      expires_at: r.expiresAt,
+      used_at: r.usedAt,
+      created_at: r.createdAt,
+      invited_by: r.invitedBy,
+      status: deriveInviteStatus({ usedAt: r.usedAt, expiresAt: r.expiresAt }),
+    }));
+
+    res.json({ data: { invites } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function resendInvite(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const actingUserId = requireUserId(req);
+    const { team_id: teamId, invite_id: inviteId } =
+      inviteIdParamSchema.parse(req.params);
+
+    const team = await loadTeam(teamId);
+    await requireAdmin(teamId, actingUserId);
+
+    const [existing] = await db
+      .select({
+        id: teamInvites.id,
+        teamId: teamInvites.teamId,
+        email: teamInvites.email,
+        role: teamInvites.role,
+        usedAt: teamInvites.usedAt,
+      })
+      .from(teamInvites)
+      .where(eq(teamInvites.id, inviteId))
+      .limit(1);
+
+    if (!existing || existing.teamId !== teamId) {
+      throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
+    }
+
+    const email = existing.email.toLowerCase();
+    const role = existing.role as InviteRole;
+
+    const { token, expiresAt } = signInviteToken({ teamId, email, role });
+
+    const newInviteRow = await db.transaction(async (tx) => {
+      // Mark the old invite as used to invalidate the previous token.
+      await tx
+        .update(teamInvites)
+        .set({ usedAt: new Date() })
+        .where(eq(teamInvites.id, existing.id));
+      const [inserted] = await tx
+        .insert(teamInvites)
+        .values({
+          teamId,
+          email,
+          role,
+          token,
+          invitedBy: actingUserId,
+          expiresAt,
+        })
+        .returning();
+      return inserted;
+    });
+
+    const [inviter] = await db
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, actingUserId))
+      .limit(1);
+
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+    const inviteUrl = buildInviteUrl(token, frontendUrl);
+    const expiresInDays = Math.round(INVITE_TOKEN_TTL_MS / (24 * 60 * 60 * 1000));
+
+    const rendered = renderTeamInviteEmail({
+      inviteeEmail: email,
+      teamName: team.name,
+      inviterName: inviter?.name ?? null,
+      role,
+      inviteUrl,
+      expiresInDays,
+      frontendUrl,
+    });
+
+    await enqueueEmail({
+      type: "team-invite",
+      payload: {
+        to: email,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      },
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn("[signal-backend] team-invite resend email dispatch failed", err);
+    });
+
+    res.json({
+      data: {
+        invite: {
+          id: newInviteRow.id,
+          team_id: teamId,
+          email,
+          role,
+          expires_at: newInviteRow.expiresAt,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function revokeInvite(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const actingUserId = requireUserId(req);
+    const { team_id: teamId, invite_id: inviteId } =
+      inviteIdParamSchema.parse(req.params);
+
+    await loadTeam(teamId);
+    await requireAdmin(teamId, actingUserId);
+
+    const [existing] = await db
+      .select({
+        id: teamInvites.id,
+        teamId: teamInvites.teamId,
+        usedAt: teamInvites.usedAt,
+      })
+      .from(teamInvites)
+      .where(eq(teamInvites.id, inviteId))
+      .limit(1);
+
+    if (!existing || existing.teamId !== teamId) {
+      throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
+    }
+
+    if (!existing.usedAt) {
+      await db
+        .update(teamInvites)
+        .set({ usedAt: new Date() })
+        .where(eq(teamInvites.id, inviteId));
+    }
+
+    res.json({ data: { success: true, id: inviteId } });
   } catch (error) {
     next(error);
   }
