@@ -1,8 +1,18 @@
 import type { NextFunction, Request, Response } from "express";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { teams, teamMembers, teamInvites, users } from "../db/schema";
+import {
+  comments,
+  stories,
+  teams,
+  teamMembers,
+  teamInvites,
+  userSaves,
+  users,
+  writers,
+  type TeamSettings,
+} from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 import {
   INVITE_TOKEN_TTL_MS,
@@ -77,6 +87,7 @@ async function loadTeam(teamId: string): Promise<{
   slug: string;
   description: string | null;
   createdBy: string | null;
+  settings: TeamSettings;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -88,6 +99,7 @@ async function loadTeam(teamId: string): Promise<{
       slug: teams.slug,
       description: teams.description,
       createdBy: teams.createdBy,
+      settings: teams.settings,
       createdAt: teams.createdAt,
       updatedAt: teams.updatedAt,
       deletedAt: teams.deletedAt,
@@ -98,7 +110,7 @@ async function loadTeam(teamId: string): Promise<{
   if (!row || row.deletedAt) {
     throw new AppError("TEAM_NOT_FOUND", "Team not found", 404);
   }
-  return row;
+  return { ...row, settings: row.settings ?? { sectors: [] } };
 }
 
 async function getMembership(
@@ -138,6 +150,7 @@ function shapeTeam(row: Awaited<ReturnType<typeof loadTeam>>): Record<string, un
     slug: row.slug,
     description: row.description,
     created_by: row.createdBy,
+    settings: row.settings,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -198,6 +211,7 @@ export async function listTeams(
         slug: teams.slug,
         description: teams.description,
         createdBy: teams.createdBy,
+        settings: teams.settings,
         createdAt: teams.createdAt,
         updatedAt: teams.updatedAt,
         deletedAt: teams.deletedAt,
@@ -214,6 +228,7 @@ export async function listTeams(
       slug: r.slug,
       description: r.description,
       created_by: r.createdBy,
+      settings: r.settings ?? { sectors: [] },
       created_at: r.createdAt,
       updated_at: r.updatedAt,
       role: r.role,
@@ -556,6 +571,422 @@ export async function join(
         team_id: inviteRow.teamId,
         role: inviteRow.role,
         already_member: false,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------- Phase 9b-1: team-scoped content ----------
+
+const FEED_MAX_LIMIT = 50;
+const FEED_DEFAULT_LIMIT = 10;
+const COMMENT_MAX_LIMIT = 50;
+const COMMENT_DEFAULT_LIMIT = 20;
+const COMMENT_MAX_CONTENT = 2000;
+const SECTOR_MAX = 50;
+const SECTORS_MAX_COUNT = 20;
+
+const feedQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(FEED_MAX_LIMIT).default(FEED_DEFAULT_LIMIT),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const commentsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(COMMENT_MAX_LIMIT).default(COMMENT_DEFAULT_LIMIT),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+const teamStoryParamSchema = z.object({
+  team_id: z.string().uuid(),
+  story_id: z.string().uuid(),
+});
+
+const createTeamCommentSchema = z.object({
+  content: z.string().trim().min(1).max(COMMENT_MAX_CONTENT),
+  parent_comment_id: z.string().uuid().optional().nullable(),
+});
+
+const updateSettingsSchema = z.object({
+  sectors: z
+    .array(z.string().trim().min(1).max(SECTOR_MAX))
+    .max(SECTORS_MAX_COUNT),
+});
+
+export async function getTeamFeed(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const { team_id: teamId } = teamIdParamSchema.parse(req.params);
+    const { limit, offset } = feedQuerySchema.parse(req.query);
+
+    const team = await loadTeam(teamId);
+    await requireMembership(teamId, userId);
+
+    const sectors = team.settings.sectors;
+    if (sectors.length === 0) {
+      res.json({
+        data: { stories: [], total: 0, has_more: false, limit, offset },
+      });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        id: stories.id,
+        sector: stories.sector,
+        headline: stories.headline,
+        context: stories.context,
+        whyItMatters: stories.whyItMatters,
+        sourceUrl: stories.sourceUrl,
+        sourceName: stories.sourceName,
+        publishedAt: stories.publishedAt,
+        createdAt: stories.createdAt,
+        authorId: writers.id,
+        authorName: writers.name,
+        saveCount: sql<number>`(SELECT COUNT(*)::int FROM user_saves us WHERE us.story_id = ${stories.id})`,
+        commentCount: sql<number>`(SELECT COUNT(*)::int FROM comments c WHERE c.story_id = ${stories.id} AND c.team_id = ${teamId} AND c.deleted_at IS NULL)`,
+      })
+      .from(stories)
+      .leftJoin(writers, eq(writers.id, stories.authorId))
+      .where(inArray(stories.sector, sectors))
+      .orderBy(desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`))
+      .limit(limit)
+      .offset(offset);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(stories)
+      .where(inArray(stories.sector, sectors));
+    const total = Number(countRow?.count ?? 0);
+
+    const shaped = rows.map((r) => ({
+      id: r.id,
+      sector: r.sector,
+      headline: r.headline,
+      context: r.context,
+      why_it_matters: r.whyItMatters,
+      source_url: r.sourceUrl,
+      source_name: r.sourceName,
+      published_at: r.publishedAt,
+      created_at: r.createdAt,
+      author: r.authorId ? { id: r.authorId, name: r.authorName } : null,
+      save_count: Number(r.saveCount ?? 0),
+      team_comment_count: Number(r.commentCount ?? 0),
+    }));
+
+    res.json({
+      data: {
+        stories: shaped,
+        total,
+        has_more: offset + rows.length < total,
+        limit,
+        offset,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listTeamStoryComments(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const { team_id: teamId, story_id: storyId } = teamStoryParamSchema.parse(
+      req.params,
+    );
+    const { limit, offset } = commentsQuerySchema.parse(req.query);
+
+    await loadTeam(teamId);
+    await requireMembership(teamId, userId);
+
+    const [story] = await db
+      .select({ id: stories.id })
+      .from(stories)
+      .where(eq(stories.id, storyId))
+      .limit(1);
+    if (!story) {
+      throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+    }
+
+    const rows = await db
+      .select({
+        id: comments.id,
+        storyId: comments.storyId,
+        teamId: comments.teamId,
+        userId: comments.userId,
+        parentCommentId: comments.parentCommentId,
+        content: comments.content,
+        createdAt: comments.createdAt,
+        updatedAt: comments.updatedAt,
+        deletedAt: comments.deletedAt,
+        authorName: users.name,
+        authorEmail: users.email,
+      })
+      .from(comments)
+      .innerJoin(users, eq(users.id, comments.userId))
+      .where(
+        and(
+          eq(comments.storyId, storyId),
+          eq(comments.teamId, teamId),
+        ),
+      )
+      .orderBy(asc(comments.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(comments)
+      .where(
+        and(eq(comments.storyId, storyId), eq(comments.teamId, teamId)),
+      );
+    const total = Number(countRow?.count ?? 0);
+
+    const shaped = rows.map((r) => {
+      const isDeleted = Boolean(r.deletedAt);
+      return {
+        id: r.id,
+        story_id: r.storyId,
+        team_id: r.teamId,
+        parent_comment_id: r.parentCommentId,
+        content: isDeleted ? "[deleted]" : r.content,
+        is_deleted: isDeleted,
+        created_at: r.createdAt,
+        updated_at: r.updatedAt,
+        author: { id: r.userId, name: r.authorName, email: r.authorEmail },
+      };
+    });
+
+    res.json({
+      data: {
+        comments: shaped,
+        total,
+        has_more: offset + rows.length < total,
+        limit,
+        offset,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createTeamStoryComment(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const { team_id: teamId, story_id: storyId } = teamStoryParamSchema.parse(
+      req.params,
+    );
+    const { content, parent_comment_id: parentCommentId } =
+      createTeamCommentSchema.parse(req.body);
+
+    await loadTeam(teamId);
+    await requireMembership(teamId, userId);
+
+    const [story] = await db
+      .select({ id: stories.id })
+      .from(stories)
+      .where(eq(stories.id, storyId))
+      .limit(1);
+    if (!story) {
+      throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+    }
+
+    if (parentCommentId) {
+      const [parent] = await db
+        .select({
+          id: comments.id,
+          storyId: comments.storyId,
+          teamId: comments.teamId,
+        })
+        .from(comments)
+        .where(eq(comments.id, parentCommentId))
+        .limit(1);
+      if (!parent) {
+        throw new AppError("PARENT_NOT_FOUND", "Parent comment not found", 404);
+      }
+      if (parent.storyId !== storyId || parent.teamId !== teamId) {
+        throw new AppError(
+          "PARENT_MISMATCH",
+          "Parent comment belongs to a different story or team",
+          400,
+        );
+      }
+    }
+
+    const [inserted] = await db
+      .insert(comments)
+      .values({
+        storyId,
+        userId,
+        teamId,
+        visibility: "team",
+        content,
+        parentCommentId: parentCommentId ?? null,
+      })
+      .returning();
+
+    const [row] = await db
+      .select({
+        id: comments.id,
+        storyId: comments.storyId,
+        teamId: comments.teamId,
+        userId: comments.userId,
+        parentCommentId: comments.parentCommentId,
+        content: comments.content,
+        createdAt: comments.createdAt,
+        updatedAt: comments.updatedAt,
+        deletedAt: comments.deletedAt,
+        authorName: users.name,
+        authorEmail: users.email,
+      })
+      .from(comments)
+      .innerJoin(users, eq(users.id, comments.userId))
+      .where(eq(comments.id, inserted.id))
+      .limit(1);
+
+    res.status(201).json({
+      data: {
+        comment: {
+          id: row.id,
+          story_id: row.storyId,
+          team_id: row.teamId,
+          parent_comment_id: row.parentCommentId,
+          content: row.content,
+          is_deleted: false,
+          created_at: row.createdAt,
+          updated_at: row.updatedAt,
+          author: {
+            id: row.userId,
+            name: row.authorName,
+            email: row.authorEmail,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateTeamSettings(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const { team_id: teamId } = teamIdParamSchema.parse(req.params);
+    const body = updateSettingsSchema.parse(req.body);
+
+    await loadTeam(teamId);
+    await requireAdmin(teamId, userId);
+
+    const unique = Array.from(new Set(body.sectors));
+    const nextSettings: TeamSettings = { sectors: unique };
+
+    await db
+      .update(teams)
+      .set({ settings: nextSettings, updatedAt: new Date() })
+      .where(eq(teams.id, teamId));
+
+    const row = await loadTeam(teamId);
+    res.json({ data: { team: { ...shapeTeam(row), role: "admin" } } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getTeamDashboard(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const { team_id: teamId } = teamIdParamSchema.parse(req.params);
+
+    const team = await loadTeam(teamId);
+    await requireMembership(teamId, userId);
+
+    const [memberCountRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(teamMembers)
+      .where(eq(teamMembers.teamId, teamId));
+    const memberCount = Number(memberCountRow?.count ?? 0);
+
+    const [commentCountRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(comments)
+      .where(
+        and(eq(comments.teamId, teamId), isNull(comments.deletedAt)),
+      );
+    const commentCount = Number(commentCountRow?.count ?? 0);
+
+    const [saveCountRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(userSaves)
+      .innerJoin(teamMembers, eq(teamMembers.userId, userSaves.userId))
+      .where(eq(teamMembers.teamId, teamId));
+    const totalSaves = Number(saveCountRow?.count ?? 0);
+
+    const sectors = team.settings.sectors;
+    const storiesBySector = sectors.length
+      ? await db
+          .select({
+            sector: stories.sector,
+            count: sql<number>`COUNT(*)::int`,
+          })
+          .from(stories)
+          .where(inArray(stories.sector, sectors))
+          .groupBy(stories.sector)
+      : [];
+
+    const topSavedRows = await db
+      .select({
+        id: stories.id,
+        headline: stories.headline,
+        sector: stories.sector,
+        saveCount: sql<number>`COUNT(${userSaves.id})::int`,
+      })
+      .from(stories)
+      .innerJoin(userSaves, eq(userSaves.storyId, stories.id))
+      .innerJoin(teamMembers, eq(teamMembers.userId, userSaves.userId))
+      .where(eq(teamMembers.teamId, teamId))
+      .groupBy(stories.id, stories.headline, stories.sector)
+      .orderBy(desc(sql`COUNT(${userSaves.id})`))
+      .limit(5);
+
+    res.json({
+      data: {
+        team_id: teamId,
+        member_count: memberCount,
+        total_comments: commentCount,
+        total_saves: totalSaves,
+        sectors,
+        stories_by_sector: storiesBySector.map((r) => ({
+          sector: r.sector,
+          count: Number(r.count ?? 0),
+        })),
+        top_saved_stories: topSavedRows.map((r) => ({
+          id: r.id,
+          headline: r.headline,
+          sector: r.sector,
+          save_count: Number(r.saveCount ?? 0),
+        })),
       },
     });
   } catch (error) {
