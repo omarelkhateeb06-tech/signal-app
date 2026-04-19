@@ -1099,9 +1099,13 @@ export async function inviteAccept(
     const body = inviteAcceptSchema.parse(req.body);
     const { token, password, name } = body;
 
-    const verified = verifyInviteToken(token);
+    // Bypass HMAC expiry so the DB row is the single source of truth for
+    // "expired" vs "invalid" — callers get INVITE_EXPIRED (410) rather than
+    // the ambiguous INVALID_INVITE (400) once the TTL elapses. Signature is
+    // still verified for tamper protection.
+    const verified = verifyInviteToken(token, 0);
     if (!verified) {
-      throw new AppError("INVALID_INVITE", "Invite is invalid or expired", 400);
+      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
     }
 
     const [inviteRow] = await db

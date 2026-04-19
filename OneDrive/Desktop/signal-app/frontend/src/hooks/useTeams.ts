@@ -226,8 +226,13 @@ export function useAcceptInvite(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: InviteAcceptInput) => inviteAcceptRequest(input),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const teamId = data.team.id;
       void qc.invalidateQueries({ queryKey: teamsKey });
+      void qc.invalidateQueries({ queryKey: teamKey(teamId) });
+      void qc.invalidateQueries({ queryKey: membersKey(teamId) });
+      void qc.invalidateQueries({ queryKey: invitesKey(teamId) });
+      void qc.invalidateQueries({ queryKey: dashboardKey(teamId) });
     },
   });
 }
