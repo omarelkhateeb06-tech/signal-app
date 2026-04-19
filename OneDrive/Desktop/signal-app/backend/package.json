@@ -5,8 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/db/migrations','dist/db/migrations',{recursive:true})\"",
+    "start": "node dist/db/migrate.js && node dist/server.js",
+    "start:no-migrate": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
     "type-check": "tsc --noEmit",
     "test": "jest",
