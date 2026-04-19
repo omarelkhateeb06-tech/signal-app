@@ -5,6 +5,8 @@ import type {
   FeedResponse,
   SaveToggleResponse,
   SavedStoriesResponse,
+  SearchResponse,
+  SearchSort,
   Story,
 } from "@/types/story";
 import type { Comment, CommentList } from "@/types/comment";
@@ -178,6 +180,33 @@ export async function getMySavesRequest(
   if (params.offset !== undefined) query.offset = String(params.offset);
   const res = await api.get<{ data: SavedStoriesResponse }>(
     "/api/v1/users/me/saves",
+    { params: query },
+  );
+  return res.data.data;
+}
+
+export interface SearchParams {
+  q: string;
+  sector?: string;
+  from_date?: string;
+  to_date?: string;
+  sort?: SearchSort;
+  limit?: number;
+  offset?: number;
+}
+
+export async function searchStoriesRequest(
+  params: SearchParams,
+): Promise<SearchResponse> {
+  const query: Record<string, string> = { q: params.q };
+  if (params.sector) query.sector = params.sector;
+  if (params.from_date) query.from_date = params.from_date;
+  if (params.to_date) query.to_date = params.to_date;
+  if (params.sort) query.sort = params.sort;
+  if (params.limit !== undefined) query.limit = String(params.limit);
+  if (params.offset !== undefined) query.offset = String(params.offset);
+  const res = await api.get<{ data: SearchResponse }>(
+    "/api/v1/stories/search",
     { params: query },
   );
   return res.data.data;

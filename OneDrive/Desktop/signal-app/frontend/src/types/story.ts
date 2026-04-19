@@ -47,3 +47,18 @@ export interface SaveToggleResponse {
   saved: boolean;
   save_count: number;
 }
+
+export interface SearchResultStory extends Story {
+  rank: number;
+}
+
+export type SearchSort = "relevance" | "newest" | "most_saved";
+
+export interface SearchResponse {
+  stories: SearchResultStory[];
+  total: number;
+  has_more: boolean;
+  limit: number;
+  offset: number;
+  query: string;
+}

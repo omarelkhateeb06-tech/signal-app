@@ -8,6 +8,13 @@
       "when": 1776564985451,
       "tag": "0000_dashing_colleen_wing",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777284000000,
+      "tag": "0001_phase6_search_index",
+      "breakpoints": true
     }
   ]
 }
