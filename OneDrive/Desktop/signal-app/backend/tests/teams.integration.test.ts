@@ -1081,6 +1081,34 @@ describe("teams endpoints", () => {
       expect(res.body.data.status).toBe("expired");
     });
 
+    it("returns status=expired (not 400) when the token's own TTL has also elapsed", async () => {
+      // HMAC signature verifies but the token's embedded expiresAt is in the past.
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+        now: Date.now() - 60_000,
+        ttlMs: 1,
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() - 60_000),
+          usedAt: null,
+        },
+      ]);
+      mock.queueSelect([{ id: teamId, name: "Acme", slug: "acme" }]);
+
+      const res = await request(app).get(
+        `/api/v1/teams/invite/metadata?token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe("expired");
+    });
+
     it("returns status=used without error for a consumed invite", async () => {
       const { token } = signInviteToken({
         teamId,
@@ -1146,6 +1174,33 @@ describe("teams endpoints", () => {
         teamId,
         email: inviteeEmail,
         role: "member",
+      });
+      mock.queueSelect([
+        {
+          id: inviteId,
+          teamId,
+          email: inviteeEmail,
+          role: "member",
+          expiresAt: new Date(Date.now() - 60_000),
+          usedAt: null,
+        },
+      ]);
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" });
+      expect(res.status).toBe(410);
+      expect(res.body.error.code).toBe("INVITE_EXPIRED");
+    });
+
+    it("returns 410 INVITE_EXPIRED (not 400) when the token's own TTL has also elapsed", async () => {
+      // Token signed in the past with a 1ms TTL — HMAC signature still verifies,
+      // but its embedded expiresAt is long past, matching the DB row's expiry.
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+        now: Date.now() - 60_000,
+        ttlMs: 1,
       });
       mock.queueSelect([
         {
