@@ -1,6 +1,6 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { useAuthStore } from "@/store/authStore";
-import type { ApiError, AuthResponse, AuthUser } from "@/types/auth";
+import type { ApiError, AuthResponse, AuthUser, EmailFrequency, UserProfile } from "@/types/auth";
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -63,11 +63,51 @@ export async function loginRequest(input: LoginInput): Promise<AuthResponse> {
   return res.data.data;
 }
 
-export async function meRequest(): Promise<{ user: AuthUser; profile: unknown }> {
-  const res = await api.get<{ data: { user: AuthUser; profile: unknown } }>("/api/v1/auth/me");
+export async function meRequest(): Promise<{ user: AuthUser; profile: UserProfile | null }> {
+  const res = await api.get<{ data: { user: AuthUser; profile: UserProfile | null } }>(
+    "/api/v1/auth/me",
+  );
   return res.data.data;
 }
 
 export async function logoutRequest(): Promise<void> {
   await api.post("/api/v1/auth/logout");
+}
+
+export interface UpdateProfileInput {
+  sectors: string[];
+  role: string;
+  goals: string[];
+  email_frequency: EmailFrequency;
+  email_unsubscribed?: boolean;
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  profile_picture_url?: string | null;
+}
+
+export async function getMyProfileRequest(): Promise<{
+  user: AuthUser;
+  profile: UserProfile | null;
+}> {
+  const res = await api.get<{ data: { user: AuthUser; profile: UserProfile | null } }>(
+    "/api/v1/users/me/profile",
+  );
+  return res.data.data;
+}
+
+export async function updateMyProfileRequest(
+  input: UpdateProfileInput,
+): Promise<UserProfile> {
+  const res = await api.put<{ data: { profile: UserProfile } }>(
+    "/api/v1/users/me/profile",
+    input,
+  );
+  return res.data.data.profile;
+}
+
+export async function updateMeRequest(input: UpdateUserInput): Promise<AuthUser> {
+  const res = await api.put<{ data: { user: AuthUser } }>("/api/v1/users/me", input);
+  return res.data.data.user;
 }
