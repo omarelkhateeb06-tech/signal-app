@@ -2,6 +2,7 @@
 
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { Header } from "@/components/layout/Header";
+import { Sidebar } from "@/components/layout/Sidebar";
 
 export default function AppShellLayout({
   children,
@@ -19,9 +20,14 @@ export default function AppShellLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50">
       <Header />
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1 px-4 py-8 md:px-8">
+          <div className="mx-auto max-w-3xl">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

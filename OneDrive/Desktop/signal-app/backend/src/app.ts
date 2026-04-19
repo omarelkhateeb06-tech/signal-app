@@ -5,6 +5,8 @@ import { errorHandler } from "./middleware/errorHandler";
 import { notFoundHandler } from "./middleware/notFoundHandler";
 import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
+import { commentsRouter } from "./routes/comments";
+import { storiesRouter } from "./routes/stories";
 import { usersRouter } from "./routes/users";
 
 export function createApp(): Express {
@@ -19,6 +21,8 @@ export function createApp(): Express {
   app.use("/health", healthRouter);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/users", usersRouter);
+  app.use("/api/v1/stories", storiesRouter);
+  app.use("/api/v1/comments", commentsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
