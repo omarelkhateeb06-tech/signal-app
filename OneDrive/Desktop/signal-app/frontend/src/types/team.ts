@@ -33,7 +33,7 @@ export interface TeamInvite {
   expires_at: string;
 }
 
-export type InviteStatus = "pending" | "expired" | "used";
+export type InviteStatus = "pending" | "expired" | "used" | "revoked";
 
 export interface PendingTeamInvite {
   id: string;
@@ -41,6 +41,7 @@ export interface PendingTeamInvite {
   role: TeamRole;
   expires_at: string;
   used_at: string | null;
+  revoked_at: string | null;
   created_at: string;
   invited_by: string | null;
   status: InviteStatus;
