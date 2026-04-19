@@ -4,7 +4,7 @@ import { sendEmail, type EmailPayload } from "../services/emailService";
 
 export const EMAIL_QUEUE_NAME = "signal-emails";
 
-export type EmailJobType = "welcome" | "weekly-digest" | "password-reset";
+export type EmailJobType = "welcome" | "weekly-digest" | "password-reset" | "team-invite";
 
 export interface EmailJobData {
   type: EmailJobType;

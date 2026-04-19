@@ -10,6 +10,7 @@ import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
 import { emailsRouter } from "./routes/emails";
 import { storiesRouter } from "./routes/stories";
+import { teamsRouter } from "./routes/teams";
 import { usersRouter } from "./routes/users";
 
 function parseAllowedOrigins(): string[] {
@@ -54,6 +55,7 @@ export function createApp(): Express {
   app.use("/api/v1/users", usersRouter);
   app.use("/api/v1/stories", storiesRouter);
   app.use("/api/v1/comments", commentsRouter);
+  app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
 
   installSentryErrorHandler(app);
