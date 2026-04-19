@@ -21,9 +21,34 @@ const samplePending: PendingTeamInvite = {
   role: "member",
   expires_at: "2026-05-01T00:00:00Z",
   used_at: null,
+  revoked_at: null,
   created_at: "2026-04-10T00:00:00Z",
   invited_by: "u1",
   status: "pending",
+};
+
+const sampleRevoked: PendingTeamInvite = {
+  id: "inv-2",
+  email: "revoked@example.com",
+  role: "member",
+  expires_at: "2026-05-01T00:00:00Z",
+  used_at: null,
+  revoked_at: "2026-04-15T00:00:00Z",
+  created_at: "2026-04-10T00:00:00Z",
+  invited_by: "u1",
+  status: "revoked",
+};
+
+const sampleUsed: PendingTeamInvite = {
+  id: "inv-3",
+  email: "used@example.com",
+  role: "member",
+  expires_at: "2026-05-01T00:00:00Z",
+  used_at: "2026-04-14T00:00:00Z",
+  revoked_at: null,
+  created_at: "2026-04-10T00:00:00Z",
+  invited_by: "u1",
+  status: "used",
 };
 
 function renderList(isAdmin = true): void {
@@ -101,5 +126,34 @@ describe("PendingInvites", () => {
     vi.mocked(api.listTeamInvitesRequest).mockResolvedValue([]);
     renderList(true);
     expect(await screen.findByText(/no invites yet/i)).toBeInTheDocument();
+  });
+
+  it("renders a distinct 'revoked' badge and sub-line vs 'used'", async () => {
+    vi.mocked(api.listTeamInvitesRequest).mockResolvedValue([
+      sampleRevoked,
+      sampleUsed,
+    ]);
+    renderList(true);
+
+    await screen.findByText("revoked@example.com");
+
+    const revokedBadge = screen.getByText("revoked");
+    expect(revokedBadge).toBeInTheDocument();
+    expect(revokedBadge.className).toMatch(/rose/);
+
+    const usedBadge = screen.getByText("used");
+    expect(usedBadge).toBeInTheDocument();
+    expect(usedBadge.className).not.toMatch(/rose/);
+
+    expect(screen.getByText(/^revoked /)).toBeInTheDocument();
+    expect(screen.getByText(/^accepted /)).toBeInTheDocument();
+
+    // Revoked invites should not offer resend/revoke actions (not pending).
+    expect(
+      screen.queryByRole("button", { name: /revoke invite to revoked/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /resend invite to revoked/i }),
+    ).not.toBeInTheDocument();
   });
 });

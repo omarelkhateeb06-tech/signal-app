@@ -527,6 +527,7 @@ export async function join(
         role: teamInvites.role,
         expiresAt: teamInvites.expiresAt,
         usedAt: teamInvites.usedAt,
+        revokedAt: teamInvites.revokedAt,
       })
       .from(teamInvites)
       .where(eq(teamInvites.token, token))
@@ -535,7 +536,7 @@ export async function join(
     if (!inviteRow) {
       throw new AppError("INVALID_INVITE", "Invite is invalid or expired", 400);
     }
-    if (inviteRow.usedAt) {
+    if (inviteRow.revokedAt || inviteRow.usedAt) {
       throw new AppError("INVITE_USED", "Invite has already been used", 410);
     }
     if (inviteRow.expiresAt.getTime() <= Date.now()) {
@@ -1017,12 +1018,14 @@ const inviteAcceptSchema = z.object({
   name: z.string().trim().min(1).optional(),
 });
 
-type InviteStatus = "pending" | "expired" | "used";
+type InviteStatus = "pending" | "expired" | "used" | "revoked";
 
 function deriveInviteStatus(row: {
   usedAt: Date | null;
+  revokedAt: Date | null;
   expiresAt: Date;
 }): InviteStatus {
+  if (row.revokedAt) return "revoked";
   if (row.usedAt) return "used";
   if (row.expiresAt.getTime() <= Date.now()) return "expired";
   return "pending";
@@ -1055,6 +1058,7 @@ export async function inviteMetadata(
         role: teamInvites.role,
         expiresAt: teamInvites.expiresAt,
         usedAt: teamInvites.usedAt,
+        revokedAt: teamInvites.revokedAt,
       })
       .from(teamInvites)
       .where(eq(teamInvites.token, token))
@@ -1076,8 +1080,15 @@ export async function inviteMetadata(
 
     const status: InviteStatus = deriveInviteStatus({
       usedAt: inviteRow.usedAt,
+      revokedAt: inviteRow.revokedAt,
       expiresAt: inviteRow.expiresAt,
     });
+
+    // The public /join page doesn't need to differentiate revoked from used —
+    // both are terminal "can't accept" states to the invitee. Admin history
+    // (listInvites) keeps the distinction.
+    const publicStatus =
+      status === "pending" ? "valid" : status === "revoked" ? "used" : status;
 
     res.json({
       data: {
@@ -1086,7 +1097,7 @@ export async function inviteMetadata(
         email: inviteRow.email,
         role: inviteRow.role,
         expires_at: inviteRow.expiresAt,
-        status: status === "pending" ? "valid" : status,
+        status: publicStatus,
       },
     });
   } catch (error) {
@@ -1124,6 +1135,7 @@ export async function inviteAccept(
         role: teamInvites.role,
         expiresAt: teamInvites.expiresAt,
         usedAt: teamInvites.usedAt,
+        revokedAt: teamInvites.revokedAt,
       })
       .from(teamInvites)
       .where(eq(teamInvites.token, token))
@@ -1131,6 +1143,11 @@ export async function inviteAccept(
 
     if (!inviteRow) {
       throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
+    }
+    if (inviteRow.revokedAt) {
+      // Surface as INVITE_USED to keep the public accept flow's error surface
+      // minimal — invitee sees a terminal "can't accept" either way.
+      throw new AppError("INVITE_USED", "Invite has already been used", 410);
     }
     if (inviteRow.usedAt) {
       throw new AppError("INVITE_USED", "Invite has already been used", 410);
@@ -1331,6 +1348,7 @@ export async function listInvites(
         role: teamInvites.role,
         expiresAt: teamInvites.expiresAt,
         usedAt: teamInvites.usedAt,
+        revokedAt: teamInvites.revokedAt,
         createdAt: teamInvites.createdAt,
         invitedBy: teamInvites.invitedBy,
       })
@@ -1344,9 +1362,14 @@ export async function listInvites(
       role: r.role,
       expires_at: r.expiresAt,
       used_at: r.usedAt,
+      revoked_at: r.revokedAt,
       created_at: r.createdAt,
       invited_by: r.invitedBy,
-      status: deriveInviteStatus({ usedAt: r.usedAt, expiresAt: r.expiresAt }),
+      status: deriveInviteStatus({
+        usedAt: r.usedAt,
+        revokedAt: r.revokedAt,
+        expiresAt: r.expiresAt,
+      }),
     }));
 
     res.json({ data: { invites } });
@@ -1476,6 +1499,7 @@ export async function revokeInvite(
         id: teamInvites.id,
         teamId: teamInvites.teamId,
         usedAt: teamInvites.usedAt,
+        revokedAt: teamInvites.revokedAt,
       })
       .from(teamInvites)
       .where(eq(teamInvites.id, inviteId))
@@ -1485,10 +1509,13 @@ export async function revokeInvite(
       throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
     }
 
-    if (!existing.usedAt) {
+    // Only mark revoked_at if the invite is still actionable. Leave used_at
+    // alone — that column means "accepted by invitee," and conflating it with
+    // admin revoke is what this whole change is undoing.
+    if (!existing.usedAt && !existing.revokedAt) {
       await db
         .update(teamInvites)
-        .set({ usedAt: new Date() })
+        .set({ revokedAt: new Date() })
         .where(eq(teamInvites.id, inviteId));
     }
 

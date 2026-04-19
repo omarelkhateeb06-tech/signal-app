@@ -27,6 +27,7 @@ function roleBadgeClass(role: TeamRole): string {
 function statusBadgeClass(status: InviteStatus): string {
   if (status === "pending") return "bg-amber-100 text-amber-800";
   if (status === "expired") return "bg-slate-100 text-slate-600";
+  if (status === "revoked") return "bg-rose-100 text-rose-700";
   return "bg-slate-100 text-slate-500";
 }
 
@@ -140,7 +141,9 @@ export function PendingInvites({
                       ? `expires ${formatDate(invite.expires_at)}`
                       : invite.status === "used"
                         ? `accepted ${formatDate(invite.used_at)}`
-                        : `expired ${formatDate(invite.expires_at)}`}
+                        : invite.status === "revoked"
+                          ? `revoked ${formatDate(invite.revoked_at)}`
+                          : `expired ${formatDate(invite.expires_at)}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

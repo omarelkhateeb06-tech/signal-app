@@ -29,6 +29,13 @@
       "when": 1777284000002,
       "tag": "0003_phase9b_team_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777284000003,
+      "tag": "0004_phase9_invite_revoked_at",
+      "breakpoints": true
     }
   ]
 }
