@@ -1,29 +1,30 @@
-# Multi-stage build for SIGNAL backend
-# Compiles TypeScript (tsc -> dist/) and runs the compiled server in production
+# Dockerfile for SIGNAL backend
+# Railway sends the backend/ folder as the build context (root dir = backend/)
+# So all paths here are relative to backend/, NOT the monorepo root.
 
 # ============================================
-# Stage 1: Builder — installs all deps and compiles TS
+# Stage 1: Builder
 # ============================================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy workspace manifests
-COPY package.json package-lock.json ./
-COPY backend/package.json ./backend/
+# Copy backend manifest + lockfile
+COPY package.json ./
+# Note: no package-lock.json in backend/ (it's at the monorepo root)
+# So we use npm install instead of npm ci here
 
-# Install all deps (including dev) so tsc is available
-RUN npm ci --workspace=backend --include-workspace-root
+# Install all deps (including dev for TypeScript compilation)
+RUN npm install
 
-# Copy backend source
-COPY backend/ ./backend/
+# Copy source
+COPY . .
 
 # Compile TypeScript to dist/
-WORKDIR /app/backend
 RUN npm run build
 
 # ============================================
-# Stage 2: Runner — lean production image
+# Stage 2: Runner (lean production image)
 # ============================================
 FROM node:20-alpine AS runner
 
@@ -33,23 +34,18 @@ RUN addgroup -g 1001 -S nodejs && \
 
 WORKDIR /app
 
-# Copy manifests
-COPY --from=builder --chown=signal:nodejs /app/package.json /app/package-lock.json ./
-COPY --from=builder --chown=signal:nodejs /app/backend/package.json ./backend/
+# Copy manifest
+COPY --from=builder --chown=signal:nodejs /app/package.json ./
 
 # Install production deps only
-RUN npm ci --workspace=backend --include-workspace-root --omit=dev && \
+RUN npm install --omit=dev && \
     npm cache clean --force
 
-# Copy compiled code
-COPY --from=builder --chown=signal:nodejs /app/backend/dist ./backend/dist
-
-# Copy drizzle config (needed for migrations)
-COPY --from=builder --chown=signal:nodejs /app/backend/drizzle.config.ts ./backend/drizzle.config.ts
+# Copy compiled code + drizzle config (for migrations)
+COPY --from=builder --chown=signal:nodejs /app/dist ./dist
+COPY --from=builder --chown=signal:nodejs /app/drizzle.config.ts ./drizzle.config.ts
 
 USER signal
-
-WORKDIR /app/backend
 
 EXPOSE 3001
 
