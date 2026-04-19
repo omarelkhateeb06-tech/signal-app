@@ -107,6 +107,10 @@ export const userSaves = pgTable(
 
 // ---------- Teams ----------
 
+export interface TeamSettings {
+  sectors: string[];
+}
+
 export const teams = pgTable(
   "teams",
   {
@@ -115,6 +119,10 @@ export const teams = pgTable(
     description: varchar("description", { length: 500 }),
     slug: varchar("slug", { length: 100 }).notNull().unique(),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    settings: jsonb("settings")
+      .$type<TeamSettings>()
+      .notNull()
+      .default({ sectors: [] }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -168,25 +176,32 @@ export const teamInvites = pgTable(
 
 // ---------- Comments ----------
 
-export const comments = pgTable("comments", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  storyId: uuid("story_id")
-    .notNull()
-    .references(() => stories.id, { onDelete: "cascade" }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  parentCommentId: uuid("parent_comment_id").references(
-    (): AnyPgColumn => comments.id,
-    { onDelete: "cascade" },
-  ),
-  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
-  visibility: commentVisibilityEnum("visibility").notNull().default("public"),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storyId: uuid("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    parentCommentId: uuid("parent_comment_id").references(
+      (): AnyPgColumn => comments.id,
+      { onDelete: "cascade" },
+    ),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    visibility: commentVisibilityEnum("visibility").notNull().default("public"),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => ({
+    storyIdx: index("comments_story_idx").on(t.storyId),
+    teamStoryIdx: index("comments_team_story_idx").on(t.teamId, t.storyId),
+  }),
+);
 
 // ---------- Email queue ----------
 
