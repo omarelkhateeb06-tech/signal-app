@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { notFoundHandler } from "./middleware/notFoundHandler";
 import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
+import { usersRouter } from "./routes/users";
 
 export function createApp(): Express {
   const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
@@ -17,6 +18,7 @@ export function createApp(): Express {
 
   app.use("/health", healthRouter);
   app.use("/api/v1/auth", authRouter);
+  app.use("/api/v1/users", usersRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

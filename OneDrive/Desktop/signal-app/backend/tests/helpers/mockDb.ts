@@ -38,8 +38,12 @@ function makeInsertChain(pullResult: () => any[]): any {
   return chain;
 }
 
-function makeUpdateChain(track: (row: any) => void): any {
+function makeUpdateChain(
+  track: (row: any) => void,
+  pullReturning: () => any[],
+): any {
   const whereChain: any = {
+    returning: () => Promise.resolve(pullReturning()),
     then: (onFulfilled: any, onRejected: any) =>
       Promise.resolve({ rowCount: 1 }).then(onFulfilled, onRejected),
     catch: (onRejected: any) => Promise.resolve({ rowCount: 1 }).catch(onRejected),
@@ -69,7 +73,7 @@ export function createMockDb(): MockDb {
   const db: any = {
     select: () => makeSelectChain(pullSelect),
     insert: () => makeInsertChain(pullInsert),
-    update: () => makeUpdateChain(trackUpdate),
+    update: () => makeUpdateChain(trackUpdate, pullInsert),
     transaction: async (cb: (tx: any) => Promise<any>) => cb(db),
   };
 
