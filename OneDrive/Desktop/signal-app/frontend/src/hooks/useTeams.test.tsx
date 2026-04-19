@@ -16,10 +16,15 @@ vi.mock("@/lib/api", () => ({
   getTeamFeedRequest: vi.fn(),
   updateTeamSettingsRequest: vi.fn(),
   getTeamDashboardRequest: vi.fn(),
+  inviteAcceptRequest: vi.fn(),
+  inviteMetadataRequest: vi.fn(),
+  listTeamInvitesRequest: vi.fn(),
+  resendTeamInviteRequest: vi.fn(),
+  revokeTeamInviteRequest: vi.fn(),
 }));
 
 import * as api from "@/lib/api";
-import { useCreateTeam, useTeams } from "./useTeams";
+import { useAcceptInvite, useCreateTeam, useTeams } from "./useTeams";
 
 function wrapper(): { client: QueryClient; Wrapper: (props: { children: ReactNode }) => JSX.Element } {
   const client = new QueryClient({
@@ -98,5 +103,51 @@ describe("useCreateTeam", () => {
 
     const state = client.getQueryState(["teams"]);
     expect(state?.status).toBe("success");
+  });
+});
+
+describe("useAcceptInvite", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("invalidates team, members, invites, and dashboard queries for the accepted team", async () => {
+    const teamId = "t1";
+    vi.mocked(api.inviteAcceptRequest).mockResolvedValue({
+      token: "auth-token",
+      user: { id: "u2", email: "b@example.com", name: "B" },
+      team: { id: teamId, name: "Team One", slug: "team-one" },
+      role: "member",
+      created: true,
+    });
+    const { client, Wrapper } = wrapper();
+
+    // Seed the caches we expect to be invalidated.
+    client.setQueryData(["teams"], []);
+    client.setQueryData(["teams", teamId], sampleTeam);
+    client.setQueryData(["teams", teamId, "members"], []);
+    client.setQueryData(["teams", teamId, "invites"], []);
+    client.setQueryData(["teams", teamId, "dashboard"], {});
+
+    const { result } = renderHook(() => useAcceptInvite(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ token: "invite-token" });
+    });
+
+    await waitFor(() => {
+      expect(
+        client.getQueryState(["teams", teamId, "members"])?.isInvalidated,
+      ).toBe(true);
+    });
+
+    expect(client.getQueryState(["teams"])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(["teams", teamId])?.isInvalidated).toBe(true);
+    expect(
+      client.getQueryState(["teams", teamId, "invites"])?.isInvalidated,
+    ).toBe(true);
+    expect(
+      client.getQueryState(["teams", teamId, "dashboard"])?.isInvalidated,
+    ).toBe(true);
   });
 });
