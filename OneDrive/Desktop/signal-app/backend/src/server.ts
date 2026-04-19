@@ -1,10 +1,12 @@
 import "dotenv/config";
 import { createApp } from "./app";
 import { initSentry } from "./lib/sentry";
+import { runStartupEnvCheck } from "./lib/envCheck";
 import { startEmailWorker } from "./jobs/emailWorker";
 import { startEmailScheduler } from "./jobs/emailScheduler";
 
 initSentry();
+runStartupEnvCheck();
 
 const port = Number(process.env.PORT ?? 3001);
 const app = createApp();

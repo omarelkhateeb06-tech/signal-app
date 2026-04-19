@@ -988,7 +988,7 @@ describe("teams endpoints", () => {
 
     it("handles empty sectors without issuing the stories_by_sector query", async () => {
       mock.queueSelect([teamRow({ settings: { sectors: [] } })]);
-      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
       mock.queueSelect([{ count: 2 }]);
       mock.queueSelect([{ count: 0 }]);
       mock.queueSelect([{ count: 0 }]);
@@ -997,10 +997,22 @@ describe("teams endpoints", () => {
 
       const res = await request(app)
         .get(`/api/v1/teams/${teamId}/dashboard`)
-        .set(...auth(memberToken));
+        .set(...auth(adminToken));
       expect(res.status).toBe(200);
       expect(res.body.data.sectors).toEqual([]);
       expect(res.body.data.stories_by_sector).toEqual([]);
+    });
+
+    it("returns 403 with 'Admin role required' when caller is a non-admin member", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: ["ai"] } })]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/dashboard`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("FORBIDDEN");
+      expect(res.body.error.message).toBe("Admin role required");
     });
   });
 

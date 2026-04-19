@@ -928,7 +928,7 @@ export async function getTeamDashboard(
     const { team_id: teamId } = teamIdParamSchema.parse(req.params);
 
     const team = await loadTeam(teamId);
-    await requireMembership(teamId, userId);
+    await requireAdmin(teamId, userId);
 
     const [memberCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
