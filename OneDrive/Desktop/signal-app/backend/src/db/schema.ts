@@ -18,8 +18,7 @@ import {
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "deleted"]);
 export const emailFrequencyEnum = pgEnum("email_frequency", ["daily", "weekly", "never"]);
 export const commentVisibilityEnum = pgEnum("comment_visibility", ["public", "team", "private"]);
-export const teamTierEnum = pgEnum("team_tier", ["small", "medium", "large", "custom"]);
-export const teamMemberRoleEnum = pgEnum("team_member_role", ["admin", "member"]);
+export const teamMemberRoleEnum = pgEnum("team_member_role", ["admin", "member", "viewer"]);
 export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sent", "failed"]);
 export const apiKeyTierEnum = pgEnum("api_key_tier", ["starter", "pro", "enterprise"]);
 
@@ -108,15 +107,22 @@ export const userSaves = pgTable(
 
 // ---------- Teams ----------
 
-export const teams = pgTable("teams", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: varchar("name", { length: 255 }).notNull(),
-  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "set null" }),
-  companyName: varchar("company_name", { length: 255 }),
-  tier: teamTierEnum("tier"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const teams = pgTable(
+  "teams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: varchar("description", { length: 500 }),
+    slug: varchar("slug", { length: 100 }).notNull().unique(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => ({
+    slugIdx: index("teams_slug_idx").on(t.slug),
+  }),
+);
 
 export const teamMembers = pgTable(
   "team_members",
@@ -130,9 +136,33 @@ export const teamMembers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     role: teamMemberRoleEnum("role").notNull().default("member"),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     teamUserUnique: unique("team_members_team_user_unique").on(t.teamId, t.userId),
+    teamIdx: index("team_members_team_idx").on(t.teamId),
+    userIdx: index("team_members_user_idx").on(t.userId),
+  }),
+);
+
+export const teamInvites = pgTable(
+  "team_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }).notNull(),
+    role: teamMemberRoleEnum("role").notNull().default("member"),
+    token: text("token").notNull().unique(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    teamEmailIdx: index("team_invites_team_email_idx").on(t.teamId, t.email),
+    tokenIdx: index("team_invites_token_idx").on(t.token),
   }),
 );
 
@@ -245,7 +275,11 @@ export type Story = typeof stories.$inferSelect;
 export type NewStory = typeof stories.$inferInsert;
 export type UserSave = typeof userSaves.$inferSelect;
 export type Team = typeof teams.$inferSelect;
+export type NewTeam = typeof teams.$inferInsert;
 export type TeamMember = typeof teamMembers.$inferSelect;
+export type NewTeamMember = typeof teamMembers.$inferInsert;
+export type TeamInvite = typeof teamInvites.$inferSelect;
+export type NewTeamInvite = typeof teamInvites.$inferInsert;
 export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
 export type EmailQueueItem = typeof emailQueue.$inferSelect;
