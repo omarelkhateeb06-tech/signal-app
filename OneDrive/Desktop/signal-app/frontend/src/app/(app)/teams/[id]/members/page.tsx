@@ -16,6 +16,7 @@ import {
 } from "@/hooks/useTeams";
 import { extractApiError } from "@/lib/api";
 import { PendingInvites } from "@/components/teams/PendingInvites";
+import { Skeleton } from "@/components/ui/Skeleton";
 import type { TeamInvite, TeamRole } from "@/types/team";
 
 const inviteSchema = z.object({
@@ -179,7 +180,24 @@ export default function TeamMembersPage(): JSX.Element {
           </div>
         )}
         {isLoading && (
-          <div className="px-6 py-6 text-center text-sm text-slate-500">Loading…</div>
+          <ul
+            aria-label="Loading members"
+            aria-busy="true"
+            className="divide-y divide-slate-100"
+          >
+            {[0, 1, 2].map((i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between gap-3 px-6 py-3"
+              >
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+                <Skeleton className="h-5 w-14" />
+              </li>
+            ))}
+          </ul>
         )}
         {error && (
           <div className="px-6 py-6 text-center text-sm text-rose-700">

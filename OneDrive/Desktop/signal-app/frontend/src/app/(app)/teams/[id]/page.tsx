@@ -8,6 +8,7 @@ import { useTeam, useTeamFeed, useTeamMembers } from "@/hooks/useTeams";
 import { useTeamsStore } from "@/store/teamsStore";
 import { TeamStoryCard } from "@/components/teams/TeamStoryCard";
 import { extractApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const PAGE_SIZE = 20;
 
@@ -91,7 +92,23 @@ export default function TeamFeedPage(): JSX.Element {
       </header>
 
       {feedLoading && (
-        <div className="py-12 text-center text-sm text-slate-500">Loading stories…</div>
+        <div
+          className="space-y-4"
+          aria-label="Loading stories"
+          aria-busy="true"
+        >
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-slate-200 bg-white p-4 space-y-3"
+            >
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-1/4" />
+            </div>
+          ))}
+        </div>
       )}
 
       {feedError && (
