@@ -24,13 +24,36 @@ function parseAllowedOrigins(): string[] {
     .filter((o) => o.length > 0);
 }
 
+// Regex allowlist for Vercel-style dynamic origins. Vercel issues a new
+// immutable URL per deploy (e.g. project-nvrod-<hash>-oelkhateeb6-1333s-
+// projects.vercel.app), so an exact-match list goes stale on every push.
+// The default pattern below matches any deploy URL under this project's
+// Vercel scope; override via ALLOWED_ORIGIN_PATTERNS (comma-separated
+// JS-RegExp source strings) for other environments or projects.
+const DEFAULT_ORIGIN_PATTERNS: readonly RegExp[] = [
+  /^https:\/\/project-nvrod-[a-z0-9-]+-oelkhateeb6-1333s-projects\.vercel\.app$/,
+];
+
+function parseAllowedOriginPatterns(): readonly RegExp[] {
+  const raw = process.env.ALLOWED_ORIGIN_PATTERNS;
+  if (raw === undefined) return DEFAULT_ORIGIN_PATTERNS;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => new RegExp(s));
+}
+
 function buildCorsOptions(): CorsOptions {
   const allowed = parseAllowedOrigins();
+  const patterns = parseAllowedOriginPatterns();
   const allowAll = allowed.includes("*");
   return {
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
-      if (allowAll || allowed.includes(origin)) return cb(null, true);
+      if (allowAll) return cb(null, true);
+      if (allowed.includes(origin)) return cb(null, true);
+      if (patterns.some((p) => p.test(origin))) return cb(null, true);
       return cb(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
