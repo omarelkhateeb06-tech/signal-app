@@ -121,6 +121,36 @@ export async function updateMeRequest(input: UpdateUserInput): Promise<AuthUser>
   return res.data.data.user;
 }
 
+export interface EmailPreferencesInput {
+  email_frequency?: EmailFrequency;
+  email_unsubscribed?: boolean;
+}
+
+export interface EmailPreferencesResponse {
+  email_frequency: EmailFrequency;
+  email_unsubscribed: boolean;
+}
+
+export async function updateEmailPreferencesRequest(
+  input: EmailPreferencesInput,
+): Promise<EmailPreferencesResponse> {
+  const res = await api.put<{ data: { profile: EmailPreferencesResponse } }>(
+    "/api/v1/emails/preferences",
+    input,
+  );
+  return res.data.data.profile;
+}
+
+export async function unsubscribeRequest(
+  token: string,
+): Promise<{ email: string; unsubscribed: boolean }> {
+  const res = await api.post<{ data: { email: string; unsubscribed: boolean } }>(
+    "/api/v1/emails/unsubscribe",
+    { token },
+  );
+  return res.data.data;
+}
+
 export interface FeedParams {
   sectors?: string[];
   limit?: number;

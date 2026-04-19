@@ -3,12 +3,15 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { userProfiles, users } from "../db/schema";
+import { renderWelcomeEmail } from "../emails/welcomeEmail";
+import { enqueueEmail } from "../jobs/emailQueue";
 import { AppError } from "../middleware/errorHandler";
 import {
   generateToken,
   hashPassword,
   verifyPassword,
 } from "../services/authService";
+import { buildUnsubscribeUrl } from "../services/unsubscribeService";
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -59,9 +62,42 @@ export async function signup(req: Request, res: Response, next: NextFunction): P
     });
 
     const token = generateToken(inserted.id, inserted.email);
+
+    void queueWelcomeEmail(inserted);
+
     res.status(201).json({ data: { user: toPublicUser(inserted), token } });
   } catch (error) {
     next(error);
+  }
+}
+
+async function queueWelcomeEmail(user: {
+  id: string;
+  email: string;
+  name: string | null;
+}): Promise<void> {
+  try {
+    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:3000";
+    const unsubscribeUrl = buildUnsubscribeUrl(user.id, frontendUrl);
+    const rendered = renderWelcomeEmail({
+      name: user.name,
+      email: user.email,
+      frontendUrl,
+      unsubscribeUrl,
+    });
+    await enqueueEmail({
+      type: "welcome",
+      payload: {
+        to: user.email,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+        categories: ["welcome"],
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[signal-backend] welcome email enqueue failed:", err);
   }
 }
 
