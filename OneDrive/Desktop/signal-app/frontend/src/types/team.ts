@@ -33,6 +33,44 @@ export interface TeamInvite {
   expires_at: string;
 }
 
+export type InviteStatus = "pending" | "expired" | "used";
+
+export interface PendingTeamInvite {
+  id: string;
+  email: string;
+  role: TeamRole;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+  invited_by: string | null;
+  status: InviteStatus;
+}
+
+export type InviteMetadataStatus = "valid" | "expired" | "used";
+
+export interface InviteMetadata {
+  team_name: string;
+  team_slug: string;
+  email: string;
+  role: TeamRole;
+  expires_at: string;
+  status: InviteMetadataStatus;
+}
+
+export interface InviteAcceptInput {
+  token: string;
+  password?: string;
+  name?: string;
+}
+
+export interface InviteAcceptResponse {
+  token: string;
+  user: { id: string; email: string; name: string | null };
+  team: { id: string; name: string; slug: string };
+  role: TeamRole;
+  created: boolean;
+}
+
 export interface TeamFeedStoryAuthor {
   id: string;
   name: string | null;
