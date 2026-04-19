@@ -11,6 +11,10 @@ import type {
 } from "@/types/story";
 import type { Comment, CommentList } from "@/types/comment";
 import type {
+  InviteAcceptInput,
+  InviteAcceptResponse,
+  InviteMetadata,
+  PendingTeamInvite,
   Team,
   TeamDashboard,
   TeamFeedResponse,
@@ -40,9 +44,14 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ error?: ApiError }>) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
+      const { pathname } = window.location;
+      // The join page handles its own 401s (wrong password on invite accept)
+      // inline and must not wipe an unrelated signed-in session.
+      if (pathname.startsWith("/teams/join")) {
+        return Promise.reject(error);
+      }
       const { clear } = useAuthStore.getState();
       clear();
-      const { pathname } = window.location;
       if (!pathname.startsWith("/login") && !pathname.startsWith("/signup")) {
         window.location.assign("/login");
       }
@@ -420,4 +429,50 @@ export async function getTeamDashboardRequest(
     `/api/v1/teams/${teamId}/dashboard`,
   );
   return res.data.data;
+}
+
+export async function inviteMetadataRequest(
+  token: string,
+): Promise<InviteMetadata> {
+  const res = await api.get<{ data: InviteMetadata }>(
+    "/api/v1/teams/invite/metadata",
+    { params: { token } },
+  );
+  return res.data.data;
+}
+
+export async function inviteAcceptRequest(
+  input: InviteAcceptInput,
+): Promise<InviteAcceptResponse> {
+  const res = await api.post<{ data: InviteAcceptResponse }>(
+    "/api/v1/teams/invite/accept",
+    input,
+  );
+  return res.data.data;
+}
+
+export async function listTeamInvitesRequest(
+  teamId: string,
+): Promise<PendingTeamInvite[]> {
+  const res = await api.get<{ data: { invites: PendingTeamInvite[] } }>(
+    `/api/v1/teams/${teamId}/invites`,
+  );
+  return res.data.data.invites;
+}
+
+export async function resendTeamInviteRequest(
+  teamId: string,
+  inviteId: string,
+): Promise<TeamInvite> {
+  const res = await api.post<{ data: { invite: TeamInvite } }>(
+    `/api/v1/teams/${teamId}/invites/${inviteId}/resend`,
+  );
+  return res.data.data.invite;
+}
+
+export async function revokeTeamInviteRequest(
+  teamId: string,
+  inviteId: string,
+): Promise<void> {
+  await api.delete(`/api/v1/teams/${teamId}/invites/${inviteId}`);
 }

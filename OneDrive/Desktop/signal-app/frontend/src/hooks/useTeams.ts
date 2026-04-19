@@ -13,10 +13,15 @@ import {
   getTeamDashboardRequest,
   getTeamFeedRequest,
   getTeamRequest,
+  inviteAcceptRequest,
+  inviteMetadataRequest,
   inviteTeamMemberRequest,
+  listTeamInvitesRequest,
   listTeamMembersRequest,
   listTeamsRequest,
   removeTeamMemberRequest,
+  resendTeamInviteRequest,
+  revokeTeamInviteRequest,
   updateTeamRequest,
   updateTeamSettingsRequest,
   type CreateTeamInput,
@@ -26,6 +31,10 @@ import {
 } from "@/lib/api";
 import { useTeamsStore } from "@/store/teamsStore";
 import type {
+  InviteAcceptInput,
+  InviteAcceptResponse,
+  InviteMetadata,
+  PendingTeamInvite,
   Team,
   TeamDashboard,
   TeamFeedResponse,
@@ -53,6 +62,16 @@ const dashboardKey = (id: string): readonly [string, string, string] => [
   "teams",
   id,
   "dashboard",
+];
+const invitesKey = (id: string): readonly [string, string, string] => [
+  "teams",
+  id,
+  "invites",
+];
+const inviteMetadataKey = (token: string): readonly [string, string, string] => [
+  "teams",
+  "invite-metadata",
+  token,
 ];
 
 export function useTeams(
@@ -164,9 +183,13 @@ export function useDeleteTeam(id: string): UseMutationResult<void, Error, void> 
 export function useInviteTeamMember(
   id: string,
 ): UseMutationResult<TeamInvite, Error, InviteMemberInput> {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: InviteMemberInput) =>
       inviteTeamMemberRequest(id, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invitesKey(id) });
+    },
   });
 }
 
@@ -179,6 +202,67 @@ export function useRemoveTeamMember(
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: membersKey(id) });
       void qc.invalidateQueries({ queryKey: dashboardKey(id) });
+    },
+  });
+}
+
+export function useInviteMetadata(
+  token: string,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<InviteMetadata, Error> {
+  return useQuery({
+    queryKey: inviteMetadataKey(token),
+    queryFn: () => inviteMetadataRequest(token),
+    enabled: Boolean(token) && (options.enabled ?? true),
+    retry: false,
+  });
+}
+
+export function useAcceptInvite(): UseMutationResult<
+  InviteAcceptResponse,
+  Error,
+  InviteAcceptInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: InviteAcceptInput) => inviteAcceptRequest(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: teamsKey });
+    },
+  });
+}
+
+export function useTeamInvites(
+  id: string | null | undefined,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<PendingTeamInvite[], Error> {
+  return useQuery({
+    queryKey: invitesKey(id ?? ""),
+    queryFn: () => listTeamInvitesRequest(id as string),
+    enabled: Boolean(id) && (options.enabled ?? true),
+  });
+}
+
+export function useResendInvite(
+  id: string,
+): UseMutationResult<TeamInvite, Error, string> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (inviteId: string) => resendTeamInviteRequest(id, inviteId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invitesKey(id) });
+    },
+  });
+}
+
+export function useRevokeInvite(
+  id: string,
+): UseMutationResult<void, Error, string> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (inviteId: string) => revokeTeamInviteRequest(id, inviteId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: invitesKey(id) });
     },
   });
 }

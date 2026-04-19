@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus, Users } from "lucide-react";
 import { useTeams } from "@/hooks/useTeams";
 import { extractApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 function roleClass(role: string | undefined): string {
   if (role === "admin") return "bg-blue-100 text-blue-700";
@@ -33,7 +34,22 @@ export default function TeamsListPage(): JSX.Element {
       </header>
 
       {isLoading && (
-        <div className="py-12 text-center text-sm text-slate-500">Loading teams…</div>
+        <ul
+          aria-label="Loading teams"
+          aria-busy="true"
+          className="grid gap-3 sm:grid-cols-2"
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <li
+              key={i}
+              className="rounded-lg border border-slate-200 bg-white p-4 space-y-3"
+            >
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-1/3" />
+            </li>
+          ))}
+        </ul>
       )}
 
       {error && (

@@ -1,10 +1,30 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { notFound, useParams } from "next/navigation";
 import { Bookmark, MessageSquare, Tag, Users } from "lucide-react";
-import { useTeam, useTeamDashboard } from "@/hooks/useTeams";
+import {
+  useTeam,
+  useTeamDashboard,
+  useTeamMembers,
+} from "@/hooks/useTeams";
 import { extractApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui/Skeleton";
+
+// Lazy-load recharts so the ~90kb bundle doesn't hit SSR or the landing path.
+const DashboardCharts = dynamic(
+  () => import("@/components/teams/DashboardCharts"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-[350px] w-full" />
+        <Skeleton className="h-[350px] w-full" />
+      </div>
+    ),
+  },
+);
 
 interface MetricCardProps {
   label: string;
@@ -24,12 +44,23 @@ function MetricCard({ label, value, icon }: MetricCardProps): JSX.Element {
   );
 }
 
+function MetricsSkeleton(): JSX.Element {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-20 w-full" />
+      ))}
+    </div>
+  );
+}
+
 export default function TeamDashboardPage(): JSX.Element {
   const params = useParams<{ id: string }>();
   const teamId = params?.id;
 
   const { data: team, isLoading: teamLoading } = useTeam(teamId);
   const { data, isLoading, error } = useTeamDashboard(teamId);
+  const { data: members } = useTeamMembers(teamId);
 
   if (!teamId) notFound();
 
@@ -66,7 +97,13 @@ export default function TeamDashboardPage(): JSX.Element {
       </header>
 
       {isLoading && (
-        <div className="py-12 text-center text-sm text-slate-500">Loading dashboard…</div>
+        <>
+          <MetricsSkeleton />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Skeleton className="h-[350px] w-full" />
+            <Skeleton className="h-[350px] w-full" />
+          </div>
+        </>
       )}
 
       {error && (
@@ -99,6 +136,11 @@ export default function TeamDashboardPage(): JSX.Element {
               icon={<Tag className="h-3.5 w-3.5" aria-hidden />}
             />
           </div>
+
+          <DashboardCharts
+            members={members ?? []}
+            topStories={data.top_saved_stories}
+          />
 
           <section className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-200 px-6 py-3 text-sm font-semibold text-slate-900">
