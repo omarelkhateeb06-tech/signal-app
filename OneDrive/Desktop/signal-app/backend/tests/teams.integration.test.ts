@@ -685,4 +685,322 @@ describe("teams endpoints", () => {
       expect(res.body.error.code).toBe("INVITE_USED");
     });
   });
+
+  // ---------- Phase 9b-1: team feed ----------
+
+  const storyId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+
+  describe("GET /api/v1/teams/:team_id/feed", () => {
+    it("rejects unauthenticated", async () => {
+      const res = await request(app).get(`/api/v1/teams/${teamId}/feed`);
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when caller is not a member", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: ["ai"] } })]);
+      mock.queueSelect([]); // membership miss
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/feed`)
+        .set(...auth(outsiderToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("returns empty list when team has no sectors configured", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: [] } })]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/feed`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories).toEqual([]);
+      expect(res.body.data.total).toBe(0);
+    });
+
+    it("returns stories filtered by team sectors with pagination", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: ["ai", "finance"] } })]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([
+        {
+          id: storyId,
+          sector: "ai",
+          headline: "Breakthrough",
+          context: "ctx",
+          whyItMatters: "why",
+          sourceUrl: "https://example.com",
+          sourceName: "Example",
+          publishedAt: new Date(),
+          createdAt: new Date(),
+          authorId: null,
+          authorName: null,
+          saveCount: 3,
+          commentCount: 1,
+        },
+      ]);
+      mock.queueSelect([{ count: 1 }]);
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/feed?limit=5&offset=0`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories).toHaveLength(1);
+      expect(res.body.data.stories[0].save_count).toBe(3);
+      expect(res.body.data.stories[0].team_comment_count).toBe(1);
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.has_more).toBe(false);
+    });
+
+    it("validates limit bounds", async () => {
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/feed?limit=999`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ---------- Phase 9b-1: team-scoped comments ----------
+
+  describe("GET /api/v1/teams/:team_id/stories/:story_id/comments", () => {
+    it("rejects unauthenticated", async () => {
+      const res = await request(app).get(
+        `/api/v1/teams/${teamId}/stories/${storyId}/comments`,
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when caller is not a member", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([]);
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(outsiderToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 404 when story does not exist", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([]); // story missing
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    it("returns team-scoped comments when member", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([{ id: storyId }]);
+      mock.queueSelect([
+        {
+          id: "c1",
+          storyId,
+          teamId,
+          userId: memberId,
+          parentCommentId: null,
+          content: "great read",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          authorName: "Member",
+          authorEmail: memberEmail,
+        },
+      ]);
+      mock.queueSelect([{ count: 1 }]);
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.comments).toHaveLength(1);
+      expect(res.body.data.comments[0].team_id).toBe(teamId);
+      expect(res.body.data.comments[0].content).toBe("great read");
+    });
+  });
+
+  describe("POST /api/v1/teams/:team_id/stories/:story_id/comments", () => {
+    it("rejects unauthenticated", async () => {
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .send({ content: "hi" });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when caller is not a member", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([]);
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(outsiderToken))
+        .send({ content: "hi" });
+      expect(res.status).toBe(403);
+    });
+
+    it("validates content", async () => {
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(memberToken))
+        .send({ content: "" });
+      expect(res.status).toBe(400);
+    });
+
+    it("creates a team comment tagged with team_id and visibility=team", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([{ id: storyId }]);
+      mock.queueInsert([{ id: "c-new" }]);
+      mock.queueSelect([
+        {
+          id: "c-new",
+          storyId,
+          teamId,
+          userId: memberId,
+          parentCommentId: null,
+          content: "first take",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          authorName: "Member",
+          authorEmail: memberEmail,
+        },
+      ]);
+
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(memberToken))
+        .send({ content: "first take" });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.comment.team_id).toBe(teamId);
+      expect(res.body.data.comment.content).toBe("first take");
+    });
+
+    it("rejects parent comment from a different team", async () => {
+      const parentId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([{ id: storyId }]);
+      mock.queueSelect([
+        { id: parentId, storyId, teamId: "ffffffff-ffff-ffff-ffff-ffffffffffff" },
+      ]);
+
+      const res = await request(app)
+        .post(`/api/v1/teams/${teamId}/stories/${storyId}/comments`)
+        .set(...auth(memberToken))
+        .send({ content: "reply", parent_comment_id: parentId });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("PARENT_MISMATCH");
+    });
+  });
+
+  // ---------- Phase 9b-1: team settings ----------
+
+  describe("PATCH /api/v1/teams/:team_id/settings", () => {
+    it("returns 403 when non-admin member attempts update", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      const res = await request(app)
+        .patch(`/api/v1/teams/${teamId}/settings`)
+        .set(...auth(memberToken))
+        .send({ sectors: ["ai"] });
+      expect(res.status).toBe(403);
+    });
+
+    it("validates sectors must be an array", async () => {
+      const res = await request(app)
+        .patch(`/api/v1/teams/${teamId}/settings`)
+        .set(...auth(adminToken))
+        .send({ sectors: "ai" });
+      expect(res.status).toBe(400);
+    });
+
+    it("updates sectors when admin and deduplicates", async () => {
+      mock.queueSelect([teamRow()]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([
+        teamRow({ settings: { sectors: ["ai", "finance"] } }),
+      ]);
+
+      const res = await request(app)
+        .patch(`/api/v1/teams/${teamId}/settings`)
+        .set(...auth(adminToken))
+        .send({ sectors: ["ai", "finance", "ai"] });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.team.settings.sectors).toEqual(["ai", "finance"]);
+      expect(mock.state.updatedRows[0].settings.sectors).toEqual([
+        "ai",
+        "finance",
+      ]);
+    });
+
+    it("returns 404 when team not found", async () => {
+      mock.queueSelect([]);
+      const res = await request(app)
+        .patch(`/api/v1/teams/${teamId}/settings`)
+        .set(...auth(adminToken))
+        .send({ sectors: ["ai"] });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ---------- Phase 9b-1: team dashboard ----------
+
+  describe("GET /api/v1/teams/:team_id/dashboard", () => {
+    it("rejects unauthenticated", async () => {
+      const res = await request(app).get(`/api/v1/teams/${teamId}/dashboard`);
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 when caller is not a member", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: ["ai"] } })]);
+      mock.queueSelect([]);
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/dashboard`)
+        .set(...auth(outsiderToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("returns aggregates using team-member saves (not sector-based)", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: ["ai", "finance"] } })]);
+      mock.queueSelect([{ id: "m1", role: "admin" }]);
+      mock.queueSelect([{ count: 3 }]); // member count
+      mock.queueSelect([{ count: 7 }]); // team comment count
+      mock.queueSelect([{ count: 12 }]); // total saves via team_members join
+      mock.queueSelect([
+        { sector: "ai", count: 5 },
+        { sector: "finance", count: 2 },
+      ]);
+      mock.queueSelect([
+        { id: storyId, headline: "Top", sector: "ai", saveCount: 4 },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/dashboard`)
+        .set(...auth(adminToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.member_count).toBe(3);
+      expect(res.body.data.total_comments).toBe(7);
+      expect(res.body.data.total_saves).toBe(12);
+      expect(res.body.data.stories_by_sector).toHaveLength(2);
+      expect(res.body.data.top_saved_stories[0].save_count).toBe(4);
+    });
+
+    it("handles empty sectors without issuing the stories_by_sector query", async () => {
+      mock.queueSelect([teamRow({ settings: { sectors: [] } })]);
+      mock.queueSelect([{ id: "m1", role: "member" }]);
+      mock.queueSelect([{ count: 2 }]);
+      mock.queueSelect([{ count: 0 }]);
+      mock.queueSelect([{ count: 0 }]);
+      // stories_by_sector skipped when sectors empty
+      mock.queueSelect([]); // top saved stories
+
+      const res = await request(app)
+        .get(`/api/v1/teams/${teamId}/dashboard`)
+        .set(...auth(memberToken));
+      expect(res.status).toBe(200);
+      expect(res.body.data.sectors).toEqual([]);
+      expect(res.body.data.stories_by_sector).toEqual([]);
+    });
+  });
 });
