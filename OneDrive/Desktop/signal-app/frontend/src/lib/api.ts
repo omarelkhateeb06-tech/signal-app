@@ -10,6 +10,14 @@ import type {
   Story,
 } from "@/types/story";
 import type { Comment, CommentList } from "@/types/comment";
+import type {
+  Team,
+  TeamDashboard,
+  TeamFeedResponse,
+  TeamInvite,
+  TeamMember,
+  TeamRole,
+} from "@/types/team";
 
 const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -297,4 +305,119 @@ export async function updateCommentRequest(
 
 export async function deleteCommentRequest(commentId: string): Promise<void> {
   await api.delete(`/api/v1/comments/${commentId}`);
+}
+
+// ---------- Teams ----------
+
+export interface CreateTeamInput {
+  name: string;
+  slug: string;
+  description?: string | null;
+}
+
+export interface UpdateTeamInput {
+  name?: string;
+  description?: string | null;
+  slug?: string;
+}
+
+export interface InviteMemberInput {
+  email: string;
+  role?: TeamRole;
+}
+
+export async function listTeamsRequest(): Promise<Team[]> {
+  const res = await api.get<{ data: { teams: Team[] } }>("/api/v1/teams");
+  return res.data.data.teams;
+}
+
+export async function getTeamRequest(teamId: string): Promise<Team> {
+  const res = await api.get<{ data: { team: Team } }>(`/api/v1/teams/${teamId}`);
+  return res.data.data.team;
+}
+
+export async function createTeamRequest(input: CreateTeamInput): Promise<Team> {
+  const res = await api.post<{ data: { team: Team } }>("/api/v1/teams", input);
+  return res.data.data.team;
+}
+
+export async function updateTeamRequest(
+  teamId: string,
+  input: UpdateTeamInput,
+): Promise<Team> {
+  const res = await api.patch<{ data: { team: Team } }>(
+    `/api/v1/teams/${teamId}`,
+    input,
+  );
+  return res.data.data.team;
+}
+
+export async function deleteTeamRequest(teamId: string): Promise<void> {
+  await api.delete(`/api/v1/teams/${teamId}`);
+}
+
+export async function listTeamMembersRequest(
+  teamId: string,
+): Promise<TeamMember[]> {
+  const res = await api.get<{ data: { members: TeamMember[] } }>(
+    `/api/v1/teams/${teamId}/members`,
+  );
+  return res.data.data.members;
+}
+
+export async function removeTeamMemberRequest(
+  teamId: string,
+  userId: string,
+): Promise<void> {
+  await api.delete(`/api/v1/teams/${teamId}/members/${userId}`);
+}
+
+export async function inviteTeamMemberRequest(
+  teamId: string,
+  input: InviteMemberInput,
+): Promise<TeamInvite> {
+  const res = await api.post<{ data: { invite: TeamInvite } }>(
+    `/api/v1/teams/${teamId}/invites`,
+    input,
+  );
+  return res.data.data.invite;
+}
+
+export interface TeamFeedParams {
+  limit?: number;
+  offset?: number;
+}
+
+export async function getTeamFeedRequest(
+  teamId: string,
+  params: TeamFeedParams = {},
+): Promise<TeamFeedResponse> {
+  const query: Record<string, string> = {};
+  if (params.limit !== undefined) query.limit = String(params.limit);
+  if (params.offset !== undefined) query.offset = String(params.offset);
+  const res = await api.get<{ data: TeamFeedResponse }>(
+    `/api/v1/teams/${teamId}/feed`,
+    { params: query },
+  );
+  return res.data.data;
+}
+
+export async function updateTeamSettingsRequest(
+  teamId: string,
+  sectors: string[],
+): Promise<Team> {
+  const res = await api.patch<{ data: { team: Team } }>(
+    `/api/v1/teams/${teamId}/settings`,
+    { sectors },
+  );
+  return res.data.data.team;
+}
+
+export async function getTeamDashboardRequest(
+  teamId: string,
+): Promise<TeamDashboard> {
+  const res = await api.get<{ data: TeamDashboard }>(
+    `/api/v1/teams/${teamId}/dashboard`,
+  );
+  return res.data.data;
 }

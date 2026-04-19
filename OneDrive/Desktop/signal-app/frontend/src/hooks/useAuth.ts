@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { useTeamsStore } from "@/store/teamsStore";
 import {
   loginRequest,
   logoutRequest,
@@ -54,6 +55,7 @@ export function useAuth(): UseAuthResult {
       await logoutRequest();
     } finally {
       clear();
+      useTeamsStore.getState().clear();
     }
   }, [clear]);
 
