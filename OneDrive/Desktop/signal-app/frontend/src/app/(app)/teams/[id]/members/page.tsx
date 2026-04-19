@@ -108,7 +108,8 @@ export default function TeamMembersPage(): JSX.Element {
         </Link>
         <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Members</h1>
         <p className="mt-1 text-sm text-slate-500">
-          {team?.name ?? "Team"} · {members?.length ?? 0} members
+          {team?.name ?? "Team"} · {members?.length ?? 0}{" "}
+          {(members?.length ?? 0) === 1 ? "member" : "members"}
         </p>
       </header>
 

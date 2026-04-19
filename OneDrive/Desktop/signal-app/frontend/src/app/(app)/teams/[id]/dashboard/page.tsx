@@ -148,7 +148,7 @@ export default function TeamDashboardPage(): JSX.Element {
             </div>
             {data.stories_by_sector.length === 0 ? (
               <div className="px-6 py-6 text-center text-sm text-slate-500">
-                No sectors configured.
+                No stories in configured sectors yet.
               </div>
             ) : (
               <table className="w-full text-sm">
