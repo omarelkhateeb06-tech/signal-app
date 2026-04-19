@@ -4,6 +4,7 @@ import {
   getRelatedStories,
   getStoryById,
   saveStory,
+  searchStories,
   unsaveStory,
 } from "../controllers/storyController";
 import {
@@ -17,6 +18,7 @@ export const storiesRouter: Router = Router();
 storiesRouter.use(requireAuth);
 
 storiesRouter.get("/feed", getFeed);
+storiesRouter.get("/search", searchStories);
 storiesRouter.get("/:id/related", getRelatedStories);
 storiesRouter.post("/:id/save", saveStory);
 storiesRouter.delete("/:id/save", unsaveStory);

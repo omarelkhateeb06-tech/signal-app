@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, ne, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { stories, userProfiles, userSaves, writers } from "../db/schema";
@@ -320,6 +320,120 @@ export async function listMySaves(
         has_more: offset + rows.length < total,
         limit,
         offset,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+const MAX_QUERY_LENGTH = 200;
+
+const searchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(MAX_QUERY_LENGTH),
+  sector: z.string().trim().min(1).optional(),
+  from_date: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+    .optional(),
+  to_date: z
+    .string()
+    .datetime({ offset: true })
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
+    .optional(),
+  sort: z.enum(["relevance", "newest", "most_saved"]).default("relevance"),
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+function parseBoundaryDate(value: string, end: boolean): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T${end ? "23:59:59.999" : "00:00:00.000"}Z`);
+  }
+  return new Date(value);
+}
+
+export async function searchStories(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const parsed = searchQuerySchema.parse(req.query);
+
+    const fromDate = parsed.from_date
+      ? parseBoundaryDate(parsed.from_date, false)
+      : undefined;
+    const toDate = parsed.to_date
+      ? parseBoundaryDate(parsed.to_date, true)
+      : undefined;
+
+    if (fromDate && Number.isNaN(fromDate.getTime())) {
+      throw new AppError("INVALID_INPUT", "Invalid from_date", 400);
+    }
+    if (toDate && Number.isNaN(toDate.getTime())) {
+      throw new AppError("INVALID_INPUT", "Invalid to_date", 400);
+    }
+
+    const [profile] = await db
+      .select({ role: userProfiles.role })
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+
+    const tsVector = sql`to_tsvector('english', coalesce(${stories.headline}, '') || ' ' || coalesce(${stories.context}, ''))`;
+    const tsQuery = sql`websearch_to_tsquery('english', ${parsed.q})`;
+    const rankExpr = sql<number>`ts_rank(${tsVector}, ${tsQuery})`;
+
+    const clauses: SQL[] = [sql`${tsVector} @@ ${tsQuery}`];
+    if (parsed.sector) clauses.push(eq(stories.sector, parsed.sector));
+    if (fromDate) clauses.push(gte(stories.publishedAt, fromDate));
+    if (toDate) clauses.push(lte(stories.publishedAt, toDate));
+    const whereCondition = clauses.length === 1 ? clauses[0] : and(...clauses);
+
+    const orderBy =
+      parsed.sort === "newest"
+        ? desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`)
+        : parsed.sort === "most_saved"
+          ? desc(saveCountExpr())
+          : desc(rankExpr);
+
+    const rows = (await db
+      .select({
+        ...baseStoryColumns,
+        isSaved: isSavedExpr(userId),
+        saveCount: saveCountExpr(),
+        commentCount: commentCountExpr(),
+        rank: rankExpr,
+      })
+      .from(stories)
+      .leftJoin(writers, eq(writers.id, stories.authorId))
+      .where(whereCondition)
+      .orderBy(orderBy)
+      .limit(parsed.limit)
+      .offset(parsed.offset)) as Array<StoryRow & { rank: number }>;
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(stories)
+      .where(whereCondition);
+    const total = Number(countRow?.count ?? 0);
+
+    const shaped = rows.map((row) => ({
+      ...shapeStory(row, profile?.role ?? null),
+      rank: Number(row.rank ?? 0),
+    }));
+
+    res.json({
+      data: {
+        stories: shaped,
+        total,
+        has_more: parsed.offset + rows.length < total,
+        limit: parsed.limit,
+        offset: parsed.offset,
+        query: parsed.q,
       },
     });
   } catch (error) {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { LogOut, Settings, User as UserIcon } from "lucide-react";
+import { LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 function initials(name: string | null | undefined, email: string): string {
@@ -28,6 +28,17 @@ export function Header(): JSX.Element {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        router.push("/search");
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [router]);
+
   const handleLogout = async (): Promise<void> => {
     setOpen(false);
     await logout();
@@ -44,6 +55,19 @@ export function Header(): JSX.Element {
           <Link href="/feed" className="text-muted-foreground hover:text-foreground">
             Feed
           </Link>
+          <button
+            type="button"
+            onClick={() => router.push("/search")}
+            aria-label="Search (Ctrl+K)"
+            title="Search (Ctrl+K)"
+            className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="hidden rounded border border-slate-200 bg-slate-50 px-1 font-mono text-[10px] text-slate-500 sm:inline">
+              ⌘K
+            </kbd>
+          </button>
           {user && (
             <div className="relative" ref={menuRef}>
               <button
