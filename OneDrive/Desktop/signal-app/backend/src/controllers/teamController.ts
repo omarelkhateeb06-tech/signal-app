@@ -1040,7 +1040,11 @@ export async function inviteMetadata(
     // expired tokens (with status="expired"). Signature is still verified.
     const verified = verifyInviteToken(token, 0);
     if (!verified) {
-      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
+      throw new AppError(
+        "INVITE_SIGNATURE_INVALID",
+        "Invite signature invalid",
+        400,
+      );
     }
 
     const [inviteRow] = await db
@@ -1057,7 +1061,7 @@ export async function inviteMetadata(
       .limit(1);
 
     if (!inviteRow) {
-      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
+      throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
     }
 
     const [teamRow] = await db
@@ -1105,7 +1109,11 @@ export async function inviteAccept(
     // still verified for tamper protection.
     const verified = verifyInviteToken(token, 0);
     if (!verified) {
-      throw new AppError("INVALID_INVITE", "Invite is invalid", 400);
+      throw new AppError(
+        "INVITE_SIGNATURE_INVALID",
+        "Invite signature invalid",
+        400,
+      );
     }
 
     const [inviteRow] = await db
@@ -1122,7 +1130,7 @@ export async function inviteAccept(
       .limit(1);
 
     if (!inviteRow) {
-      throw new AppError("INVALID_INVITE", "Invite is invalid or expired", 400);
+      throw new AppError("INVITE_NOT_FOUND", "Invite not found", 404);
     }
     if (inviteRow.usedAt) {
       throw new AppError("INVITE_USED", "Invite has already been used", 410);

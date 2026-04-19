@@ -1019,12 +1019,27 @@ describe("teams endpoints", () => {
   // ---------- Phase 9b-3: invite metadata ----------
 
   describe("GET /api/v1/teams/invite/metadata", () => {
-    it("returns 400 for an invalid token signature", async () => {
+    it("returns 400 INVITE_SIGNATURE_INVALID when the token signature does not verify", async () => {
       const res = await request(app).get(
         "/api/v1/teams/invite/metadata?token=bogus.token",
       );
       expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("INVALID_INVITE");
+      expect(res.body.error.code).toBe("INVITE_SIGNATURE_INVALID");
+    });
+
+    it("returns 404 INVITE_NOT_FOUND when signature verifies but no DB row exists", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([]); // no invite row
+
+      const res = await request(app).get(
+        `/api/v1/teams/invite/metadata?token=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("INVITE_NOT_FOUND");
     });
 
     it("returns metadata with status=valid for a live invite", async () => {
@@ -1138,12 +1153,27 @@ describe("teams endpoints", () => {
   // ---------- Phase 9b-3: invite accept ----------
 
   describe("POST /api/v1/teams/invite/accept", () => {
-    it("returns 400 for an invalid token signature", async () => {
+    it("returns 400 INVITE_SIGNATURE_INVALID when the token signature does not verify", async () => {
       const res = await request(app)
         .post("/api/v1/teams/invite/accept")
         .send({ token: "bogus.token", password: "longenough", name: "New User" });
       expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("INVALID_INVITE");
+      expect(res.body.error.code).toBe("INVITE_SIGNATURE_INVALID");
+    });
+
+    it("returns 404 INVITE_NOT_FOUND when signature verifies but no DB row exists", async () => {
+      const { token } = signInviteToken({
+        teamId,
+        email: inviteeEmail,
+        role: "member",
+      });
+      mock.queueSelect([]);
+
+      const res = await request(app)
+        .post("/api/v1/teams/invite/accept")
+        .send({ token, password: "longenough" });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("INVITE_NOT_FOUND");
     });
 
     it("returns 410 for a used invite (replay)", async () => {
