@@ -34,6 +34,14 @@ RUN addgroup -g 1001 -S nodejs && \
 
 WORKDIR /app
 
+# Build provenance — consumed by GET /health. Railway's Nixpacks auto-sets
+# RAILWAY_GIT_COMMIT_SHA at runtime, so these ARGs are optional; pass them
+# explicitly in non-Railway builds to get commit/built_at on /health.
+ARG GIT_COMMIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 # Copy manifest
 COPY --from=builder --chown=signal:nodejs /app/package.json ./
 
