@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -8,6 +9,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
   type AnyPgColumn,
@@ -268,16 +270,27 @@ export const userLearningProgress = pgTable(
 
 // ---------- API keys ----------
 
-export const apiKeys = pgTable("api_keys", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  customerId: uuid("customer_id").notNull(),
-  keyHash: varchar("key_hash", { length: 255 }).notNull().unique(),
-  tier: apiKeyTierEnum("tier"),
-  rateLimitDaily: integer("rate_limit_daily"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }),
-  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
-});
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 100 }).notNull(),
+    keyPrefix: varchar("key_prefix", { length: 16 }).notNull(),
+    keyHash: varchar("key_hash", { length: 64 }).notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    userIdIdx: index("api_keys_user_id_idx").on(t.userId),
+    userLabelActiveUnique: uniqueIndex("api_keys_user_label_active_unique")
+      .on(t.userId, t.label)
+      .where(sql`${t.revokedAt} IS NULL`),
+  }),
+);
 
 // ---------- Exported row types ----------
 
@@ -303,3 +316,4 @@ export type LearningPath = typeof learningPaths.$inferSelect;
 export type LearningPathStory = typeof learningPathStories.$inferSelect;
 export type UserLearningProgress = typeof userLearningProgress.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;

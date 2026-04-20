@@ -8,3 +8,5 @@ process.env.NODE_ENV = "test";
 process.env.REDIS_URL = "";
 process.env.SENDGRID_API_KEY = "";
 process.env.DISABLE_EMAIL_SCHEDULER = "1";
+process.env.API_KEY_HASH_SECRET =
+  process.env.API_KEY_HASH_SECRET ?? "test-api-key-hmac-secret-at-least-32-chars";

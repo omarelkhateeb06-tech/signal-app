@@ -26,6 +26,11 @@ export const PROD_REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     description:
       "invite and unsubscribe links — links in outbound emails will point at localhost",
   },
+  {
+    name: "API_KEY_HASH_SECRET",
+    description:
+      "HMAC secret for API key hashing — without it, generation throws and existing keys can't verify",
+  },
 ];
 
 function envIsPresent(env: NodeJS.ProcessEnv, name: string): boolean {
