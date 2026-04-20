@@ -161,6 +161,20 @@ export default async function(id) {
 4. **Error boundaries** with error.tsx
 5. **Form state** with react-hook-form + zod
 
+### Frontend file naming
+
+- **Components (`.tsx`):** PascalCase, matching the default export.
+  Examples: `StoryCard.tsx`, `TeamSwitcher.tsx`, `PendingInvites.tsx`,
+  `DashboardCharts.tsx`, `ConfirmDialog.tsx`.
+- **Hooks (`.ts`):** camelCase with `use` prefix.
+  Examples: `useTeams.ts`, `useAcceptInvite.ts`, `useStories.ts`.
+- **Utilities / libs (`.ts`):** camelCase.
+  Examples: `api.ts`, `auth.ts`, `utils.ts`.
+- **Next.js App Router conventions override naming** — `page.tsx`,
+  `layout.tsx`, `loading.tsx`, `error.tsx`, `route.ts` stay lowercase.
+- **Types (`.ts` in `src/types/`):** lowercase by domain (`team.ts`,
+  `user.ts`, `story.ts`). Type names inside are PascalCase.
+
 ### Backend Rules
 
 1. **Validate ALL inputs** with zod schemas before processing
@@ -219,7 +233,7 @@ export async function createUser(req: Request, res: Response, next: NextFunction
 
 ## DATABASE SCHEMA
 
-See detailed schema at `docs/SCHEMA.md`. Key tables:
+Drizzle schema is the source of truth at `backend/src/db/schema.ts`. Key tables:
 
 - `users` - User accounts
 - `user_profiles` - Sectors, role, preferences
@@ -228,12 +242,33 @@ See detailed schema at `docs/SCHEMA.md`. Key tables:
 - `comments` - Threaded comments
 - `teams` - Enterprise teams
 - `team_members` - Team membership
+- `team_invites` - Pending team invitations (see below)
 - `learning_paths` - Learning path metadata
 - `learning_path_stories` - Path-story relationships
 - `user_learning_progress` - User progress tracking
 - `writers` - Content writers
 - `email_queue` - Email sending queue
 - `api_keys` - API authentication keys
+
+### team_invites (shipped through Phase 9 P2 #8)
+
+| column        | type         | notes                                          |
+|---------------|--------------|------------------------------------------------|
+| `id`          | uuid PK      | `defaultRandom()`                              |
+| `team_id`     | uuid FK      | → `teams.id`, `on delete cascade`              |
+| `email`       | varchar(255) | not null                                       |
+| `role`        | enum         | `admin` / `member` / `viewer`, default `member`|
+| `token`       | text         | not null, unique, HMAC-signed                  |
+| `invited_by`  | uuid FK      | → `users.id`, `on delete set null`, nullable   |
+| `expires_at`  | timestamptz  | not null                                       |
+| `used_at`     | timestamptz  | null until the invitee accepts                 |
+| `revoked_at`  | timestamptz  | null until an admin revokes                    |
+| `created_at`  | timestamptz  | `defaultNow()`                                 |
+
+Derived status (computed in `teamController.deriveInviteStatus`):
+`revoked_at` → `"revoked"`, then `used_at` → `"used"`, then expired check
+→ `"expired"`, else `"pending"`. There is **no** `accepted_at` column —
+acceptance writes `used_at`.
 
 ---
 
@@ -344,11 +379,10 @@ Work through phases sequentially. Do NOT skip ahead.
 
 ## RESOURCES
 
-- Technical specification: `docs/SPEC.md`
-- Database schema: `docs/SCHEMA.md`
-- API documentation: `docs/API.md`
-- Phase instructions: `docs/PHASES/`
+- Database schema (source of truth): `backend/src/db/schema.ts`
 - Deployment guide: `docs/DEPLOYMENT.md`
+- Teams smoke test: `docs/SMOKE_TEST_TEAMS.md`
+- Phase 9 closeout: `docs/PHASE_9_CLOSEOUT.md`
 
 ---
 
