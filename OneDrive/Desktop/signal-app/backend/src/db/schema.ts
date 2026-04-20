@@ -88,6 +88,36 @@ export const stories = pgTable(
   }),
 );
 
+// ---------- Story aggregates ----------
+
+// Precomputed per-sector weekly rollups. Populated by the aggregation job
+// (`aggregationJob.ts`); read by `/api/v2/trends/:sector`. `save_count` is
+// reserved for future engagement-weighted aggregation and stays 0 in v1 —
+// the column exists so adding a `user_saves` JOIN later doesn't require a
+// migration or API contract change. Upsert target is (sector, period).
+export const storyAggregates = pgTable(
+  "story_aggregates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sector: varchar("sector", { length: 50 }).notNull(),
+    // ISO week string, e.g. "2026-W16". 8-char max in practice but we allow
+    // 10 to tolerate hypothetical 5-digit years and separator variants.
+    period: varchar("period", { length: 10 }).notNull(),
+    storyCount: integer("story_count").notNull().default(0),
+    saveCount: integer("save_count").notNull().default(0),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // Unique (sector, period) is the upsert target AND the query index —
+    // Postgres creates a btree index for every UNIQUE constraint, so a
+    // separate non-unique (sector, period) index would be redundant.
+    sectorPeriodUnique: unique("story_aggregates_sector_period_unique").on(t.sector, t.period),
+    computedAtIdx: index("story_aggregates_computed_at_idx").on(t.computedAt),
+  }),
+);
+
 // ---------- User saves ----------
 
 export const userSaves = pgTable(
@@ -302,6 +332,8 @@ export type Writer = typeof writers.$inferSelect;
 export type NewWriter = typeof writers.$inferInsert;
 export type Story = typeof stories.$inferSelect;
 export type NewStory = typeof stories.$inferInsert;
+export type StoryAggregate = typeof storyAggregates.$inferSelect;
+export type NewStoryAggregate = typeof storyAggregates.$inferInsert;
 export type UserSave = typeof userSaves.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
