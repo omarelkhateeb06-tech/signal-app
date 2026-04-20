@@ -36,6 +36,27 @@ Indexes: `(sector, published_at)`, `(created_at)`.
 
 There is **no `slug` column** and **no `updated_at` column**. `name` has no unique constraint — the seeder falls back to SELECT-by-name + INSERT-if-absent for upsert, which is acceptable for a manually-operated prod seed with explicit confirmation (concurrent seeders are not in scope).
 
+### `story_aggregates`
+
+Phase 11c.5 rollup table. One row per `(sector, period)` pair; populated by the aggregation job and read by `/api/v2/trends/:sector`.
+
+| column          | type            | notes                                                    |
+|-----------------|-----------------|----------------------------------------------------------|
+| `id`            | uuid PK         | `defaultRandom()`                                        |
+| `sector`        | varchar(50)     | `ai` / `finance` / `semiconductors` (enforced at API/job boundary) |
+| `period`        | varchar(10)     | ISO-8601 week string, e.g. `"2026-W16"`                  |
+| `story_count`   | integer         | not null, default 0                                      |
+| `save_count`    | integer         | **reserved**, always 0 in v1 (no `user_saves` JOIN yet)  |
+| `computed_at`   | timestamptz     | set on every upsert — read as `as_of` in the trends API  |
+| `created_at`    | timestamptz     | `defaultNow()`                                           |
+| `updated_at`    | timestamptz     | bumped on every upsert                                   |
+
+Constraints & indexes:
+- `UNIQUE (sector, period)` — upsert target, doubles as the btree index serving the primary read query.
+- `INDEX (computed_at)` — supports "when was the latest rollup produced" ops queries.
+
+See [`backend/src/jobs/aggregationJob.ts`](../backend/src/jobs/aggregationJob.ts) for how rows are produced, and [`docs/API.md`](API.md) for how they are exposed.
+
 ## Seeding stories (`npm run seed:stories`)
 
 The seeder loads hand-curated content from `backend/seed-data/stories.json` and inserts it idempotently. The JSON is checked into the repo — it's the content source of truth, not a migration artifact.
