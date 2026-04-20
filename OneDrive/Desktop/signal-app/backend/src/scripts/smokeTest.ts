@@ -8,8 +8,9 @@
  * Optional:
  *   SMOKE_EMAIL=smoke+<stamp>@example.com
  *   SMOKE_PASSWORD=<random>
- *   SMOKE_SKIP_SIGNUP=1           # only hit public endpoints
- *   SMOKE_ORIGIN=<frontend-origin> # for the CORS preflight check
+ *   SMOKE_SKIP_SIGNUP=1                  # only hit public endpoints
+ *   SMOKE_ORIGIN=<frontend-origin>       # legacy single-origin check
+ *   SMOKE_VERCEL_ORIGINS=<csv>           # prod Vercel origins to preflight
  *
  * Exits non-zero on any failure so CI / deploy hooks can gate on it.
  */
@@ -42,7 +43,59 @@ async function expectOk(path: string, init?: RequestInit): Promise<Response> {
   return res;
 }
 
+// Real browser-origin preflight against the prod Vercel URLs. Phase 9's
+// CORS regression slipped past the old smoke check because it only sent a
+// localhost origin; real Vercel origins exercise the regex allowlist in
+// backend/src/app.ts.
+const DEFAULT_VERCEL_ORIGINS = [
+  "https://project-nvrod.vercel.app",
+  "https://project-nvrod-git-main-oelkhateeb6-1333s-projects.vercel.app",
+];
+
+function vercelOrigins(): string[] {
+  const raw = process.env.SMOKE_VERCEL_ORIGINS;
+  if (raw === undefined) return DEFAULT_VERCEL_ORIGINS;
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+async function preflight(origin: string, path: string): Promise<void> {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: "OPTIONS",
+    headers: {
+      Origin: origin,
+      "Access-Control-Request-Method": "GET",
+      "Access-Control-Request-Headers": "authorization,content-type",
+    },
+  });
+  if (res.status !== 204 && res.status !== 200) {
+    throw new Error(`preflight ${origin} ${path} -> ${res.status}`);
+  }
+  const allowOrigin = res.headers.get("access-control-allow-origin");
+  if (allowOrigin !== origin) {
+    throw new Error(
+      `preflight ${origin} missing/wrong ACAO header (got ${allowOrigin ?? "null"})`,
+    );
+  }
+  const allowCreds = res.headers.get("access-control-allow-credentials");
+  if (allowCreds !== "true") {
+    throw new Error(
+      `preflight ${origin} missing ACA-Credentials (got ${allowCreds ?? "null"})`,
+    );
+  }
+}
+
 const checks: Check[] = [
+  {
+    name: "cors-preflight-vercel",
+    run: async () => {
+      for (const origin of vercelOrigins()) {
+        await preflight(origin, "/api/v1/teams");
+      }
+    },
+  },
   {
     name: "health",
     run: async () => {
@@ -54,7 +107,7 @@ const checks: Check[] = [
     },
   },
   {
-    name: "cors-preflight",
+    name: "cors-preflight-legacy",
     run: async () => {
       const res = await fetch(`${baseUrl}/api/v1/stories/feed`, {
         method: "OPTIONS",
