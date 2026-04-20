@@ -13,6 +13,7 @@ import { emailsRouter } from "./routes/emails";
 import { storiesRouter } from "./routes/stories";
 import { teamsRouter } from "./routes/teams";
 import { usersRouter } from "./routes/users";
+import { v2Router } from "./routes/v2";
 
 function parseAllowedOrigins(): string[] {
   const raw =
@@ -83,9 +84,10 @@ export function createApp(): Express {
   app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
 
-  // Phase 11b: apiKeyRateLimit middleware exists (src/middleware/apiKeyRateLimit.ts)
-  // but is NOT mounted here. 11c will apply it to the v2 Intelligence API
-  // routes via: router.use(apiKeyAuth, apiKeyRateLimit, ...).
+  // v2 Intelligence API: API-key authenticated, per-key rate limited.
+  // Middleware chain (apiKeyAuth → apiKeyRateLimit) is applied inside
+  // routes/v2/index.ts so it only affects v2 endpoints, not v1.
+  app.use("/api/v2", v2Router);
 
   installSentryErrorHandler(app);
 
