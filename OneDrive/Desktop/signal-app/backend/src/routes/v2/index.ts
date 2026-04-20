@@ -2,6 +2,7 @@ import { Router } from "express";
 import { apiKeyAuth } from "../../middleware/apiKeyAuth";
 import { apiKeyRateLimit } from "../../middleware/apiKeyRateLimit";
 import { storiesV2Router } from "./stories";
+import { trendsV2Router } from "./trends";
 
 export const v2Router: Router = Router();
 
@@ -10,3 +11,4 @@ export const v2Router: Router = Router();
 v2Router.use(apiKeyAuth, apiKeyRateLimit);
 
 v2Router.use("/stories", storiesV2Router);
+v2Router.use("/trends", trendsV2Router);

@@ -18,6 +18,7 @@
     "db:seed": "ts-node src/db/seed.ts",
     "seed:stories": "ts-node src/scripts/seedStories.ts",
     "send-digest-now": "ts-node src/scripts/sendDigestNow.ts",
+    "run-aggregation": "ts-node src/scripts/runAggregation.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"
   },
   "dependencies": {

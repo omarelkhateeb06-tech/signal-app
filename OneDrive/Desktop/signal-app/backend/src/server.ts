@@ -4,6 +4,8 @@ import { initSentry } from "./lib/sentry";
 import { runStartupEnvCheck } from "./lib/envCheck";
 import { startEmailWorker } from "./jobs/emailWorker";
 import { startEmailScheduler } from "./jobs/emailScheduler";
+import { startAggregationWorker } from "./jobs/aggregationWorker";
+import { scheduleAggregationRepeatable } from "./jobs/aggregationQueue";
 
 initSentry();
 runStartupEnvCheck();
@@ -18,5 +20,10 @@ app.listen(port, () => {
 
 startEmailWorker();
 startEmailScheduler();
+startAggregationWorker();
+void scheduleAggregationRepeatable().catch((err: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error("[signal-backend] failed to schedule aggregation cron:", err);
+});
 
 export { app };
