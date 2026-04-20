@@ -83,6 +83,10 @@ export function createApp(): Express {
   app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
 
+  // Phase 11b: apiKeyRateLimit middleware exists (src/middleware/apiKeyRateLimit.ts)
+  // but is NOT mounted here. 11c will apply it to the v2 Intelligence API
+  // routes via: router.use(apiKeyAuth, apiKeyRateLimit, ...).
+
   installSentryErrorHandler(app);
 
   app.use(notFoundHandler);
