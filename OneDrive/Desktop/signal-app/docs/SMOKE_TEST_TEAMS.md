@@ -23,6 +23,19 @@ locally before merging Phase 9b-3b to `main`, and again after deploy.
 
 ## Steps
 
+### 0. CORS preflight sanity
+
+Before hitting the app, confirm the backend accepts preflight from the real
+Vercel origins. Phase 9 had a regression where staging preflights passed
+from `localhost:3000` but the prod Vercel URL was rejected, blocking the
+entire teams surface in the browser.
+
+1. `cd backend && SMOKE_BASE_URL=https://signal-app-production-cd33.up.railway.app npm run smoke`
+2. ✅ `ok cors-preflight-vercel` — covers both `project-nvrod.vercel.app`
+   and `project-nvrod-git-main-oelkhateeb6-1333s-projects.vercel.app`
+3. If this step fails, stop — the rest of the manual flow will look broken
+   for reasons unrelated to Teams logic
+
 ### 1. Create a team
 
 1. Sign in as Admin A

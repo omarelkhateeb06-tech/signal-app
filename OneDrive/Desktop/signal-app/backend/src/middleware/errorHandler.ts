@@ -14,12 +14,36 @@ export class AppError extends Error {
   }
 }
 
+const PG_CONNECTION_ERROR_CODES = new Set([
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+]);
+
+function isPgConnectionError(err: unknown): boolean {
+  if (err === null || typeof err !== "object") return false;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && PG_CONNECTION_ERROR_CODES.has(code);
+}
+
 export const errorHandler: ErrorRequestHandler = (
   err: unknown,
   _req: Request,
   res: Response,
   _next: NextFunction,
 ): void => {
+  if (isPgConnectionError(err)) {
+    // eslint-disable-next-line no-console
+    console.error("[db:unavailable]", err);
+    res.status(503).json({
+      error: {
+        code: "DATABASE_UNAVAILABLE",
+        message: "Database temporarily unavailable",
+      },
+    });
+    return;
+  }
+
   if (err instanceof ZodError) {
     res.status(400).json({
       error: {
