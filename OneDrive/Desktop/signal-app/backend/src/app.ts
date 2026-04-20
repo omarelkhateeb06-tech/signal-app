@@ -5,6 +5,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { notFoundHandler } from "./middleware/notFoundHandler";
 import { apiLimiter, authLimiter, emailLimiter } from "./middleware/rateLimiter";
 import { installSentryErrorHandler } from "./lib/sentry";
+import { apiKeysRouter } from "./routes/apiKeys";
 import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
@@ -76,6 +77,7 @@ export function createApp(): Express {
   app.use("/api", apiLimiter);
   app.use("/api/v1/auth", authLimiter, authRouter);
   app.use("/api/v1/users", usersRouter);
+  app.use("/api/v1/me/api-keys", apiKeysRouter);
   app.use("/api/v1/stories", storiesRouter);
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
