@@ -55,6 +55,14 @@ describe("stories endpoints", () => {
     token = generateToken(userId, email);
   });
 
+  // Phase 12b: /feed and /search are guarded by requireProfile, which
+  // runs a SELECT on userProfiles.completedAt before the controller
+  // executes. Every authorized-path test must queue the onboarded
+  // sentinel first.
+  const queueOnboarded = (): void => {
+    mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
+  };
+
   describe("GET /api/v1/stories/feed", () => {
     it("returns 401 without a token", async () => {
       const res = await request(app).get("/api/v1/stories/feed");
@@ -62,6 +70,7 @@ describe("stories endpoints", () => {
     });
 
     it("returns empty feed when user has no sectors and none are requested", async () => {
+      queueOnboarded();
       mock.queueSelect([{ sectors: [], role: "engineer" }]);
 
       const res = await request(app)
@@ -75,6 +84,7 @@ describe("stories endpoints", () => {
     });
 
     it("uses the user's profile sectors when query is empty", async () => {
+      queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow()]);
       mock.queueSelect([{ count: 1 }]);
@@ -94,6 +104,7 @@ describe("stories endpoints", () => {
     });
 
     it("filters by query sectors when provided", async () => {
+      queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "vc" }]);
       mock.queueSelect([makeRow({ sector: "finance" })]);
       mock.queueSelect([{ count: 1 }]);
@@ -110,6 +121,7 @@ describe("stories endpoints", () => {
     });
 
     it("reports has_more when offset+rows < total", async () => {
+      queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow(), makeRow({ id: "22222222-2222-2222-2222-222222222222" })]);
       mock.queueSelect([{ count: 10 }]);
@@ -127,11 +139,30 @@ describe("stories endpoints", () => {
     });
 
     it("rejects invalid limit values", async () => {
+      queueOnboarded();
       const res = await request(app)
         .get("/api/v1/stories/feed?limit=0")
         .set(...auth(token));
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe("INVALID_INPUT");
+    });
+
+    it("returns 403 ONBOARDING_REQUIRED when the user has no profile row", async () => {
+      mock.queueSelect([]); // requireProfile select: none
+      const res = await request(app)
+        .get("/api/v1/stories/feed")
+        .set(...auth(token));
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("ONBOARDING_REQUIRED");
+    });
+
+    it("returns 403 ONBOARDING_REQUIRED when completed_at is null", async () => {
+      mock.queueSelect([{ completedAt: null }]); // partial profile
+      const res = await request(app)
+        .get("/api/v1/stories/feed")
+        .set(...auth(token));
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("ONBOARDING_REQUIRED");
     });
   });
 

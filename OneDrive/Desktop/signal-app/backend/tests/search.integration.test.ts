@@ -57,12 +57,19 @@ describe("GET /api/v1/stories/search", () => {
     token = generateToken(userId, email);
   });
 
+  // Phase 12b: /search is guarded by requireProfile; every
+  // authenticated test must queue the onboarded sentinel first.
+  const queueOnboarded = (): void => {
+    mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
+  };
+
   it("returns 401 without a token", async () => {
     const res = await request(app).get("/api/v1/stories/search?q=models");
     expect(res.status).toBe(401);
   });
 
   it("rejects queries shorter than 2 characters", async () => {
+    queueOnboarded();
     const res = await request(app)
       .get("/api/v1/stories/search?q=a")
       .set(...auth(token));
@@ -71,6 +78,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("rejects a missing query", async () => {
+    queueOnboarded();
     const res = await request(app)
       .get("/api/v1/stories/search")
       .set(...auth(token));
@@ -79,6 +87,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("returns relevant stories with personalized why_it_matters_to_you", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId, rank: 0.2 })]);
     mock.queueSelect([{ count: 2 }]);
@@ -99,6 +108,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("accepts sector, date, and sort filters", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "vc" }]);
     mock.queueSelect([makeRow({ sector: "finance" })]);
     mock.queueSelect([{ count: 1 }]);
@@ -118,6 +128,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("supports most_saved sort", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "analyst" }]);
     mock.queueSelect([makeRow()]);
     mock.queueSelect([{ count: 1 }]);
@@ -131,6 +142,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("handles phrase queries with quoted input", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow()]);
     mock.queueSelect([{ count: 1 }]);
@@ -145,6 +157,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("paginates and reports has_more correctly", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId })]);
     mock.queueSelect([{ count: 12 }]);
@@ -161,6 +174,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("rejects invalid sort values", async () => {
+    queueOnboarded();
     const res = await request(app)
       .get("/api/v1/stories/search?q=models&sort=banana")
       .set(...auth(token));
@@ -169,6 +183,7 @@ describe("GET /api/v1/stories/search", () => {
   });
 
   it("returns an empty result set without erroring", async () => {
+    queueOnboarded();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([]);
     mock.queueSelect([{ count: 0 }]);

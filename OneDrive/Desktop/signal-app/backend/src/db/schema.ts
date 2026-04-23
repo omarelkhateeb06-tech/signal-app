@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -39,18 +40,90 @@ export const users = pgTable("users", {
 
 // ---------- User profiles ----------
 
+// Phase 12b: `sectors` and `goals` migrated jsonb → text[] (native
+// Postgres arrays). The Phase 12a-and-earlier profile shape stays:
+// `email_frequency` + `email_unsubscribed` are still driven by the
+// unsubscribe flow. The five new columns — seniority, depth_preference,
+// digest_preference, timezone, completed_at — are nullable and only
+// set by the onboarding completion path. `completed_at IS NOT NULL`
+// is the authoritative "is this user onboarded" predicate; the mere
+// presence of a user_profiles row (e.g. from unsubscribe) does NOT
+// count as onboarded.
+//
+// depth_preference / digest_preference are backed by CHECK constraints
+// at the DB boundary, not pgEnums (see migration 0008). The allowed
+// value sets are re-declared here as const tuples so the controller's
+// Zod schemas can reference them.
+export const DEPTH_PREFERENCES = ["accessible", "standard", "technical"] as const;
+export type DepthPreference = (typeof DEPTH_PREFERENCES)[number];
+export const DIGEST_PREFERENCES = ["morning", "evening", "none"] as const;
+export type DigestPreference = (typeof DIGEST_PREFERENCES)[number];
+
 export const userProfiles = pgTable("user_profiles", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
-  sectors: jsonb("sectors").$type<string[]>(),
+  sectors: text("sectors").array(),
   role: varchar("role", { length: 50 }),
-  goals: jsonb("goals").$type<string[]>(),
+  seniority: text("seniority"),
+  depthPreference: text("depth_preference").$type<DepthPreference>(),
+  goals: text("goals").array(),
+  digestPreference: text("digest_preference").$type<DigestPreference>(),
+  timezone: text("timezone"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   emailFrequency: emailFrequencyEnum("email_frequency").notNull().default("weekly"),
   emailUnsubscribed: boolean("email_unsubscribed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- User topic interests ----------
+//
+// Per-sector topic selections captured on Screen 5 of onboarding.
+// Normalized out of user_profiles so we can filter on a single topic
+// without array-containment queries. Composite PK (user_id, sector,
+// topic) makes re-inserts idempotent without an extra unique index.
+
+export const userTopicInterests = pgTable(
+  "user_topic_interests",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sector: text("sector").notNull(),
+    topic: text("topic").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ name: "user_topic_interests_pk", columns: [t.userId, t.sector, t.topic] }),
+    userIdx: index("user_topic_interests_user_idx").on(t.userId),
+  }),
+);
+
+// ---------- Onboarding events ----------
+//
+// Append-only telemetry for the onboarding funnel. Written from the
+// batched `/onboarding/events` endpoint and the completion path.
+// `metadata` is jsonb so event-specific payloads can evolve without
+// schema churn.
+
+export const onboardingEvents = pgTable(
+  "onboarding_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    screenNumber: integer("screen_number"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userCreatedIdx: index("onboarding_events_user_created_idx").on(t.userId, t.createdAt),
+    typeIdx: index("onboarding_events_type_idx").on(t.eventType),
+  }),
+);
 
 // ---------- Writers ----------
 
@@ -342,6 +415,10 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type NewUserProfile = typeof userProfiles.$inferInsert;
+export type UserTopicInterest = typeof userTopicInterests.$inferSelect;
+export type NewUserTopicInterest = typeof userTopicInterests.$inferInsert;
+export type OnboardingEvent = typeof onboardingEvents.$inferSelect;
+export type NewOnboardingEvent = typeof onboardingEvents.$inferInsert;
 export type Writer = typeof writers.$inferSelect;
 export type NewWriter = typeof writers.$inferInsert;
 export type Story = typeof stories.$inferSelect;

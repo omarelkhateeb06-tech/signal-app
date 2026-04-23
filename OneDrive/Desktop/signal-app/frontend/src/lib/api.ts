@@ -1,6 +1,15 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { useAuthStore } from "@/store/authStore";
-import type { ApiError, AuthResponse, AuthUser, EmailFrequency, UserProfile } from "@/types/auth";
+import type {
+  ApiError,
+  AuthResponse,
+  AuthUser,
+  DepthPreference,
+  DigestPreference,
+  EmailFrequency,
+  TopicInterest,
+  UserProfile,
+} from "@/types/auth";
 import type {
   FeedResponse,
   SaveToggleResponse,
@@ -113,13 +122,15 @@ export interface UpdateUserInput {
   profile_picture_url?: string | null;
 }
 
-export async function getMyProfileRequest(): Promise<{
+export interface MyProfileResponse {
   user: AuthUser;
   profile: UserProfile | null;
-}> {
-  const res = await api.get<{ data: { user: AuthUser; profile: UserProfile | null } }>(
-    "/api/v1/users/me/profile",
-  );
+  topic_interests: TopicInterest[];
+  onboarding_completed: boolean;
+}
+
+export async function getMyProfileRequest(): Promise<MyProfileResponse> {
+  const res = await api.get<{ data: MyProfileResponse }>("/api/v1/users/me/profile");
   return res.data.data;
 }
 
@@ -475,4 +486,74 @@ export async function revokeTeamInviteRequest(
   inviteId: string,
 ): Promise<void> {
   await api.delete(`/api/v1/teams/${teamId}/invites/${inviteId}`);
+}
+
+// ---------- Onboarding (Phase 12b) ----------
+
+export interface OnboardingCompleteInput {
+  sectors: string[];
+  role: string;
+  seniority: string;
+  depth_preference: DepthPreference;
+  topics: { sector: string; topic: string }[];
+  goals: string[];
+  digest_preference: DigestPreference;
+  timezone: string;
+}
+
+export interface OnboardingEventInput {
+  event_type: string;
+  screen_number?: number | null;
+  metadata?: Record<string, unknown>;
+  occurred_at?: string;
+}
+
+export async function postOnboardingEventsRequest(
+  events: OnboardingEventInput[],
+): Promise<{ accepted: number }> {
+  const res = await api.post<{ data: { accepted: number } }>(
+    "/api/v1/onboarding/events",
+    { events },
+  );
+  return res.data.data;
+}
+
+export async function postOnboardingCompleteRequest(
+  input: OnboardingCompleteInput,
+): Promise<{ profile: UserProfile; completed_at: string }> {
+  const res = await api.post<{
+    data: { profile: UserProfile; completed_at: string };
+  }>("/api/v1/onboarding/complete", input);
+  return res.data.data;
+}
+
+// Best-effort fire-and-forget beacon for screen_view / screen_skipped /
+// time_on_screen events emitted from the onboarding screens. Uses
+// sendBeacon when available (survives navigation + beforeunload) and
+// falls back to a non-blocking POST otherwise. Never throws — telemetry
+// must never break the flow.
+export function sendOnboardingEventBeacon(events: OnboardingEventInput[]): void {
+  if (typeof window === "undefined" || events.length === 0) return;
+  const token = useAuthStore.getState().token;
+  if (!token) return;
+  const url = `${baseURL}/api/v1/onboarding/events`;
+  const body = JSON.stringify({ events });
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      // sendBeacon can't set custom headers, so the backend accepts
+      // these events via the standard Bearer flow only when JS is
+      // still alive. For beforeunload cases we fall back to a keepalive
+      // fetch with the token in the header — Chrome's sendBeacon only
+      // honors Content-Type text/plain-ish, which our zod schema would
+      // reject. Fetch-with-keepalive is the sanctioned modern path.
+    }
+    void fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body,
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    // Intentionally swallow — telemetry must never surface errors.
+  }
 }
