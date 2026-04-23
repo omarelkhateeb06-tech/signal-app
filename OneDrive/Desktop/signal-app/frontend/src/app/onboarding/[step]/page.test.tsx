@@ -54,12 +54,20 @@ describe("Onboarding step dispatcher", () => {
     if (typeof window !== "undefined") window.sessionStorage.clear();
   });
 
-  it("Screen 1: Continue is disabled until at least one sector is picked", async () => {
+  it("Screen 1: all sectors start pre-selected (Issue #10); unchecking the last disables Continue", async () => {
     paramsMock.current = { step: "1" };
     const user = userEvent.setup();
     renderPage();
     const cont = screen.getByRole("button", { name: /continue/i });
+    // Seeded with all three sectors → Continue enabled from first paint.
+    expect(cont).not.toBeDisabled();
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
+    // Uncheck every one and confirm Continue goes disabled — the
+    // canContinue={sectors.length >= 1} invariant still holds.
+    for (const cb of checkboxes) await user.click(cb);
     expect(cont).toBeDisabled();
+    // Re-check one and proceed — push target is still /onboarding/2.
     await user.click(screen.getByRole("checkbox", { name: /^AI\b/ }));
     expect(cont).not.toBeDisabled();
     await user.click(cont);

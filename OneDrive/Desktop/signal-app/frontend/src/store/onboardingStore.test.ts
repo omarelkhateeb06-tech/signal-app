@@ -9,9 +9,12 @@ describe("useOnboardingStore", () => {
     }
   });
 
-  it("starts with empty multi-selects and a sensible default depth preference", () => {
+  it("seeds all three sectors on init (Issue #10) and leaves other multi-selects empty", () => {
+    // Screen 1 pre-selects every sector so the user can press Continue
+    // without ticking boxes manually. Topics/goals stay empty because
+    // those screens intentionally require explicit selection or Skip.
     const s = useOnboardingStore.getState();
-    expect(s.sectors).toEqual([]);
+    expect(s.sectors).toEqual(["ai", "finance", "semiconductors"]);
     expect(s.topics).toEqual([]);
     expect(s.goals).toEqual([]);
     expect(s.depthPreference).toBe("standard");
@@ -40,7 +43,8 @@ describe("useOnboardingStore", () => {
 
     useOnboardingStore.getState().reset();
     const after = useOnboardingStore.getState();
-    expect(after.sectors).toEqual([]);
+    // reset() restores the seeded sectors (not []); see the init test.
+    expect(after.sectors).toEqual(["ai", "finance", "semiconductors"]);
     expect(after.role).toBeNull();
     expect(after.topics).toEqual([]);
     expect(after.goals).toEqual([]);

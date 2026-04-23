@@ -63,13 +63,19 @@ export const ROLES: readonly LabeledOption[] = [
 
 // ---------- Seniority (Screen 3) ----------
 
+// Labels match the spec (Phase 12b fix-it Fix 4 / Issue #10). Values
+// are kept stable across label changes so existing profile rows and
+// backend tests don't need a data migration — only the display strings
+// changed. `just_starting_out` and `leadership` are new additions.
 export const SENIORITIES: readonly LabeledOption[] = [
   { value: "student", label: "Student" },
-  { value: "junior", label: "Junior (0-3 years)" },
-  { value: "mid", label: "Mid-level (3-7 years)" },
-  { value: "senior", label: "Senior (7-12 years)" },
-  { value: "principal_plus", label: "Principal / Staff+" },
-  { value: "executive", label: "Executive / Director+" },
+  { value: "just_starting_out", label: "Just starting out" },
+  { value: "junior", label: "Early career (0-3 years)" },
+  { value: "mid", label: "Mid-career (4-10 years)" },
+  { value: "senior", label: "Senior" },
+  { value: "principal_plus", label: "Experienced (10+ years)" },
+  { value: "executive", label: "Executive" },
+  { value: "leadership", label: "Leadership" },
 ] as const;
 
 // ---------- Depth preference (Screen 4, default = standard) ----------
@@ -142,14 +148,18 @@ export const TOPICS_BY_SECTOR: Readonly<Record<string, readonly TopicOption[]>> 
 
 // ---------- Goals (Screen 6, default on skip) ----------
 
+// Labels match the spec (Phase 12b fix-it Fix 4 / Issue #10). Values
+// are unchanged so persisted profiles keep working. The `deep_learning`
+// label was confusing in an AI-sector app (it collided with the ML
+// term of art); relabelled to "Deepen expertise in a topic".
 export const GOALS: readonly LabeledOption[] = [
   { value: "stay_current", label: "Stay current on my industry" },
-  { value: "deep_learning", label: "Deep learning / master a topic" },
+  { value: "deep_learning", label: "Deepen expertise in a topic" },
   { value: "find_opportunities", label: "Find opportunities" },
-  { value: "network", label: "Network" },
-  { value: "career_growth", label: "Career growth" },
-  { value: "investing", label: "Investing decisions" },
-  { value: "research", label: "Research & analysis" },
+  { value: "network", label: "Build my network" },
+  { value: "career_growth", label: "Grow my career" },
+  { value: "investing", label: "Inform investing decisions" },
+  { value: "research", label: "Research and analysis" },
 ] as const;
 
 export const DEFAULT_GOAL = "stay_current" as const;

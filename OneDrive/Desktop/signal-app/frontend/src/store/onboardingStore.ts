@@ -3,6 +3,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { DepthPreference, DigestPreference } from "@/types/auth";
+import { SECTORS } from "@/lib/onboarding";
+
+// Phase 12b fix-it (Fix 4 / Issue #10): the three sectors start
+// pre-selected on Screen 1. The user can still uncheck any of them;
+// they just don't have to tick the boxes manually to continue. Pulling
+// the value set from SECTORS keeps this automatic if sectors are ever
+// added or removed.
+const INITIAL_SECTORS: string[] = SECTORS.map((s) => s.value);
 
 // Phase 12b — the mid-flow state for the 7-screen onboarding
 // questionnaire. Persisted to sessionStorage (NOT localStorage) so a
@@ -56,7 +64,7 @@ const initialState: Omit<
   | "setTimezone"
   | "reset"
 > = {
-  sectors: [],
+  sectors: INITIAL_SECTORS,
   role: null,
   seniority: null,
   depthPreference: "standard",

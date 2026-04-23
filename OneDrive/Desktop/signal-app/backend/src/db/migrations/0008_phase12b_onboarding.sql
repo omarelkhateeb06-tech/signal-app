@@ -19,22 +19,32 @@
 
 -- ---------- user_profiles alterations ----------
 
--- jsonb → text[] for sectors / goals. USING explicitly unwraps the JSON
--- array to a text array; failing the cast on a non-array value is the
--- correct behavior (it would indicate data corruption).
+-- jsonb → text[] for sectors / goals. Factored into a helper function
+-- so the two ALTER TABLEs (and any future conversion) share one
+-- implementation instead of duplicating the NULL-safe CASE WHEN. The
+-- function is dropped at the end of the migration — it exists solely
+-- for the duration of this transaction's statements.
+--
+-- Failing the cast on a non-array jsonb is the correct behavior here;
+-- that would indicate data corruption, not a recoverable state.
+CREATE OR REPLACE FUNCTION _phase12b_jsonb_to_text_array(val jsonb)
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+AS $$
+	SELECT CASE
+		WHEN val IS NULL THEN NULL
+		ELSE ARRAY(SELECT jsonb_array_elements_text(val))
+	END;
+$$;--> statement-breakpoint
+
 ALTER TABLE "user_profiles"
 	ALTER COLUMN "sectors" TYPE text[]
-	USING CASE
-		WHEN "sectors" IS NULL THEN NULL
-		ELSE ARRAY(SELECT jsonb_array_elements_text("sectors"))
-	END;--> statement-breakpoint
+	USING _phase12b_jsonb_to_text_array("sectors");--> statement-breakpoint
 
 ALTER TABLE "user_profiles"
 	ALTER COLUMN "goals" TYPE text[]
-	USING CASE
-		WHEN "goals" IS NULL THEN NULL
-		ELSE ARRAY(SELECT jsonb_array_elements_text("goals"))
-	END;--> statement-breakpoint
+	USING _phase12b_jsonb_to_text_array("goals");--> statement-breakpoint
 
 ALTER TABLE "user_profiles" ADD COLUMN IF NOT EXISTS "seniority" text;--> statement-breakpoint
 ALTER TABLE "user_profiles" ADD COLUMN IF NOT EXISTS "depth_preference" text;--> statement-breakpoint
@@ -101,4 +111,8 @@ CREATE INDEX IF NOT EXISTS "onboarding_events_user_created_idx"
 	ON "onboarding_events" USING btree ("user_id", "created_at");--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "onboarding_events_type_idx"
-	ON "onboarding_events" USING btree ("event_type");
+	ON "onboarding_events" USING btree ("event_type");--> statement-breakpoint
+
+-- Cleanup: the jsonb→text[] helper was a transient aid, drop it so the
+-- schema doesn't carry an internal-only function into production.
+DROP FUNCTION IF EXISTS _phase12b_jsonb_to_text_array(jsonb);
