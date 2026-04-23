@@ -238,6 +238,52 @@ describe("user profile endpoints", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.profile.userId).toBe(userId);
     });
+
+    // Phase 12b: the settings page now edits `depth_preference`. The
+    // column is optional on write (see userController.ts) but must be
+    // persisted when supplied.
+    it("accepts and persists depth_preference when supplied", async () => {
+      mock.queueSelect([{ userId }]); // existence check inside txn
+      mock.queueInsert([
+        {
+          userId,
+          sectors: ["ai"],
+          role: "engineer",
+          goals: ["deep_learning"],
+          emailFrequency: "weekly",
+          emailUnsubscribed: false,
+          depthPreference: "technical",
+        },
+      ]); // update .returning()
+
+      const res = await request(app)
+        .put("/api/v1/users/me/profile")
+        .set(...auth(token))
+        .send({
+          sectors: ["ai"],
+          role: "engineer",
+          goals: ["deep_learning"],
+          email_frequency: "weekly",
+          depth_preference: "technical",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.profile.depthPreference).toBe("technical");
+    });
+
+    it("rejects an invalid depth_preference value", async () => {
+      const res = await request(app)
+        .put("/api/v1/users/me/profile")
+        .set(...auth(token))
+        .send({
+          sectors: ["ai"],
+          role: "engineer",
+          goals: ["deep_learning"],
+          email_frequency: "weekly",
+          depth_preference: "galaxy_brain",
+        });
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("PUT /api/v1/users/me", () => {

@@ -23,7 +23,7 @@ export function useRequireOnboarded(
   redirectTo = "/onboarding/1",
 ): { ready: boolean } {
   const { ready: authReady } = useRequireAuth();
-  const { data, isLoading, isFetched } = useProfile();
+  const { data, isLoading, isFetching, isFetched } = useProfile();
   const router = useRouter();
 
   const onboardingCompleted = data?.onboarding_completed ?? false;
@@ -32,12 +32,18 @@ export function useRequireOnboarded(
     if (!authReady) return;
     if (isLoading) return;
     if (!isFetched) return;
+    // Don't bounce while a refetch is in flight — e.g. right after
+    // `useOnboardingComplete` invalidates PROFILE_QUERY_KEY, the old
+    // cached value is `false` until the refetch settles. Reading
+    // before that would send the user back to /onboarding/1 a beat
+    // after they successfully completed onboarding. (Issue #5.)
+    if (isFetching) return;
     if (!onboardingCompleted) {
       router.replace(redirectTo);
     }
-  }, [authReady, isLoading, isFetched, onboardingCompleted, redirectTo, router]);
+  }, [authReady, isLoading, isFetching, isFetched, onboardingCompleted, redirectTo, router]);
 
   return {
-    ready: authReady && isFetched && onboardingCompleted,
+    ready: authReady && isFetched && !isFetching && onboardingCompleted,
   };
 }

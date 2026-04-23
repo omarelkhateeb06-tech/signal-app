@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PROFILE_QUERY_KEY } from "@/hooks/useProfile";
 
 const pushMock = vi.fn();
 const paramsMock = { current: { step: "1" } };
@@ -35,7 +36,7 @@ vi.mock("@/lib/api", () => ({
 import OnboardingStepPage from "./page";
 import { useOnboardingStore } from "@/store/onboardingStore";
 
-function renderPage(): void {
+function renderPage(): { client: QueryClient } {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -43,6 +44,7 @@ function renderPage(): void {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   render(<OnboardingStepPage />, { wrapper: Wrapper });
+  return { client };
 }
 
 describe("Onboarding step dispatcher", () => {
@@ -83,5 +85,38 @@ describe("Onboarding step dispatcher", () => {
     await user.click(screen.getByRole("button", { name: /skip/i }));
     expect(useOnboardingStore.getState().goals).toEqual(["stay_current"]);
     expect(pushMock).toHaveBeenCalledWith("/onboarding/7");
+  });
+
+  // Regression for Issue #5 — on Finish, the mutation must invalidate
+  // PROFILE_QUERY_KEY *before* the router.push("/feed") fires, or the
+  // (app) layout reads stale onboarding_completed: false and bounces
+  // back to /onboarding/1.
+  it("Screen 7: Finish invalidates the profile cache before pushing to /feed", async () => {
+    paramsMock.current = { step: "7" };
+    const store = useOnboardingStore.getState();
+    store.setSectors(["ai"]);
+    store.setRole("engineer");
+    store.setSeniority("mid");
+    store.setDepthPreference("standard");
+    store.setGoals(["stay_current"]);
+    store.setTopics([{ sector: "ai", topic: "foundation_models" }]);
+    store.setDigestPreference("morning");
+    store.setTimezone("UTC");
+
+    const user = userEvent.setup();
+    const { client } = renderPage();
+    // Seed a known-stale cache entry so invalidateQueries has something
+    // observable to mark as stale.
+    client.setQueryData(PROFILE_QUERY_KEY, { onboarding_completed: false });
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+
+    await user.click(screen.getByRole("button", { name: /finish/i }));
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: PROFILE_QUERY_KEY });
+    });
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/feed");
+    });
   });
 });
