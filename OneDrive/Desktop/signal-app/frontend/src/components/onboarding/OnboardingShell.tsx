@@ -12,6 +12,10 @@ export interface OnboardingShellProps {
   continueLabel?: string;
   onContinue: () => void | Promise<void>;
   onSkip?: () => void | Promise<void>;
+  // Optional override so the page can emit `screen_back` telemetry
+  // alongside the navigation. When omitted, the shell falls back to
+  // its own `router.push(previous-step)` behavior (no event).
+  onBack?: () => void | Promise<void>;
   error?: string | null;
   children: ReactNode;
 }
@@ -37,12 +41,17 @@ export function OnboardingShell({
   continueLabel,
   onContinue,
   onSkip,
+  onBack,
   error,
   children,
 }: OnboardingShellProps): JSX.Element {
   const router = useRouter();
   const back = (): void => {
     if (step <= 1) return;
+    if (onBack) {
+      void onBack();
+      return;
+    }
     router.push(`/onboarding/${step - 1}`);
   };
 
