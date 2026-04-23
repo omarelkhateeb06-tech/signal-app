@@ -14,10 +14,11 @@ import {
   TOPICS_BY_SECTOR,
   DEFAULT_GOAL,
 } from "@/lib/onboarding";
+import { useOnboardingComplete } from "@/hooks/useProfile";
 import {
-  useOnboardingComplete,
-  useOnboardingEvents,
-} from "@/hooks/useProfile";
+  useOnboardingNav,
+  useScreenViewEvent,
+} from "@/hooks/useOnboardingNav";
 import { extractApiError } from "@/lib/api";
 import type { DepthPreference, DigestPreference } from "@/types/auth";
 
@@ -45,13 +46,9 @@ export default function OnboardingStepPage(): JSX.Element {
 // ---------- Screen 1: sectors ----------
 
 function Screen1(): JSX.Element {
-  const router = useRouter();
   const { sectors, setSectors } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 1 }]);
-  }, [emit]);
+  useScreenViewEvent(1);
+  const nav = useOnboardingNav(1);
 
   const toggle = (value: string): void => {
     setSectors(
@@ -67,7 +64,7 @@ function Screen1(): JSX.Element {
       title="What sectors interest you?"
       description="Pick one or more. You can change this later in settings."
       canContinue={sectors.length >= 1}
-      onContinue={() => router.push("/onboarding/2")}
+      onContinue={() => nav.goNext(2)}
     >
       <div className="space-y-3">
         {SECTORS.map((s) => {
@@ -100,13 +97,9 @@ function Screen1(): JSX.Element {
 // ---------- Screen 2: role ----------
 
 function Screen2(): JSX.Element {
-  const router = useRouter();
   const { role, setRole } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 2 }]);
-  }, [emit]);
+  useScreenViewEvent(2);
+  const nav = useOnboardingNav(2);
 
   return (
     <OnboardingShell
@@ -114,7 +107,8 @@ function Screen2(): JSX.Element {
       title="What's your role?"
       description="We tailor commentary framing to your role."
       canContinue={role !== null && role.length > 0}
-      onContinue={() => router.push("/onboarding/3")}
+      onContinue={() => nav.goNext(3)}
+      onBack={nav.goBack}
     >
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {ROLES.map((r) => {
@@ -146,13 +140,9 @@ function Screen2(): JSX.Element {
 // ---------- Screen 3: seniority ----------
 
 function Screen3(): JSX.Element {
-  const router = useRouter();
   const { seniority, setSeniority } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 3 }]);
-  }, [emit]);
+  useScreenViewEvent(3);
+  const nav = useOnboardingNav(3);
 
   return (
     <OnboardingShell
@@ -160,7 +150,8 @@ function Screen3(): JSX.Element {
       title="How senior are you?"
       description="Helps us calibrate depth and context."
       canContinue={seniority !== null}
-      onContinue={() => router.push("/onboarding/4")}
+      onContinue={() => nav.goNext(4)}
+      onBack={nav.goBack}
     >
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {SENIORITIES.map((s) => {
@@ -192,13 +183,9 @@ function Screen3(): JSX.Element {
 // ---------- Screen 4: depth preference ----------
 
 function Screen4(): JSX.Element {
-  const router = useRouter();
   const { depthPreference, setDepthPreference } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 4 }]);
-  }, [emit]);
+  useScreenViewEvent(4);
+  const nav = useOnboardingNav(4);
 
   return (
     <OnboardingShell
@@ -206,7 +193,8 @@ function Screen4(): JSX.Element {
       title="How deep do you want to go?"
       description="The free tier defaults to Standard. You can change this any time."
       canContinue={true}
-      onContinue={() => router.push("/onboarding/5")}
+      onContinue={() => nav.goNext(5)}
+      onBack={nav.goBack}
     >
       <div className="space-y-3">
         {DEPTH_PREFERENCES.map((d) => {
@@ -243,13 +231,9 @@ function Screen4(): JSX.Element {
 // ---------- Screen 5: topics (skippable) ----------
 
 function Screen5(): JSX.Element {
-  const router = useRouter();
   const { sectors, topics, setTopics } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 5 }]);
-  }, [emit]);
+  useScreenViewEvent(5);
+  const nav = useOnboardingNav(5);
 
   // Build the master list of all valid (sector, topic) pairs for the
   // currently selected sectors. Skipping fills `topics` with this full
@@ -272,10 +256,11 @@ function Screen5(): JSX.Element {
     );
   };
 
-  const skip = (): void => {
-    emit([{ event_type: "screen_skipped", screen_number: 5 }]);
+  const handleSkip = (): void => {
+    // Fill the store BEFORE nav.skip emits + routes; skip's event goes
+    // out with the router.push so the order is stable in tests.
     setTopics(allPairs);
-    router.push("/onboarding/6");
+    nav.skip(6);
   };
 
   return (
@@ -284,8 +269,9 @@ function Screen5(): JSX.Element {
       title="Any topics you especially care about?"
       description="Pick any — or skip and we'll show you everything in your sectors."
       canContinue={true}
-      onContinue={() => router.push("/onboarding/6")}
-      onSkip={skip}
+      onContinue={() => nav.goNext(6)}
+      onSkip={handleSkip}
+      onBack={nav.goBack}
     >
       <div className="space-y-6">
         {sectors.length === 0 && (
@@ -333,13 +319,9 @@ function Screen5(): JSX.Element {
 // ---------- Screen 6: goals (skippable) ----------
 
 function Screen6(): JSX.Element {
-  const router = useRouter();
   const { goals, setGoals } = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
-
-  useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 6 }]);
-  }, [emit]);
+  useScreenViewEvent(6);
+  const nav = useOnboardingNav(6);
 
   const toggle = (value: string): void => {
     setGoals(
@@ -349,11 +331,10 @@ function Screen6(): JSX.Element {
     );
   };
 
-  const skip = (): void => {
-    emit([{ event_type: "screen_skipped", screen_number: 6 }]);
+  const handleSkip = (): void => {
     // Per spec: Skip submits the default single-goal list.
     setGoals([DEFAULT_GOAL]);
-    router.push("/onboarding/7");
+    nav.skip(7);
   };
 
   return (
@@ -362,8 +343,9 @@ function Screen6(): JSX.Element {
       title="What do you want to get out of SIGNAL?"
       description="Select any that apply — or skip to use the default."
       canContinue={goals.length >= 1}
-      onContinue={() => router.push("/onboarding/7")}
-      onSkip={skip}
+      onContinue={() => nav.goNext(7)}
+      onSkip={handleSkip}
+      onBack={nav.goBack}
     >
       <div className="space-y-2">
         {GOALS.map((g) => {
@@ -395,13 +377,14 @@ function Screen6(): JSX.Element {
 function Screen7(): JSX.Element {
   const router = useRouter();
   const store = useOnboardingStore();
-  const { mutate: emit } = useOnboardingEvents();
+  useScreenViewEvent(7);
+  const nav = useOnboardingNav(7);
   const complete = useOnboardingComplete();
   const [error, setError] = useState<string | null>(null);
 
-  // Screen-view event + one-time timezone detection.
+  // One-time timezone detection — the screen_view event is handled by
+  // useScreenViewEvent above.
   useEffect(() => {
-    emit([{ event_type: "screen_view", screen_number: 7 }]);
     if (!store.timezone && typeof Intl !== "undefined") {
       try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -457,6 +440,7 @@ function Screen7(): JSX.Element {
       isSubmitting={complete.isPending}
       continueLabel="Finish"
       onContinue={submit}
+      onBack={nav.goBack}
       error={error}
     >
       <div className="space-y-3">
