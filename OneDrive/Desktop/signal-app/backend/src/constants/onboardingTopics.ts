@@ -26,13 +26,20 @@ export const ROLES = [
 ] as const;
 export type Role = (typeof ROLES)[number];
 
+// Listed in spec order (Screen 3). `just_starting_out` and `leadership`
+// were added in Phase 12b fix-it — `just_starting_out` captures "brand
+// new / bootcamp / pre-career" which was missing between `student` and
+// `junior`, and `leadership` separates people-management at the
+// director-and-up level from the `executive` C-suite bucket.
 export const SENIORITIES = [
   "student",
+  "just_starting_out",
   "junior",
   "mid",
   "senior",
   "principal_plus",
   "executive",
+  "leadership",
 ] as const;
 export type Seniority = (typeof SENIORITIES)[number];
 
