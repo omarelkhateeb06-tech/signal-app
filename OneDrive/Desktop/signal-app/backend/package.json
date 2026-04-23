@@ -19,9 +19,11 @@
     "seed:stories": "ts-node src/scripts/seedStories.ts",
     "send-digest-now": "ts-node src/scripts/sendDigestNow.ts",
     "run-aggregation": "ts-node src/scripts/runAggregation.ts",
+    "regenerate-depth-variants": "ts-node src/scripts/regenerateDepthVariants.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@sendgrid/mail": "^8.1.4",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.21.2",

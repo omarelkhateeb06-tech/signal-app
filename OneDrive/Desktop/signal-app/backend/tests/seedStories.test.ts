@@ -43,10 +43,12 @@ function validStory(overrides: Partial<StorySeed> = {}): StorySeed {
     headline: "OpenAI closes record $122B round",
     context: "Context paragraph with real framing.",
     why_it_matters: "Role-neutral fallback commentary.",
+    // Phase 12a depth-variant shape — the seeder's strict Zod rejects the
+    // pre-12a sector keys (ai/finance/semiconductors) outright.
     why_it_matters_template: {
-      ai: "AI-specific commentary.",
-      finance: "Finance-specific commentary.",
-      semiconductors: "Semiconductor-specific commentary.",
+      accessible: "Accessible-depth commentary.",
+      standard: "Standard-depth commentary.",
+      technical: "Technical-depth commentary.",
     },
     source_url: "https://example.com/article/openai-round",
     source_name: "Example News",
