@@ -5,10 +5,13 @@ import {
   getMyProfileRequest,
   postOnboardingCompleteRequest,
   postOnboardingEventsRequest,
+  updateMyProfileRequest,
   type MyProfileResponse,
   type OnboardingCompleteInput,
   type OnboardingEventInput,
+  type UpdateProfileInput,
 } from "@/lib/api";
+import type { UserProfile } from "@/types/auth";
 import { useAuth } from "./useAuth";
 
 // Single cache entry for "who am I" — the (app) shell, the
@@ -41,10 +44,15 @@ export function useOnboardingComplete(): ReturnType<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: postOnboardingCompleteRequest,
-    onSuccess: () => {
-      // Bust the profile cache so the next read sees
-      // onboarding_completed: true.
-      void queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
+    // IMPORTANT: await the invalidation-and-refetch. Returning a
+    // Promise from onSuccess makes `mutateAsync` wait on it, so by
+    // the time the caller's `await complete.mutateAsync(...)` resolves
+    // the cache holds the fresh profile with `onboarding_completed:
+    // true`. Without the await, `router.push("/feed")` fires before
+    // the refetch settles and the (app)/layout's useRequireOnboarded
+    // bounces back to /onboarding/1 on stale cache. (Issue #5.)
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
     },
   });
 }
@@ -54,5 +62,25 @@ export function useOnboardingEvents(): ReturnType<
 > {
   return useMutation({
     mutationFn: postOnboardingEventsRequest,
+  });
+}
+
+/**
+ * Settings-page "Save interests" flow. Same invalidation pattern as
+ * useOnboardingComplete — after the PUT, refetch /users/me/profile so
+ * the cached view of the profile matches the DB. Without this, the
+ * (app) layout's useRequireOnboarded keeps reading the stale cache and
+ * (if completed_at was previously null and has just been set elsewhere)
+ * can bounce back to /onboarding/1 after a perfectly successful save.
+ */
+export function useUpdateMyProfile(): ReturnType<
+  typeof useMutation<UserProfile, Error, UpdateProfileInput>
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateMyProfileRequest,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
+    },
   });
 }

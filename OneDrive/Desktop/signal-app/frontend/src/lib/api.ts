@@ -115,6 +115,10 @@ export interface UpdateProfileInput {
   goals: string[];
   email_frequency: EmailFrequency;
   email_unsubscribed?: boolean;
+  // Phase 12b: settings page can now edit the depth preference added by
+  // the onboarding questionnaire. Optional to preserve backward compat
+  // for any older caller that doesn't supply it.
+  depth_preference?: DepthPreference;
 }
 
 export interface UpdateUserInput {

@@ -11,12 +11,20 @@ const ROLE_MAX_LENGTH = 50;
 const NAME_MAX_LENGTH = 255;
 const URL_MAX_LENGTH = 2048;
 
+// Phase 12b: depth_preference is optional in this endpoint because the
+// settings UI is the only first-party caller that currently sends it;
+// third-party integrations that predate 12b shouldn't be forced to set
+// it on every save. The CHECK constraint on the column matches this
+// three-value set.
+const DEPTH_PREFERENCE_VALUES = ["accessible", "standard", "technical"] as const;
+
 const updateProfileSchema = z.object({
   sectors: z.array(z.string().min(1).max(SECTOR_MAX_LENGTH)).min(1).max(20),
   role: z.string().min(1).max(ROLE_MAX_LENGTH),
   goals: z.array(z.string().min(1).max(GOAL_MAX_LENGTH)).min(1).max(20),
   email_frequency: z.enum(["daily", "weekly", "never"]),
   email_unsubscribed: z.boolean().optional(),
+  depth_preference: z.enum(DEPTH_PREFERENCE_VALUES).optional(),
 });
 
 const updateUserSchema = z
@@ -110,6 +118,9 @@ export async function updateMyProfile(
       updatedAt: new Date(),
       ...(input.email_unsubscribed !== undefined
         ? { emailUnsubscribed: input.email_unsubscribed }
+        : {}),
+      ...(input.depth_preference !== undefined
+        ? { depthPreference: input.depth_preference }
         : {}),
     };
 

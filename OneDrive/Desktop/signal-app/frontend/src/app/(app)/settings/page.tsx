@@ -4,21 +4,23 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
+import { useUpdateMyProfile } from "@/hooks/useProfile";
 import {
   extractApiError,
   getMyProfileRequest,
   updateEmailPreferencesRequest,
   updateMeRequest,
-  updateMyProfileRequest,
 } from "@/lib/api";
 import {
+  DEFAULT_DEPTH_PREFERENCE,
+  DEPTH_PREFERENCES,
   EMAIL_FREQUENCIES,
   GOALS,
   ROLES,
   SECTORS,
 } from "@/lib/onboarding";
 import { Toast, type ToastTone } from "@/components/ui/Toast";
-import type { EmailFrequency, UserProfile } from "@/types/auth";
+import type { DepthPreference, EmailFrequency, UserProfile } from "@/types/auth";
 
 const profileFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -47,11 +49,15 @@ export default function SettingsPage(): JSX.Element {
   const [sectors, setSectors] = useState<string[]>([]);
   const [role, setRole] = useState<string>("");
   const [goals, setGoals] = useState<string[]>([]);
+  const [depthPreference, setDepthPreference] = useState<DepthPreference>(
+    DEFAULT_DEPTH_PREFERENCE,
+  );
   const [emailFrequency, setEmailFrequency] = useState<EmailFrequency>("weekly");
   const [emailUnsubscribed, setEmailUnsubscribed] = useState(false);
 
-  const [savingInterests, setSavingInterests] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
+
+  const updateProfile = useUpdateMyProfile();
 
   const {
     register,
@@ -87,6 +93,7 @@ export default function SettingsPage(): JSX.Element {
       setSectors(profile?.sectors ?? []);
       setRole(profile?.role ?? "");
       setGoals(profile?.goals ?? []);
+      setDepthPreference(profile?.depthPreference ?? DEFAULT_DEPTH_PREFERENCE);
       setEmailFrequency(profile?.emailFrequency ?? "weekly");
       setEmailUnsubscribed(profile?.emailUnsubscribed ?? false);
     };
@@ -134,20 +141,23 @@ export default function SettingsPage(): JSX.Element {
       showToast("Pick at least one goal", "error");
       return;
     }
-    setSavingInterests(true);
     try {
-      await updateMyProfileRequest({
+      // mutateAsync + the onSuccess invalidate in useUpdateMyProfile
+      // means the TanStack profile cache is refreshed before we paint
+      // the toast. Without that, the (app) layout's useRequireOnboarded
+      // reads the stale cache on next render and can bounce a just-
+      // saved user back to onboarding. (Issue #5.)
+      await updateProfile.mutateAsync({
         sectors,
         role,
         goals,
+        depth_preference: depthPreference,
         email_frequency: emailFrequency,
         email_unsubscribed: emailUnsubscribed,
       });
       showToast("Interests updated");
     } catch (err) {
       showToast(extractApiError(err, "Could not save interests"), "error");
-    } finally {
-      setSavingInterests(false);
     }
   };
 
@@ -292,6 +302,49 @@ export default function SettingsPage(): JSX.Element {
         </div>
 
         <div className="space-y-2">
+          <p className="text-sm font-medium">Commentary depth</p>
+          <p className="text-xs text-muted-foreground">
+            How deep the commentary goes on each story. Change any time.
+          </p>
+          <div
+            role="radiogroup"
+            aria-label="Commentary depth"
+            className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+          >
+            {DEPTH_PREFERENCES.map((option) => {
+              const checked = depthPreference === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer flex-col gap-1 rounded-md border p-3 text-sm ${
+                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="depth_preference"
+                      value={option.value}
+                      checked={checked}
+                      onChange={() =>
+                        setDepthPreference(option.value as DepthPreference)
+                      }
+                      className="h-4 w-4"
+                    />
+                    <span className="font-medium">{option.label}</span>
+                  </span>
+                  {option.description && (
+                    <span className="text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-2">
           <p className="text-sm font-medium">Goals</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {GOALS.map((goal) => {
@@ -320,10 +373,10 @@ export default function SettingsPage(): JSX.Element {
           <button
             type="button"
             onClick={saveInterests}
-            disabled={savingInterests}
+            disabled={updateProfile.isPending}
             className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
           >
-            {savingInterests ? "Saving…" : "Save interests"}
+            {updateProfile.isPending ? "Saving…" : "Save interests"}
           </button>
         </div>
       </section>
