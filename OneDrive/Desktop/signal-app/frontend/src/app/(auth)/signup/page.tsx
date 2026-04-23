@@ -35,7 +35,7 @@ export default function SignupPage(): JSX.Element {
     }
     try {
       await signup(parsed.data);
-      router.push("/onboarding");
+      router.push("/onboarding/1");
     } catch (error) {
       setSubmitError(extractApiError(error, "Signup failed"));
     }
