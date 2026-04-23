@@ -13,7 +13,7 @@ The authoritative schema lives in [`backend/src/db/schema.ts`](../backend/src/db
 | `headline`                  | varchar(255)    | not null                                      |
 | `context`                   | text            | not null                                      |
 | `why_it_matters`            | text            | **not null** — role-neutral fallback          |
-| `why_it_matters_template`   | text            | JSON-stringified `{ai, finance, semiconductors}` |
+| `why_it_matters_template`   | text            | JSON-stringified `{accessible, standard, technical}` depth variants (Phase 12a+) |
 | `source_url`                | text            | not null, **no unique constraint**            |
 | `source_name`               | varchar(255)    | nullable                                      |
 | `author_id`                 | uuid FK         | → `writers.id`, `on delete set null`          |
@@ -80,9 +80,12 @@ The seeder loads hand-curated content from `backend/seed-data/stories.json` and 
       "context": "...",
       "why_it_matters": "...",              // role-neutral fallback
       "why_it_matters_template": {
-        "ai": "...",
-        "finance": "...",
-        "semiconductors": "..."
+        // Phase 12a+ depth-variant shape. The seeder's Zod is strict:
+        // extra keys, missing keys, empty strings, and the pre-12a
+        // sector keys (ai/finance/semiconductors) are all rejected.
+        "accessible": "...",                // plain-English framing
+        "standard":   "...",                // working-professional framing (free-tier default)
+        "technical":  "..."                 // insider/expert framing
       },
       "source_url": "https://...",
       "source_name": "Publication Name",
@@ -148,3 +151,55 @@ curl https://<prod>/api/v2/stories?sector=ai \
 ```
 
 If `data` is non-empty and pagination has the expected shape, the seed landed.
+
+## Depth-variant commentary (Phase 12a+)
+
+`stories.why_it_matters_template` stores a **depth-variant** commentary payload keyed by reader depth, not by sector. The three keys are fixed and exhaustive:
+
+| key           | audience framing                                                |
+|---------------|-----------------------------------------------------------------|
+| `accessible`  | plain-English, no jargon — a curious non-expert                 |
+| `standard`    | working professional in an adjacent field — **free-tier default** |
+| `technical`   | insider/expert — assumes the vocabulary of the sector           |
+
+### Schema & migration
+
+- Column stays `text` (not `jsonb`). It has stored a JSON-stringified payload since Phase 4.5; Phase 12a only changes the **shape** inside the string. See `backend/src/db/schema.ts` (`DEPTH_LEVELS`, `WhyItMattersTemplate`).
+- Migration `0007_phase12a_depth_variants.sql` is documentation-only — it ships a `COMMENT ON COLUMN` describing the new shape. No DDL runs.
+- Zod validation lives in `backend/src/utils/depthVariants.ts`:
+  - `WhyItMattersTemplateSchema` — `.strict()`, rejects pre-12a sector keys and any extras.
+  - `parseWhyItMattersTemplate(raw)` — **lenient-on-read**: returns `null` on null/empty/invalid JSON/legacy shape (never throws). This is what the v2 stories controller uses so the endpoint stays live during the regeneration window.
+  - `assertWhyItMattersTemplate(value)` — **strict**, throws. Used at the regeneration boundary where we must not write garbage.
+
+### Regenerating existing rows
+
+The seeded stories predate Phase 12a and carry the legacy `{ai, finance, semiconductors}` shape in prod. A one-time script rewrites each row's template in place via Anthropic Haiku:
+
+```bash
+cd backend
+
+# Dry-run (no writes; calls the model, prints the generated payload, skips UPDATE)
+npm run regenerate-depth-variants -- --dry-run
+
+# Actual run — prompts y/n with DATABASE_URL host visible
+npm run regenerate-depth-variants
+
+# Single story by id (useful for spot-fixes)
+npm run regenerate-depth-variants -- --id=<uuid>
+
+# CI / non-interactive (skip the prompt)
+npm run regenerate-depth-variants -- --yes
+```
+
+Requires `ANTHROPIC_API_KEY` in the environment. Per-story failures (rate limits, schema mismatches) are collected and reported at the end without aborting the run — re-run with `--id=<uuid>` to retry individual failures.
+
+### Verifying after regeneration
+
+```bash
+curl "https://<prod>/api/v2/stories?limit=1" \
+  -H "X-API-Key: $SIGNAL_API_KEY" \
+  | jq '.data[0].why_it_matters_template | keys'
+# → ["accessible","standard","technical"]
+```
+
+If `why_it_matters_template` is `null` for a given row, the controller's lenient parser rejected the stored payload as non-conforming — that row still needs regeneration.

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../../db";
 import { stories } from "../../db/schema";
 import { AppError } from "../../middleware/errorHandler";
+import { parseWhyItMattersTemplate } from "../../utils/depthVariants";
 
 // Sectors are validated at the API boundary. The schema column is a plain
 // varchar(50) with no DB-level enum constraint; codifying the list here
@@ -115,6 +116,14 @@ export async function listStoriesV2(
         // story body/description. If a dedicated summary column is added
         // later, swap the source without changing the public API shape.
         summary: stories.context,
+        // Phase 12a projection fix (GH issue: Phase 12a P1 API-proj): the
+        // commentary fields weren't surfacing to API consumers. `why_it_matters`
+        // is the role-neutral fallback; `why_it_matters_template` is the
+        // depth-variant payload parsed from TEXT-JSON at read time. The
+        // lenient parser returns null on a legacy-shape or invalid row so
+        // the endpoint keeps serving during the regeneration window.
+        whyItMatters: stories.whyItMatters,
+        whyItMattersTemplate: stories.whyItMattersTemplate,
         url: stories.sourceUrl,
         publishedAt: stories.publishedAt,
         sector: stories.sector,
@@ -140,6 +149,8 @@ export async function listStoriesV2(
         id: r.id,
         headline: r.headline,
         summary: r.summary,
+        why_it_matters: r.whyItMatters,
+        why_it_matters_template: parseWhyItMattersTemplate(r.whyItMattersTemplate),
         url: r.url,
         published_at: r.publishedAt,
         sector: r.sector,
