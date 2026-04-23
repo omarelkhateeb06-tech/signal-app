@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { userProfiles, users } from "../db/schema";
+import { userProfiles, userTopicInterests, users } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 
 const SECTOR_MAX_LENGTH = 64;
@@ -63,7 +63,31 @@ export async function getMyProfile(
       .where(eq(userProfiles.userId, userId))
       .limit(1);
 
-    res.json({ data: { user, profile: profile ?? null } });
+    // Phase 12b: include topic interests alongside the profile, and
+    // surface `onboarding_completed` as a top-level boolean so the
+    // frontend doesn't have to re-derive `completed_at !== null` on
+    // every render. The existing `profile` payload is unchanged to
+    // keep the settings page happy.
+    const topicRows = profile
+      ? await db
+          .select({
+            sector: userTopicInterests.sector,
+            topic: userTopicInterests.topic,
+          })
+          .from(userTopicInterests)
+          .where(eq(userTopicInterests.userId, userId))
+      : [];
+
+    const onboardingCompleted = profile?.completedAt != null;
+
+    res.json({
+      data: {
+        user,
+        profile: profile ?? null,
+        topic_interests: topicRows,
+        onboarding_completed: onboardingCompleted,
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -53,11 +53,16 @@ describe("user profile endpoints", () => {
           userId,
           sectors: ["ai"],
           role: "engineer",
-          goals: ["stay_informed"],
+          goals: ["stay_current"],
           emailFrequency: "weekly",
           emailUnsubscribed: false,
+          completedAt: new Date("2026-04-20T00:00:00Z"),
         },
       ]);
+      // Phase 12b: the controller now also reads topic interests when
+      // a profile row exists. Queue an empty list for a complete but
+      // topic-less profile.
+      mock.queueSelect([]);
 
       const res = await request(app)
         .get("/api/v1/users/me/profile")
@@ -74,6 +79,8 @@ describe("user profile endpoints", () => {
         role: "engineer",
         emailFrequency: "weekly",
       });
+      expect(res.body.data.topic_interests).toEqual([]);
+      expect(res.body.data.onboarding_completed).toBe(true);
     });
 
     it("returns profile null when row does not exist", async () => {
@@ -84,6 +91,34 @@ describe("user profile endpoints", () => {
         .set(...auth(token));
       expect(res.status).toBe(200);
       expect(res.body.data.profile).toBeNull();
+      expect(res.body.data.topic_interests).toEqual([]);
+      expect(res.body.data.onboarding_completed).toBe(false);
+    });
+
+    it("reports onboarding_completed false when completed_at is null", async () => {
+      mock.queueSelect([
+        { id: userId, email, name: "Ada", profilePictureUrl: null },
+      ]);
+      // Profile row exists (e.g. from unsubscribe flow) but completed_at
+      // is null — onboarding is NOT complete.
+      mock.queueSelect([
+        {
+          userId,
+          sectors: null,
+          role: null,
+          goals: null,
+          emailFrequency: "weekly",
+          emailUnsubscribed: true,
+          completedAt: null,
+        },
+      ]);
+      mock.queueSelect([]);
+
+      const res = await request(app)
+        .get("/api/v1/users/me/profile")
+        .set(...auth(token));
+      expect(res.status).toBe(200);
+      expect(res.body.data.onboarding_completed).toBe(false);
     });
 
     it("returns 404 if user was deleted", async () => {

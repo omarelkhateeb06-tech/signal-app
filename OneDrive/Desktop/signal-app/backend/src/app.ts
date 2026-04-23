@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
 import { emailsRouter } from "./routes/emails";
+import { onboardingRouter } from "./routes/onboarding";
 import { storiesRouter } from "./routes/stories";
 import { teamsRouter } from "./routes/teams";
 import { usersRouter } from "./routes/users";
@@ -79,6 +80,7 @@ export function createApp(): Express {
   app.use("/api/v1/auth", authLimiter, authRouter);
   app.use("/api/v1/users", usersRouter);
   app.use("/api/v1/me/api-keys", apiKeysRouter);
+  app.use("/api/v1/onboarding", onboardingRouter);
   app.use("/api/v1/stories", storiesRouter);
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
