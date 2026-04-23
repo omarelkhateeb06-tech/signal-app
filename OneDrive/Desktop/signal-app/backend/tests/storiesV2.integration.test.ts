@@ -36,6 +36,13 @@ function makeStoryRow(overrides: Record<string, unknown> = {}): Record<string, u
     id: "11111111-1111-1111-1111-111111111111",
     headline: "New frontier model released",
     summary: "Context text explaining the story.",
+    whyItMatters: "Role-neutral fallback commentary.",
+    // Stored as TEXT containing JSON — the controller parses on read.
+    whyItMattersTemplate: JSON.stringify({
+      accessible: "Plain-English framing.",
+      standard: "Working-professional framing.",
+      technical: "Insider framing.",
+    }),
     url: "https://example.com/post",
     publishedAt: new Date("2026-04-10T12:00:00Z"),
     sector: "ai",
@@ -78,7 +85,7 @@ describe("GET /api/v2/stories", () => {
   });
 
   describe("response shape", () => {
-    it("returns exactly id/headline/summary/url/published_at/sector fields", async () => {
+    it("projects headline/summary/url/published_at/sector + Phase 12a commentary fields", async () => {
       queueAuthOk();
       mock.queueSelect([makeStoryRow()]);
 
@@ -94,11 +101,65 @@ describe("GET /api/v2/stories", () => {
         "sector",
         "summary",
         "url",
+        "why_it_matters",
+        "why_it_matters_template",
       ]);
       expect(res.body.pagination).toMatchObject({
         next_cursor: null,
         has_more: false,
       });
+    });
+
+    it("parses the depth-variant template on read and returns an object", async () => {
+      queueAuthOk();
+      mock.queueSelect([makeStoryRow()]);
+
+      const res = await request(app)
+        .get("/api/v2/stories")
+        .set(...apiKeyHeader());
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].why_it_matters).toBe("Role-neutral fallback commentary.");
+      expect(res.body.data[0].why_it_matters_template).toEqual({
+        accessible: "Plain-English framing.",
+        standard: "Working-professional framing.",
+        technical: "Insider framing.",
+      });
+    });
+
+    it("returns why_it_matters_template=null when the stored template is a legacy sector-variant shape", async () => {
+      queueAuthOk();
+      mock.queueSelect([
+        makeStoryRow({
+          whyItMattersTemplate: JSON.stringify({
+            ai: "legacy",
+            finance: "legacy",
+            semiconductors: "legacy",
+          }),
+        }),
+      ]);
+
+      const res = await request(app)
+        .get("/api/v2/stories")
+        .set(...apiKeyHeader());
+
+      expect(res.status).toBe(200);
+      // Lenient-on-read: invalid shape → null, not a 500. The controller
+      // still serves during the regeneration window.
+      expect(res.body.data[0].why_it_matters_template).toBeNull();
+      expect(res.body.data[0].why_it_matters).toBe("Role-neutral fallback commentary.");
+    });
+
+    it("returns why_it_matters_template=null when the column is null", async () => {
+      queueAuthOk();
+      mock.queueSelect([makeStoryRow({ whyItMattersTemplate: null })]);
+
+      const res = await request(app)
+        .get("/api/v2/stories")
+        .set(...apiKeyHeader());
+
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].why_it_matters_template).toBeNull();
     });
   });
 

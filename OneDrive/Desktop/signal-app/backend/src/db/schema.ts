@@ -66,6 +66,17 @@ export const writers = pgTable("writers", {
 
 // ---------- Stories ----------
 
+// Depth-variant commentary payload stored JSON-stringified in
+// `why_it_matters_template` (TEXT, not JSONB — historical from migration
+// 0000). Shape is enforced at the application layer (Zod in seedStories
+// and the v2 controller), not by a CHECK constraint. Phase 12a replaced
+// the earlier sector-variant shape ({ai, finance, semiconductors}) with
+// depth variants; the column name intentionally did not change so
+// existing JOINs / analytics queries kept working.
+export const DEPTH_LEVELS = ["accessible", "standard", "technical"] as const;
+export type DepthLevel = (typeof DEPTH_LEVELS)[number];
+export type WhyItMattersTemplate = Record<DepthLevel, string>;
+
 export const stories = pgTable(
   "stories",
   {
@@ -74,6 +85,9 @@ export const stories = pgTable(
     headline: varchar("headline", { length: 255 }).notNull(),
     context: text("context").notNull(),
     whyItMatters: text("why_it_matters").notNull(),
+    // Stored as TEXT containing a JSON-encoded `WhyItMattersTemplate`. Use
+    // `parseWhyItMattersTemplate()` from `src/utils/depthVariants.ts` at
+    // read time; never consume the raw string in controllers.
     whyItMattersTemplate: text("why_it_matters_template"),
     sourceUrl: text("source_url").notNull(),
     sourceName: varchar("source_name", { length: 255 }),

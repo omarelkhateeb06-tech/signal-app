@@ -52,11 +52,18 @@ const WriterSeedSchema = z
   })
   .passthrough();
 
-const WhyItMattersTemplateSchema = z.object({
-  ai: z.string().min(1),
-  finance: z.string().min(1),
-  semiconductors: z.string().min(1),
-});
+// Depth-variant commentary (Phase 12a). The pre-12a shape (sector keys ai
+// / finance / semiconductors) is intentionally rejected here — if the seed
+// file still has legacy content, run the regeneration script to repopulate
+// the DB and update the JSON separately. `.strict()` catches lingering
+// legacy keys loudly.
+const WhyItMattersTemplateSchema = z
+  .object({
+    accessible: z.string().min(1),
+    standard: z.string().min(1),
+    technical: z.string().min(1),
+  })
+  .strict();
 
 const StorySeedSchema = z.object({
   sector: z.enum(SECTORS),
