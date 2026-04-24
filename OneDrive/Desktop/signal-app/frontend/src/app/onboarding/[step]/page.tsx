@@ -415,6 +415,18 @@ function Screen7(): JSX.Element {
 
     const resolvedGoals = store.goals.length > 0 ? store.goals : [DEFAULT_GOAL];
 
+    // Fire screen_completed(7) synchronously before the async
+    // mutation. On a 7-screen flow with two re-Continues the funnel
+    // expects `screen_completed: 9` but we were seeing 8 — screens
+    // 1-6 emit via nav.goNext, but Screen 7's Finish path called
+    // complete.mutateAsync + router.push('/feed') and never matched
+    // the goNext shape, so screen 7's completion event was just
+    // missing. Emitting here (not inside the try after success) means
+    // an attempted-but-failed finish still records the user's intent
+    // to complete, which is the right shape for the funnel.
+    // (Second fix-it: Defect 2.)
+    nav.emitCompleted();
+
     try {
       await complete.mutateAsync({
         sectors: store.sectors,

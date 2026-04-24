@@ -11,6 +11,29 @@ import { sendOnboardingEventBeacon } from "@/lib/api";
 // event.
 const STARTED_SESSION_KEY = "signal-onboarding-started-sent";
 
+// Module-scoped visit accounting for useScreenViewEvent. `visitSeq`
+// increments each time a Screen instance claims its visit id; the
+// `emittedVisits` Set guards against re-emitting `screen_view` for
+// the same logical visit. The useRef inside the hook preserves the
+// id across React 18 StrictMode's effect double-invoke, so the
+// second run sees the id already in the Set and returns. A genuine
+// new mount (user navigated back, then forward; Suspense resolution;
+// layout-level loading→ready flip) gets a new ref and therefore a
+// new id — legitimate revisits emit again, which is the desired
+// behavior. Observed pre-fix: `screen_view: 13` on a 7-screen flow
+// with 2 Back presses (expected 9). The previous boolean-ref latch
+// was correct under StrictMode's simulated cleanup-setup cycle but
+// not against genuine remounts, where each rebirth created a fresh
+// ref that re-emitted. (Second fix-it: Defect 2.)
+let visitSeq = 0;
+const emittedVisits = new Set<number>();
+
+/** Exported solely for tests to start each case from a clean slate. */
+export function __resetOnboardingTelemetryStateForTests(): void {
+  visitSeq = 0;
+  emittedVisits.clear();
+}
+
 // Session-storage latch flipped synchronously when the completion
 // mutation resolves on Screen 7. The abandon beacon checks this flag
 // and skips emission — without it, a `beforeunload` that fires during
@@ -45,23 +68,44 @@ function isOnboardingCompletedInSession(): boolean {
 }
 
 /**
- * Fire exactly one `screen_view` event per mount cycle. React
- * StrictMode double-invokes effects in dev, which previously caused
- * every screen to record two impressions. A useRef latch makes the
- * effect idempotent without fighting the dependency array. On step 1
- * we also emit `onboarding_started` once per session (keyed by
- * sessionStorage so a back-traversal doesn't re-fire it). (Issue #7.)
+ * Fire exactly one `screen_view` event per logical screen visit.
+ *
+ * The previous implementation used a plain boolean useRef latch,
+ * which is correct under React 18 StrictMode's *simulated* cleanup-
+ * setup effect cycle (the ref survives the simulation). But in the
+ * live app we observed `screen_view` counts running ~40% over the
+ * expected total — the ref-per-instance guard doesn't survive any
+ * code path that genuinely remounts a Screen component (a Suspense
+ * resolution, a layout-level loading→ready flip, etc.), and each
+ * rebirth creates a fresh ref that happily re-emits.
+ *
+ * The visit-id pattern tightens this without fighting the legitimate
+ * revisit case: on first effect run the hook claims a monotonic id
+ * from the module-scoped `visitSeq` and stores it in a ref. The ref
+ * preserves the id across StrictMode's effect re-run, so the module-
+ * scoped `emittedVisits` Set catches the duplicate and returns. A
+ * real new mount (user pressed Back, then Continue, and a brand-new
+ * Screen instance mounts) gets a new ref → new id → new Set entry →
+ * emits again, which is what we want.
+ *
+ * On step 1 we also emit `onboarding_started` once per sessionStorage
+ * key so a back-traversal doesn't re-fire it. (Issue #7; second
+ * fix-it Defect 2.)
  *
  * Call at the top of each screen component — this is a normal hook,
  * the name just makes the intent unambiguous.
  */
 export function useScreenViewEvent(step: number): void {
   const { mutate: emit } = useOnboardingEvents();
-  const fired = useRef(false);
+  const visitIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (fired.current) return;
-    fired.current = true;
+    if (visitIdRef.current === null) {
+      visitIdRef.current = ++visitSeq;
+    }
+    const visitId = visitIdRef.current;
+    if (emittedVisits.has(visitId)) return;
+    emittedVisits.add(visitId);
 
     const events: { event_type: string; screen_number?: number | null }[] = [];
     if (step === 1 && typeof window !== "undefined") {
@@ -89,11 +133,20 @@ export function useScreenViewEvent(step: number): void {
  *   step 1.
  * - `skip(nextStep)` — emits `screen_skipped` for the current screen,
  *   then pushes.
+ * - `emitCompleted()` — emits `screen_completed` for the current
+ *   screen *without* navigating. Used by Screen 7 whose Finish path
+ *   runs an async completion mutation and then `router.push("/feed")`
+ *   rather than the usual `/onboarding/${next}` push, so goNext
+ *   isn't the right fit. Without this, Screen 7 never emitted
+ *   `screen_completed(7)` and the funnel counts came in one short
+ *   (observed 8, expected 9 on a 7-screen flow with two re-Continues).
+ *   (Second fix-it: Defect 2.)
  */
 export function useOnboardingNav(step: number): {
   goNext: (nextStep: number) => void;
   goBack: () => void;
   skip: (nextStep: number) => void;
+  emitCompleted: () => void;
 } {
   const router = useRouter();
   const { mutate: emit } = useOnboardingEvents();
@@ -121,7 +174,11 @@ export function useOnboardingNav(step: number): {
     [emit, router, step],
   );
 
-  return { goNext, goBack, skip };
+  const emitCompleted = useCallback((): void => {
+    emit([{ event_type: "screen_completed", screen_number: step }]);
+  }, [emit, step]);
+
+  return { goNext, goBack, skip, emitCompleted };
 }
 
 /**
