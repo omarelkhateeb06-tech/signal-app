@@ -78,7 +78,7 @@ Deviation requires an explicit decision recorded somewhere durable (commit messa
 - **BullMQ** for durable queues (emails, aggregation rollups).
 - **node-cron** for in-process scheduling (the weekly-digest trigger lives here).
 - **jsonwebtoken** + **bcryptjs** for user auth.
-- **@anthropic-ai/sdk** — Claude Haiku (`claude-haiku-4-5`) for depth-variant generation. Added in Phase 12a.
+- **@anthropic-ai/sdk** — Claude Haiku for commentary generation. Two call sites, two model pins: the Phase 12a offline depth-variant regeneration script uses the alias `claude-haiku-4-5` (via `DEPTH_VARIANT_MODEL` in `services/depthVariantGenerator.ts`); the Phase 12c per-user, per-story commentary path uses the **dated** string **`claude-haiku-4-5-20251001`** (via `COMMENTARY_MODEL` in `services/haikuCommentaryClient.ts`). The dated pin is deliberate — request-path behavior must not shift silently when Anthropic advances the alias.
 - **@sendgrid/mail** for transactional email.
 - **zod** for every external input (bodies, queries, headers, seed JSON, cursor payloads).
 - **helmet** + **express-rate-limit** + custom per-API-key limiter.
@@ -389,7 +389,8 @@ The pre-12a sector-variant shape (`{ai, finance, semiconductors}`) is dead. Zod'
   - `WhyItMattersTemplateSchema` — `.strict()`, `min(1)` per field
   - `parseWhyItMattersTemplate(raw)` — **lenient-on-read**, returns `null` on null / empty / invalid JSON / legacy shape (never throws). Used by the v2 stories controller so the endpoint stays live during the regeneration window.
   - `assertWhyItMattersTemplate(value)` — **strict**, throws. Used at the regeneration boundary where garbage must not be written.
-- `backend/src/services/depthVariantGenerator.ts` — Anthropic Haiku (`claude-haiku-4-5`) client. Deps are injectable so tests run offline.
+- `backend/src/services/depthVariantGenerator.ts` — Anthropic Haiku (`claude-haiku-4-5` alias, exported as `DEPTH_VARIANT_MODEL`) client for the offline regeneration path. Deps are injectable so tests run offline.
+- `backend/src/services/haikuCommentaryClient.ts` — Phase 12c per-user, per-story commentary client. Uses the dated model string **`claude-haiku-4-5-20251001`** (exported as `COMMENTARY_MODEL`), 10s `AbortController` timeout, zero retries, fail-fast to the template scrub path on any error. Deliberately separate from the 12a client — the request path must not inherit a silent model-alias advance.
 
 ### Storage
 
@@ -420,6 +421,40 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 - `/api/v2/stories` returns `why_it_matters` (string, always present) **and** `why_it_matters_template` (object or `null`).
 - When the template is `null`, the client falls back to `why_it_matters`. This is the permanent contract, not a migration-window hack — some rows may never get a template.
 - Paywall gating of depth access (§1) is enforced at the API layer, not in the parser. Which keys a given caller is permitted to see is a 12-series decision.
+
+### Phase 12c — per-user, per-story commentary
+
+12a shipped three depth variants per story — role-neutral. 12c layers per-user personalization on top: the feed and story-detail surfaces call `GET /api/v1/stories/:id/commentary` at view time and get back a commentary string generated from (role, domain, seniority, sectors, goals, topics) × story depth-variant, cached for reuse. The prior-gen `why_it_matters_to_you` template text remains as the 12b rollout floor until 12d removes it.
+
+**Endpoint — `GET /api/v1/stories/:id/commentary?depth=`**
+- JWT-auth. No `requireProfile` gate — pre-onboarding direct-link users get a clean `400 PROFILE_NOT_FOUND` rather than a 403.
+- `depth` query param is optional and validated against `{accessible, standard, technical}`. Precedence: explicit query > stored `depthPreference` > `"standard"` floor.
+- 404 `STORY_NOT_FOUND` on unknown story id. Any service failure below is hidden behind the tiered fallback — the endpoint never 5xxs on a content path.
+
+**Storage — `commentary_cache` (migration 0009)**
+- Composite unique key: `(user_id, story_id, depth, profile_version)`. Writes use `onConflictDoNothing` so the second member of a race simply loses and re-reads the winner.
+- `profile_version` on `user_profiles` is a monotonic int, default 1, bumped by `updateMyProfile` when any commentary-relevant field (role, domain, seniority, sectors, goals, topics) changes. Depth and email toggles do NOT bump.
+- `last_accessed_at` is written on every cache hit in 12c (TODO 12c.1: consider opportunistic — see comment in `commentaryService.ts`).
+
+**Tiered fallback**
+- `tier1` — the cache itself. If fresh for `(user, story, depth, profile_version)`, return it.
+- `tier2` — Haiku call succeeds; persist + return.
+- `tier3` — Haiku throws / times out. Return a template scrub of the depth variant with synonym substitution for banned phrases; emit an anomaly log with `{reason: "timeout" | "error" | ...}` so ops can see the fail-fast rate.
+
+**Haiku client discipline (Decisions 4–6 from the 12c spec)**
+- Dated model pin: `claude-haiku-4-5-20251001`. Hard-coded, not env-driven — a rollout calendar is not a code change.
+- 10-second hard timeout via `AbortController`. Timeout logged as `reason: "timeout"` on the tier3 path.
+- Zero retries. One call, fail fast. Revisit in 12d if the observed error rate warrants.
+
+**Banned-phrase three-layer enforcement**
+- Layer 1: system prompt instructs the model to avoid a named list of phrases (e.g. "in today's fast-paced world").
+- Layer 2: post-generation trip-wire scans the output for the banned set; a hit demotes the response to tier3.
+- Layer 3: the template scrub path substitutes synonyms for any banned phrase present in the source depth variant before returning.
+
+**Frontend wiring**
+- `GET /api/v2/stories` and `GET /api/v1/stories/:id` emit `commentary: null` + `commentary_source: null` on the Story shape — the feed hydrates lazily.
+- `useStoryCommentary(storyId, {enabled})` is the React hook; `frontend/src/lib/commentaryQueue.ts` holds an 8-slot FIFO semaphore (`COMMENTARY_MAX_CONCURRENT`) that caps parallel fetches.
+- `StoryCard` gates `enabled` on an `IntersectionObserver` with `rootMargin: "1200px 0px"` (~5-card lookahead); `StoryDetail` fires immediately. `shouldLoad` latches true once set — scrolling away never cancels an in-flight request.
 
 ---
 
@@ -553,7 +588,7 @@ Frontend gates are the same three with `--workspace=frontend`. There is no CI en
 - **External services**: mock at the SDK boundary. Anthropic SDK mock pattern is in `tests/regenerateDepthVariants.test.ts`; SendGrid mock is in `tests/emailService.test.ts`.
 - **Integration tests** live alongside unit tests in `backend/tests/` and share the mock-DB helper.
 
-Current count: **369 tests across 31 suites** (as of Phase 12a). Adding a feature without tests is a code-review hard-block.
+Current count: **431 tests across 36 suites** (as of Phase 12c). Adding a feature without tests is a code-review hard-block.
 
 ### Frontend tests
 
@@ -574,7 +609,7 @@ vitest; not much coverage yet. Add tests with every new component that has meani
 
 ## 16. PHASE STATUS
 
-### Shipped (0 through 11c.5)
+### Shipped (0 through 12c)
 
 | phase | ships                                                                      |
 |-------|----------------------------------------------------------------------------|
@@ -592,7 +627,9 @@ vitest; not much coverage yet. Add tests with every new component that has meani
 | 11    | public v2 API scaffolding + self-service API keys                          |
 | 11c   | `GET /api/v2/stories` with cursor pagination                               |
 | 11c.5 | `story_aggregates` table + aggregation job + `GET /api/v2/trends/:sector`  |
-| 12a   | **depth-variant commentary** — schema, parser, regeneration script, v2 projection fix |
+| 12a   | depth-variant commentary — schema, parser, regeneration script, v2 projection fix |
+| 12b   | rewritten onboarding questionnaire (7 screens) + `why_it_matters_to_you` rollout-floor template personalization |
+| 12c   | **per-user, per-story commentary** — dated-model Haiku client, `commentary_cache` with `profile_version` invalidation, tiered fallback + banned-phrase enforcement, Settings-side bump on commentary-relevant edits, feed/detail lazy hydration with 8-slot semaphore |
 
 Phase 10 (learning paths) was abandoned. Do not resurrect.
 
@@ -603,15 +640,19 @@ The 12-series is the push to public launch — every sub-phase is load-bearing f
 | sub-phase | scope                                                                                   |
 |-----------|-----------------------------------------------------------------------------------------|
 | **12a** (shipped) | depth-variant schema + offline regeneration                                     |
-| 12b       | personalization service — role-aware prose layered on top of depth variants             |
-| 12c       | profile questionnaire — capture role/goals at onboarding to drive 12b                   |
-| 12d       | depth-selector UI on story detail + feed                                                |
+| **12b** (shipped) | 7-screen onboarding questionnaire + `why_it_matters_to_you` template floor      |
+| **12c** (shipped) | per-user, per-story commentary — Haiku request path, cache with `profile_version`, Settings bump, feed/detail hydration (see §9 "Phase 12c") |
+| 12d       | depth-selector UI on story detail + feed (pick depth per-view, backed by the 12c cache entry for that (user, story, depth, profile_version)) |
 | **12e**   | **ingestion pipeline — raw-source crawl → editorial-review queue → published stories.** Replaces `seed-data/stories.json` as the sole content source. Launch blocker. |
 | 12f–12i   | paywall enforcement, Stripe/billing, depth-aware digest, launch polish (marketing/pricing pages, onboarding redesign, support inbox). Interior ordering not yet pinned — decide at the start of each session. |
 
 Ordering 12a→12e is fixed. Do not pull 12f–12i work ahead of 12e; the ingestion pipeline is the dependency that makes the paywall economics real.
 
-`docs/ROADMAP.md` is stale (last updated during Phase 11c kickoff) — update it alongside the first 12b commit, don't treat it as authoritative for 12-series today.
+Known 12c follow-ups (tracked inline as TODO comments, not blockers):
+- **12c.1** — `last_accessed_at` on `commentary_cache` is written on every cache hit; consider opportunistic/throttled writes if the row-update rate becomes a hot spot (comment in `commentaryService.ts`).
+- **12d** — ship the depth-selector UI; the endpoint already honors an explicit `?depth=` query and maintains separate cache entries per depth via the composite key.
+
+`docs/ROADMAP.md` is stale (last updated during Phase 11c kickoff) — refresh it in a dedicated cleanup pass; treat CLAUDE.md as authoritative for 12-series state today.
 
 ### Future (post-launch)
 
