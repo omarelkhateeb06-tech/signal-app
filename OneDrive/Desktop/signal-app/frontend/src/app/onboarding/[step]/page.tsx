@@ -14,6 +14,7 @@ import {
   TOPICS_BY_SECTOR,
   DEFAULT_GOAL,
 } from "@/lib/onboarding";
+import { getDomainOptionsForSectors } from "@/lib/onboarding/domainOptions";
 import { useOnboardingComplete } from "@/hooks/useProfile";
 import {
   markOnboardingCompletedInSession,
@@ -95,44 +96,114 @@ function Screen1(): JSX.Element {
   );
 }
 
-// ---------- Screen 2: role ----------
+// ---------- Screen 2: role + domain ----------
+
+// Phase 12c: Screen 2 expanded to capture `domain` (field-within-
+// sector) alongside role. Role stays as a radio grid (9 options);
+// domain is a native dropdown because the union of per-sector options
+// can reach ~50 entries when the user has all three sectors selected.
+// Domain options are filtered by the sectors the user picked on
+// Screen 1, with "General / Not sure" always pinned at the bottom.
+//
+// If the user navigates back to Screen 1, changes sectors, then
+// returns here, a previously-chosen domain may no longer be in the
+// filtered list. We reset `domain` to null in that case — the user
+// must re-pick before Continue. This runs once per sectors change,
+// not per render.
 
 function Screen2(): JSX.Element {
-  const { role, setRole } = useOnboardingStore();
+  const { sectors, role, setRole, domain, setDomain } = useOnboardingStore();
   useScreenViewEvent(2);
   const nav = useOnboardingNav(2);
+
+  const domainOptions = useMemo(
+    () => getDomainOptionsForSectors(sectors),
+    [sectors],
+  );
+
+  // If the previously-selected domain is no longer a valid option
+  // (because sectors changed), clear it so the user re-picks. Safe
+  // to run as an effect: setDomain is a no-op when the value already
+  // matches, and the dependency on the options array only changes
+  // when sectors change.
+  useEffect(() => {
+    if (domain === null) return;
+    const stillValid = domainOptions.some((opt) => opt.value === domain);
+    if (!stillValid) {
+      // Clear — typed as `string` setter, so use empty + treat null
+      // below in canContinue. (Store default is null; passing '' would
+      // drift the type. Cast through unknown to bypass the setter's
+      // string requirement without widening it.)
+      (setDomain as (v: string | null) => void)(null);
+    }
+  }, [domain, domainOptions, setDomain]);
+
+  const canContinue =
+    role !== null && role.length > 0 && domain !== null && domain.length > 0;
 
   return (
     <OnboardingShell
       step={2}
-      title="What's your role?"
-      description="We tailor commentary framing to your role."
-      canContinue={role !== null && role.length > 0}
+      title="Tell us about your work"
+      description="Role and field. We use both to tailor commentary — the field question sharpens the signal beyond role alone."
+      canContinue={canContinue}
       onContinue={() => nav.goNext(3)}
       onBack={nav.goBack}
     >
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {ROLES.map((r) => {
-          const checked = role === r.value;
-          return (
-            <label
-              key={r.value}
-              className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="role"
-                value={r.value}
-                className="h-4 w-4"
-                checked={checked}
-                onChange={() => setRole(r.value)}
-              />
-              <span className="font-medium">{r.label}</span>
-            </label>
-          );
-        })}
+      <div className="space-y-6">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Your role
+          </legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {ROLES.map((r) => {
+              const checked = role === r.value;
+              return (
+                <label
+                  key={r.value}
+                  className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
+                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="role"
+                    value={r.value}
+                    className="h-4 w-4"
+                    checked={checked}
+                    onChange={() => setRole(r.value)}
+                  />
+                  <span className="font-medium">{r.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            What field do you work in?
+          </legend>
+          <p className="text-sm text-muted-foreground">
+            Pick the closest match. Options are scoped to your selected
+            sectors — choose &ldquo;General / Not sure&rdquo; if nothing
+            fits.
+          </p>
+          <select
+            className="w-full rounded-md border bg-background p-3 font-medium"
+            value={domain ?? ""}
+            onChange={(e) => setDomain(e.target.value)}
+          >
+            <option value="" disabled>
+              Select a field&hellip;
+            </option>
+            {domainOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </fieldset>
       </div>
     </OnboardingShell>
   );
@@ -431,6 +502,12 @@ function Screen7(): JSX.Element {
       await complete.mutateAsync({
         sectors: store.sectors,
         role: store.role ?? "",
+        // Phase 12c — domain added to the completion payload. Screen 2
+        // gates Continue on domain !== null, so in the normal flow this
+        // coalescing branch never fires; kept for type-safety with the
+        // backend zod `.min(1)` guard surfacing a clean error if we ever
+        // land here with nothing set.
+        domain: store.domain ?? "",
         seniority: store.seniority ?? "",
         depth_preference: store.depthPreference,
         topics: resolvedTopics,

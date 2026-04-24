@@ -21,8 +21,13 @@ const INITIAL_SECTORS: string[] = SECTORS.map((s) => s.value);
 export interface OnboardingState {
   // Screen 1 — required, multi-select
   sectors: string[];
-  // Screen 2 — required, single
+  // Screen 2 — role + domain, both required, both single
   role: string | null;
+  // Phase 12c: Screen 2 now also captures `domain` (the specific
+  // field-within-sector the user works in). Required; no default.
+  // Validated server-side against the DOMAIN_OPTIONS union including
+  // the "general_not_sure" sentinel. Feeds the Haiku commentary prompt.
+  domain: string | null;
   // Screen 3 — required, single
   seniority: string | null;
   // Screen 4 — required, defaults to "standard"
@@ -43,6 +48,7 @@ export interface OnboardingState {
   // Actions
   setSectors: (sectors: string[]) => void;
   setRole: (role: string) => void;
+  setDomain: (domain: string) => void;
   setSeniority: (seniority: string) => void;
   setDepthPreference: (depth: DepthPreference) => void;
   setTopics: (topics: { sector: string; topic: string }[]) => void;
@@ -56,6 +62,7 @@ const initialState: Omit<
   OnboardingState,
   | "setSectors"
   | "setRole"
+  | "setDomain"
   | "setSeniority"
   | "setDepthPreference"
   | "setTopics"
@@ -66,6 +73,7 @@ const initialState: Omit<
 > = {
   sectors: INITIAL_SECTORS,
   role: null,
+  domain: null,
   seniority: null,
   depthPreference: "standard",
   topics: [],
@@ -80,6 +88,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       ...initialState,
       setSectors: (sectors) => set({ sectors }),
       setRole: (role) => set({ role }),
+      setDomain: (domain) => set({ domain }),
       setSeniority: (seniority) => set({ seniority }),
       setDepthPreference: (depthPreference) => set({ depthPreference }),
       setTopics: (topics) => set({ topics }),

@@ -497,6 +497,10 @@ export async function revokeTeamInviteRequest(
 export interface OnboardingCompleteInput {
   sectors: string[];
   role: string;
+  // Phase 12c — Screen 2 field-within-sector dropdown. Required;
+  // validated server-side against the DOMAIN_OPTIONS union including
+  // the "general_not_sure" sentinel.
+  domain: string;
   seniority: string;
   depth_preference: DepthPreference;
   topics: { sector: string; topic: string }[];
