@@ -11,6 +11,7 @@ import type {
   UserProfile,
 } from "@/types/auth";
 import type {
+  CommentaryResponse,
   FeedResponse,
   SaveToggleResponse,
   SavedStoriesResponse,
@@ -206,6 +207,22 @@ export async function getFeedRequest(params: FeedParams = {}): Promise<FeedRespo
 export async function getStoryRequest(id: string): Promise<Story> {
   const res = await api.get<{ data: { story: Story } }>(`/api/v1/stories/${id}`);
   return res.data.data.story;
+}
+
+// Phase 12c — lazy per-user, per-story commentary fetch. The feed
+// endpoint returns `commentary: null` for every row; this call
+// hydrates one row. `depth` is optional: omit to let the server use
+// the user's stored depth_preference (the common path); pass it for
+// depth-selector overrides on story detail.
+export async function getStoryCommentaryRequest(
+  id: string,
+  depth?: "accessible" | "standard" | "technical",
+): Promise<CommentaryResponse> {
+  const res = await api.get<{ data: CommentaryResponse }>(
+    `/api/v1/stories/${id}/commentary`,
+    { params: depth ? { depth } : undefined },
+  );
+  return res.data.data;
 }
 
 export async function getRelatedStoriesRequest(id: string): Promise<Story[]> {
