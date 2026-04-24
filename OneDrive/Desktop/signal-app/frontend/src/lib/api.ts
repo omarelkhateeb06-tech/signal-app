@@ -120,6 +120,12 @@ export interface UpdateProfileInput {
   // the onboarding questionnaire. Optional to preserve backward compat
   // for any older caller that doesn't supply it.
   depth_preference?: DepthPreference;
+  // Phase 12c: Settings "Interests" card now also edits the full
+  // commentary-input set. Optional for backward compat — the backend
+  // diffs only the fields it receives, and leaves the others alone.
+  domain?: string;
+  seniority?: string;
+  topic_interests?: { sector: string; topic: string }[];
 }
 
 export interface UpdateUserInput {
