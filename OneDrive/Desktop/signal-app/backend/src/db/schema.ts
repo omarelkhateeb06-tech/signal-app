@@ -59,18 +59,31 @@ export type DepthPreference = (typeof DEPTH_PREFERENCES)[number];
 export const DIGEST_PREFERENCES = ["morning", "evening", "none"] as const;
 export type DigestPreference = (typeof DIGEST_PREFERENCES)[number];
 
+// Phase 12c added `domain` (free-text from a curated list, selected on
+// Screen 2) and `profile_version` (monotonic int, bumps on any post-
+// onboarding mutation to commentary-affecting fields). Both are on
+// user_profiles rather than users — every onboarding-captured field
+// already lives here, and keeping them co-located avoids a cross-
+// table JOIN on every commentary lookup. `domain` is nullable at the
+// DB layer (same pattern as seniority/depth_preference — pre-
+// onboarding rows from the unsubscribe flow need to exist without
+// it) plus a CHECK rejecting empty strings. `profile_version` is
+// NOT NULL DEFAULT 1; the default fills existing rows during the
+// ALTER and the completion path leaves it at 1.
 export const userProfiles = pgTable("user_profiles", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   sectors: text("sectors").array(),
   role: varchar("role", { length: 50 }),
+  domain: text("domain"),
   seniority: text("seniority"),
   depthPreference: text("depth_preference").$type<DepthPreference>(),
   goals: text("goals").array(),
   digestPreference: text("digest_preference").$type<DigestPreference>(),
   timezone: text("timezone"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  profileVersion: integer("profile_version").notNull().default(1),
   emailFrequency: emailFrequencyEnum("email_frequency").notNull().default("weekly"),
   emailUnsubscribed: boolean("email_unsubscribed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -409,6 +422,45 @@ export const apiKeys = pgTable(
   }),
 );
 
+// ---------- Commentary cache ----------
+//
+// Phase 12c. Append-only cache for per-user, per-story Haiku-generated
+// commentary. Key is (user_id, story_id, depth, profile_version) —
+// changing depth or any commentary-affecting profile field bumps
+// profile_version and causes subsequent lookups to miss, triggering
+// regeneration on next view. Failed Haiku calls fall back to the
+// tiered template and are deliberately NOT cached; only successful
+// model output lands here. GC of orphaned rows is a stub in 12c and
+// gets scheduled in 12c.1.
+
+export const commentaryCache = pgTable(
+  "commentary_cache",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    storyId: uuid("story_id")
+      .notNull()
+      .references(() => stories.id, { onDelete: "cascade" }),
+    depth: text("depth").$type<DepthLevel>().notNull(),
+    profileVersion: integer("profile_version").notNull(),
+    commentary: text("commentary").notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    keyUnique: unique("commentary_cache_key_unique").on(
+      t.userId,
+      t.storyId,
+      t.depth,
+      t.profileVersion,
+    ),
+    userIdx: index("commentary_cache_user_idx").on(t.userId),
+    userStoryIdx: index("commentary_cache_user_story_idx").on(t.userId, t.storyId),
+  }),
+);
+
 // ---------- Exported row types ----------
 
 export type User = typeof users.$inferSelect;
@@ -440,3 +492,5 @@ export type LearningPathStory = typeof learningPathStories.$inferSelect;
 export type UserLearningProgress = typeof userLearningProgress.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
+export type CommentaryCacheRow = typeof commentaryCache.$inferSelect;
+export type NewCommentaryCacheRow = typeof commentaryCache.$inferInsert;

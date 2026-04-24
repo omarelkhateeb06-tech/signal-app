@@ -64,6 +64,13 @@
       "when": 1777284000007,
       "tag": "0008_phase12b_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777284000008,
+      "tag": "0009_phase12c_commentary_cache",
+      "breakpoints": true
     }
   ]
 }
