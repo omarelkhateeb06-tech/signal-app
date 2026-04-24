@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -225,54 +225,64 @@ describe("funnel counts (visit-id + emitCompleted)", () => {
       </QueryClientProvider>
     );
 
+    // Each nav-helper call runs `useMutation.mutate()` against the
+    // currently-mounted Harness, so the post-settle state update
+    // (pending → success) lands in a microtask after the bare call
+    // returns. testing-library already wraps render/rerender in
+    // act(), but the stray mutation settles between renders — those
+    // are the updates we need to cover here. Wrapping the nav call
+    // and its microtask flush in act() silences the warning without
+    // changing any assertion.
+    const step = async (fn: () => void): Promise<void> => {
+      await act(async () => {
+        fn();
+        await new Promise((r) => setTimeout(r, 0));
+      });
+    };
+
     let mountKey = 0;
     const { rerender } = render(tree(1, mountKey++));
     await flush();
 
     // Forward leg: 1 → 2 → 3.
-    navByStep[1]!.goNext(2);
+    await step(() => navByStep[1]!.goNext(2));
     rerender(tree(2, mountKey++));
-    await flush();
 
-    navByStep[2]!.goNext(3);
+    await step(() => navByStep[2]!.goNext(3));
     rerender(tree(3, mountKey++));
-    await flush();
 
     // First detour: Back from 3, re-Continue 2 → 3 (no separate
     // remount for the re-arrival at 3).
-    navByStep[3]!.goBack();
+    await step(() => navByStep[3]!.goBack());
     rerender(tree(2, mountKey++));
-    await flush();
 
-    navByStep[2]!.goNext(3);
-    // Skip the screen-3 re-mount; the stashed nav for step 3 fires
-    // its screen_completed from the previous screen-3 mount.
-    navByStep[3]!.goNext(4);
+    await step(() => {
+      navByStep[2]!.goNext(3);
+      // Skip the screen-3 re-mount; the stashed nav for step 3 fires
+      // its screen_completed from the previous screen-3 mount.
+      navByStep[3]!.goNext(4);
+    });
     rerender(tree(4, mountKey++));
-    await flush();
 
-    navByStep[4]!.goNext(5);
+    await step(() => navByStep[4]!.goNext(5));
     rerender(tree(5, mountKey++));
-    await flush();
 
     // Second detour: Back from 5, re-Continue 4 → 5 (no separate
     // remount for the re-arrival at 5).
-    navByStep[5]!.goBack();
+    await step(() => navByStep[5]!.goBack());
     rerender(tree(4, mountKey++));
-    await flush();
 
-    navByStep[4]!.goNext(5);
-    navByStep[5]!.goNext(6);
+    await step(() => {
+      navByStep[4]!.goNext(5);
+      navByStep[5]!.goNext(6);
+    });
     rerender(tree(6, mountKey++));
-    await flush();
 
-    navByStep[6]!.goNext(7);
+    await step(() => navByStep[6]!.goNext(7));
     rerender(tree(7, mountKey++));
-    await flush();
 
     // Screen 7's Finish path — the emitCompleted lever.
-    navByStep[7]!.emitCompleted();
-    await flush();
+    await step(() => navByStep[7]!.emitCompleted());
 
     const allEvents = postEventsMock.mock.calls.flatMap(
       (c) => c[0] as { event_type: string; screen_number?: number | null }[],
