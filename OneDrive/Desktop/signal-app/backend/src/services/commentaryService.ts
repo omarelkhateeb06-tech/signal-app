@@ -265,8 +265,21 @@ export async function getOrGenerateCommentary(
           source: "cache",
         };
       }
-      // Truly unexpected — fall through to the fallback path rather
-      // than throw; the user gets deterministic commentary.
+      // Truly unexpected — the insert returned no row AND the re-read
+      // came up empty. Route through the fallback so the user still
+      // gets deterministic commentary, but use a dedicated Tier 3
+      // reason: stamping this as "haiku_banned_phrase" (the old
+      // fall-through destination) would mislead operators investigating
+      // the anomaly log. Unreachable in normal operation.
+      return buildAndLogFallback(
+        input,
+        story,
+        profileShape,
+        matched,
+        "cache_race_unexpected",
+        logger,
+        undefined,
+      );
     }
     // Haiku text tripped the banned-phrase gate. Reroute to fallback
     // with an explicit reason so the Tier 3 anomaly log says why.

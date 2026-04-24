@@ -85,6 +85,13 @@ export type Tier3Reason =
   | "haiku_api_error"
   | "haiku_no_api_key"
   | "haiku_banned_phrase"
+  // Post-insert re-read came up empty — no row from onConflictDoNothing
+  // and no row from the follow-up select. Unreachable under the current
+  // write path (the insert either returns our row or loses to a racer
+  // whose row the re-read sees); the constant exists so an anomaly log
+  // on this branch reports the true cause rather than being mislabeled
+  // as a banned-phrase reject.
+  | "cache_race_unexpected"
   | "missing_profile_fields"
   | "off_sector"
   | "template_banned_phrase";

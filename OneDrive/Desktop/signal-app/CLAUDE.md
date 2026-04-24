@@ -588,7 +588,7 @@ Frontend gates are the same three with `--workspace=frontend`. There is no CI en
 - **External services**: mock at the SDK boundary. Anthropic SDK mock pattern is in `tests/regenerateDepthVariants.test.ts`; SendGrid mock is in `tests/emailService.test.ts`.
 - **Integration tests** live alongside unit tests in `backend/tests/` and share the mock-DB helper.
 
-Current count: **431 tests across 36 suites** (as of Phase 12c). Adding a feature without tests is a code-review hard-block.
+Current count: **435 tests across 37 suites** (as of Phase 12c). Adding a feature without tests is a code-review hard-block.
 
 ### Frontend tests
 
