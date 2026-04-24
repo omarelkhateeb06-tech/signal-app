@@ -1,0 +1,48 @@
+[audit] starting (User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...)
+[audit] timeout 10000ms, max 5 redirects
+[audit] 20 stories to audit
+
+[200] https://www.trendforce.com/news/2025/12/24/news-samsung-sk-hynix-reportedly-plan-20-hbm3e-price-hike-for-2026-as-nvidia-h200-asic-demand-rises/ (story: Samsung and SK Hynix lift HBM3E prices ~20% for 2026 as ASIC demand...)
+[200] https://www.cnbc.com/2026/01/26/nvidia-set-to-supplant-apple-as-tsmcs-largest-customer.html (story: Nvidia to overtake Apple as TSMC's largest customer, formalizing AI...)
+[headers-overflow] https://finance.yahoo.com/news/intel-foundry-talks-nvidia-apple-171229595.html (story: Intel 18A enters HVM as Apple and Nvidia explore 2028 non-core prod...)
+[200] https://www.cnbc.com/2026/02/03/musk-xai-spacex-biggest-merger-ever.html (story: SpaceX absorbs xAI at $1.25T combined valuation, teeing up mid-2026...)
+[headers-overflow] https://finance.yahoo.com/markets/stocks/articles/openai-guarantees-17-5-minimum-165757294.html (story: OpenAI offers PE firms 17.5% guaranteed return to unlock enterprise...)
+[200] https://www.cnbc.com/2026/03/18/fed-interest-rate-decision-march-2026.html (story: Fed holds rates, sees one cut in 2026 as Iran oil shock complicates...)
+[200] https://www.cnbc.com/2026/03/31/openai-funding-round-ipo.html (story: OpenAI closes record $122B round at $852B valuation)
+[200] https://techcrunch.com/2026/03/31/openai-not-yet-public-raises-3b-from-retail-investors-in-monster-122b-fund-raise/ (story: OpenAI's $3B retail tranche signals IPO on-ramp via bank channels)
+[403] https://www.datacenterdynamics.com/en/news/samsung-and-sk-hynix-post-record-profits-but-warn-memory-chip-shortages-will-likely-persist-into-2027/ (story: SK Hynix, Samsung post record profits, warn memory shortages extend...)
+[200] https://www.cnbc.com/2026/04/08/tsmc-nvidia-advanced-packaging-intel.html (story: Nvidia locks majority of TSMC's CoWoS packaging capacity as bottlen...)
+[200] https://www.cnbc.com/2026/04/08/meta-debuts-first-major-ai-model-since-14-billion-deal-to-bring-in-alexandr-wang.html (story: Meta ships Muse Spark, its first major model under Alexandr Wang)
+[200] https://www.cnbc.com/2026/04/11/vibe-check-from-ai-industry-humanx-anthropic-is-talk-of-the-town.html (story: Claude Mythos Preview becomes HumanX centerpiece as Anthropic's foc...)
+[200] https://www.pwc.com/gx/en/news-room/press-releases/2026/pwc-2026-ai-performance-study.html (story: PwC: AI's economic gains concentrating, with 20% of firms capturing...)
+[200] https://www.prnewswire.com/news-releases/sp-global-market-intelligences-2026-private-equity-survey-shows-fundraising-confidence-rising-as-managers-pivot-to-operational-value-302740423.html (story: S&P Global: PE fundraising confidence rising, but AI adoption still...)
+[200] https://www.sec.gov/Archives/edgar/data/886982/000088698226000096/a1q26gsearningsresults.htm (story: Goldman Q1 sets equities-trading record, IB fees surge 48% — but st...)
+[200] https://www.cnbc.com/2026/04/14/jpmorgan-chase-jpm-earnings-1q-2026.html (story: JPMorgan beats Q1 on IB and trading, cuts full-year NII guidance)
+[403] https://www.bloomberg.com/news/articles/2026-04-14/anthropic-attracts-investor-offers-at-a-800-billion-valuation (story: Anthropic declines $800B-valuation term sheets — for now)
+[200] https://www.cnbc.com/2026/04/14/meta-commits-to-one-gigawatt-of-custom-chips-with-broadcom-as-hock-tan-agrees-to-leave-board.html (story: Meta commits 1GW to Broadcom custom silicon, extends MTIA partnersh...)
+[404] https://www.cnbc.com/amp/2026/04/15/asml-q1-2026-earnings-report.html (story: ASML raises 2026 guide to €36–40B, says demand "outpacing supply")
+[403] https://www.bloomberg.com/news/articles/2026-04-16/tsmc-s-profit-beats-estimates-after-war-failed-to-dent-ai-demand (story: TSMC Q1 profit +58%, raises 2026 revenue growth guide above 30%)
+
+[audit] summary:
+[audit]   2xx ok                         : 14
+[audit]   3xx (residual redirect)        : 0
+[audit]   403 blocked (bot guard)        : 3
+[audit]   4xx broken                     : 1
+[audit]   5xx server error               : 0
+[audit]   timeout                        : 0
+[audit]   headers-overflow (reachable)   : 2
+[audit]   error (dns/tls/other)          : 0
+
+[audit] 6 non-2xx URL(s) needing attention:
+[audit]   - [headers-overflow] https://finance.yahoo.com/news/intel-foundry-talks-nvidia-apple-171229595.html (story: Intel 18A enters HVM as Apple and Nvidia explore 2028 non-core prod...)
+[audit]       action: origin reachable but response headers exceed Node undici's 16KB limit — verify manually
+[audit]   - [headers-overflow] https://finance.yahoo.com/markets/stocks/articles/openai-guarantees-17-5-minimum-165757294.html (story: OpenAI offers PE firms 17.5% guaranteed return to unlock enterprise...)
+[audit]       action: origin reachable but response headers exceed Node undici's 16KB limit — verify manually
+[audit]   - [403] https://www.datacenterdynamics.com/en/news/samsung-and-sk-hynix-post-record-profits-but-warn-memory-chip-shortages-will-likely-persist-into-2027/ (story: SK Hynix, Samsung post record profits, warn memory shortages extend...)
+[audit]       action: blocked — likely bot protection, verify manually in a browser
+[audit]   - [403] https://www.bloomberg.com/news/articles/2026-04-14/anthropic-attracts-investor-offers-at-a-800-billion-valuation (story: Anthropic declines $800B-valuation term sheets — for now)
+[audit]       action: blocked — likely bot protection, verify manually in a browser
+[audit]   - [404] https://www.cnbc.com/amp/2026/04/15/asml-q1-2026-earnings-report.html (story: ASML raises 2026 guide to €36–40B, says demand "outpacing supply")
+[audit]       action: broken — consider updating source_url
+[audit]   - [403] https://www.bloomberg.com/news/articles/2026-04-16/tsmc-s-profit-beats-estimates-after-war-failed-to-dent-ai-demand (story: TSMC Q1 profit +58%, raises 2026 revenue growth guide above 30%)
+[audit]       action: blocked — likely bot protection, verify manually in a browser
