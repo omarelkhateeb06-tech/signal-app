@@ -78,7 +78,12 @@ export const SENIORITIES: readonly LabeledOption[] = [
   { value: "leadership", label: "Leadership" },
 ] as const;
 
-// ---------- Depth preference (Screen 4, default = standard) ----------
+// ---------- Depth preference (Screen 6 as of Phase 12c; was Screen 4 in 12b) ----------
+//
+// Position change only — the option list and default are unchanged.
+// Depth moved from Screen 4 to Screen 6 (after goals) so users anchor
+// the depth pick on concrete selections they've already made rather
+// than as an abstract preference up front.
 
 export const DEPTH_PREFERENCES: readonly LabeledOption[] = [
   {
@@ -100,7 +105,7 @@ export const DEPTH_PREFERENCES: readonly LabeledOption[] = [
 
 export const DEFAULT_DEPTH_PREFERENCE = "standard" as const;
 
-// ---------- Topics per sector (Screen 5) ----------
+// ---------- Topics per sector (Screen 4 as of Phase 12c; was Screen 5 in 12b) ----------
 
 export interface TopicOption {
   value: string;
@@ -146,7 +151,7 @@ export const TOPICS_BY_SECTOR: Readonly<Record<string, readonly TopicOption[]>> 
   ],
 };
 
-// ---------- Goals (Screen 6, default on skip) ----------
+// ---------- Goals (Screen 5 as of Phase 12c; was Screen 6 in 12b, default on skip) ----------
 
 // Labels match the spec (Phase 12b fix-it Fix 4 / Issue #10). Values
 // are unchanged so persisted profiles keep working. The `deep_learning`

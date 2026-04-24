@@ -252,60 +252,18 @@ function Screen3(): JSX.Element {
   );
 }
 
-// ---------- Screen 4: depth preference ----------
+// ---------- Screen 4: topics (skippable) ----------
+//
+// Phase 12c reordered the flow so topics runs directly after seniority
+// (used to be Screen 5). The depth selector moved to *after* goals —
+// rationale: depth is a presentation preference that users anchor more
+// confidently once they've already declared what they care about. See
+// Screen 6 for the depth body.
 
 function Screen4(): JSX.Element {
-  const { depthPreference, setDepthPreference } = useOnboardingStore();
+  const { sectors, topics, setTopics } = useOnboardingStore();
   useScreenViewEvent(4);
   const nav = useOnboardingNav(4);
-
-  return (
-    <OnboardingShell
-      step={4}
-      title="How deep do you want to go?"
-      description="The free tier defaults to Standard. You can change this any time."
-      canContinue={true}
-      onContinue={() => nav.goNext(5)}
-      onBack={nav.goBack}
-    >
-      <div className="space-y-3">
-        {DEPTH_PREFERENCES.map((d) => {
-          const checked = depthPreference === d.value;
-          return (
-            <label
-              key={d.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="depth"
-                value={d.value}
-                className="mt-1 h-4 w-4"
-                checked={checked}
-                onChange={() => setDepthPreference(d.value as DepthPreference)}
-              />
-              <div>
-                <p className="font-medium">{d.label}</p>
-                {d.description && (
-                  <p className="text-sm text-muted-foreground">{d.description}</p>
-                )}
-              </div>
-            </label>
-          );
-        })}
-      </div>
-    </OnboardingShell>
-  );
-}
-
-// ---------- Screen 5: topics (skippable) ----------
-
-function Screen5(): JSX.Element {
-  const { sectors, topics, setTopics } = useOnboardingStore();
-  useScreenViewEvent(5);
-  const nav = useOnboardingNav(5);
 
   // Build the master list of all valid (sector, topic) pairs for the
   // currently selected sectors. Skipping fills `topics` with this full
@@ -332,16 +290,16 @@ function Screen5(): JSX.Element {
     // Fill the store BEFORE nav.skip emits + routes; skip's event goes
     // out with the router.push so the order is stable in tests.
     setTopics(allPairs);
-    nav.skip(6);
+    nav.skip(5);
   };
 
   return (
     <OnboardingShell
-      step={5}
+      step={4}
       title="Any topics you especially care about?"
       description="Pick any — or skip and we'll show you everything in your sectors."
       canContinue={true}
-      onContinue={() => nav.goNext(6)}
+      onContinue={() => nav.goNext(5)}
       onSkip={handleSkip}
       onBack={nav.goBack}
     >
@@ -388,12 +346,16 @@ function Screen5(): JSX.Element {
   );
 }
 
-// ---------- Screen 6: goals (skippable) ----------
+// ---------- Screen 5: goals (skippable) ----------
+//
+// Phase 12c: goals moved up one slot (was Screen 6) so the depth
+// selector can follow it at Screen 6. The skip default is unchanged —
+// still [DEFAULT_GOAL] — only the downstream route target moves.
 
-function Screen6(): JSX.Element {
+function Screen5(): JSX.Element {
   const { goals, setGoals } = useOnboardingStore();
-  useScreenViewEvent(6);
-  const nav = useOnboardingNav(6);
+  useScreenViewEvent(5);
+  const nav = useOnboardingNav(5);
 
   const toggle = (value: string): void => {
     setGoals(
@@ -406,16 +368,16 @@ function Screen6(): JSX.Element {
   const handleSkip = (): void => {
     // Per spec: Skip submits the default single-goal list.
     setGoals([DEFAULT_GOAL]);
-    nav.skip(7);
+    nav.skip(6);
   };
 
   return (
     <OnboardingShell
-      step={6}
+      step={5}
       title="What do you want to get out of SIGNAL?"
       description="Select any that apply — or skip to use the default."
       canContinue={goals.length >= 1}
-      onContinue={() => nav.goNext(7)}
+      onContinue={() => nav.goNext(6)}
       onSkip={handleSkip}
       onBack={nav.goBack}
     >
@@ -436,6 +398,61 @@ function Screen6(): JSX.Element {
                 onChange={() => toggle(g.value)}
               />
               <span className="font-medium">{g.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </OnboardingShell>
+  );
+}
+
+// ---------- Screen 6: depth preference ----------
+//
+// Phase 12c: depth selector moved from Screen 4 to Screen 6. Rationale
+// in the phase prompt — users calibrate depth more confidently after
+// they've declared sectors, topics, and goals. Wire shape is unchanged
+// (depth_preference still ships as part of the /onboarding/complete
+// payload); only the screen position moved, so the only source-level
+// changes are the hook args + the next-step target.
+
+function Screen6(): JSX.Element {
+  const { depthPreference, setDepthPreference } = useOnboardingStore();
+  useScreenViewEvent(6);
+  const nav = useOnboardingNav(6);
+
+  return (
+    <OnboardingShell
+      step={6}
+      title="How deep do you want to go?"
+      description="The free tier defaults to Standard. You can change this any time."
+      canContinue={true}
+      onContinue={() => nav.goNext(7)}
+      onBack={nav.goBack}
+    >
+      <div className="space-y-3">
+        {DEPTH_PREFERENCES.map((d) => {
+          const checked = depthPreference === d.value;
+          return (
+            <label
+              key={d.value}
+              className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors ${
+                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="depth"
+                value={d.value}
+                className="mt-1 h-4 w-4"
+                checked={checked}
+                onChange={() => setDepthPreference(d.value as DepthPreference)}
+              />
+              <div>
+                <p className="font-medium">{d.label}</p>
+                {d.description && (
+                  <p className="text-sm text-muted-foreground">{d.description}</p>
+                )}
+              </div>
             </label>
           );
         })}
