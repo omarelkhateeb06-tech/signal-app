@@ -18,9 +18,17 @@ import {
   GOALS,
   ROLES,
   SECTORS,
+  SENIORITIES,
+  TOPICS_BY_SECTOR,
 } from "@/lib/onboarding";
+import { getDomainOptionsForSectors } from "@/lib/onboarding/domainOptions";
 import { Toast, type ToastTone } from "@/components/ui/Toast";
-import type { DepthPreference, EmailFrequency, UserProfile } from "@/types/auth";
+import type {
+  DepthPreference,
+  EmailFrequency,
+  TopicInterest,
+  UserProfile,
+} from "@/types/auth";
 
 const profileFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
@@ -48,6 +56,15 @@ export default function SettingsPage(): JSX.Element {
 
   const [sectors, setSectors] = useState<string[]>([]);
   const [role, setRole] = useState<string>("");
+  // Phase 12c — domain, seniority, and topics join the editable set so
+  // the full commentary-input surface can be tweaked without going
+  // back through onboarding. Empty string means "not set yet" — stored
+  // as null on the profile, distinguished here so the <select> renders
+  // the placeholder option rather than accidentally picking the first
+  // real value.
+  const [domain, setDomain] = useState<string>("");
+  const [seniority, setSeniority] = useState<string>("");
+  const [topics, setTopics] = useState<TopicInterest[]>([]);
   const [goals, setGoals] = useState<string[]>([]);
   const [depthPreference, setDepthPreference] = useState<DepthPreference>(
     DEFAULT_DEPTH_PREFERENCE,
@@ -81,7 +98,7 @@ export default function SettingsPage(): JSX.Element {
           profile_picture_url: data.user.profilePictureUrl ?? "",
         });
         setUser(data.user);
-        applyProfile(data.profile);
+        applyProfile(data.profile, data.topic_interests);
       } catch (err) {
         if (!cancelled) setLoadError(extractApiError(err, "Could not load settings"));
       } finally {
@@ -89,9 +106,15 @@ export default function SettingsPage(): JSX.Element {
       }
     };
 
-    const applyProfile = (profile: UserProfile | null): void => {
+    const applyProfile = (
+      profile: UserProfile | null,
+      topicInterests: TopicInterest[],
+    ): void => {
       setSectors(profile?.sectors ?? []);
       setRole(profile?.role ?? "");
+      setDomain(profile?.domain ?? "");
+      setSeniority(profile?.seniority ?? "");
+      setTopics(topicInterests ?? []);
       setGoals(profile?.goals ?? []);
       setDepthPreference(profile?.depthPreference ?? DEFAULT_DEPTH_PREFERENCE);
       setEmailFrequency(profile?.emailFrequency ?? "weekly");
@@ -147,9 +170,20 @@ export default function SettingsPage(): JSX.Element {
       // the toast. Without that, the (app) layout's useRequireOnboarded
       // reads the stale cache on next render and can bounce a just-
       // saved user back to onboarding. (Issue #5.)
+      //
+      // Phase 12c — domain/seniority/topic_interests are sent only when
+      // the user has a value for them; otherwise the backend keeps its
+      // current stored value untouched. topic_interests is sent as [] to
+      // mean "I explicitly want no topics" so the wholesale replacement
+      // path fires correctly; the "unset" case is represented by not
+      // sending the key at all. Here we always send whatever is in
+      // state because the Settings UI always renders the topics editor.
       await updateProfile.mutateAsync({
         sectors,
         role,
+        domain: domain || undefined,
+        seniority: seniority || undefined,
+        topic_interests: topics,
         goals,
         depth_preference: depthPreference,
         email_frequency: emailFrequency,
@@ -177,14 +211,43 @@ export default function SettingsPage(): JSX.Element {
   };
 
   const toggleSector = (value: string): void => {
-    setSectors((current) =>
-      current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
-    );
+    setSectors((current) => {
+      const next = current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value];
+      // When a sector is removed, strip any topic pairs under it so we
+      // never submit `{sector: "finance", topic: ...}` while finance is
+      // no longer selected — the backend would accept (topics are
+      // independent rows) but it would violate the UI invariant that
+      // topics mirror selected sectors. Cheap, done in the same render
+      // as the sector change.
+      setTopics((t) => t.filter((pair) => next.includes(pair.sector)));
+      // Domain options are derived from selected sectors; if the stored
+      // domain is no longer in the union, fall back to the sentinel.
+      // Skip this check when domain is blank or is already the
+      // general_not_sure sentinel (always valid).
+      if (domain && domain !== "general_not_sure") {
+        const valid = getDomainOptionsForSectors(next).some(
+          (o) => o.value === domain,
+        );
+        if (!valid) setDomain("general_not_sure");
+      }
+      return next;
+    });
   };
   const toggleGoal = (value: string): void => {
     setGoals((current) =>
       current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
     );
+  };
+  const toggleTopic = (sector: string, topic: string): void => {
+    setTopics((current) => {
+      const key = `${sector}:${topic}`;
+      const has = current.some((p) => `${p.sector}:${p.topic}` === key);
+      return has
+        ? current.filter((p) => `${p.sector}:${p.topic}` !== key)
+        : [...current, { sector, topic }];
+    });
   };
 
   if (loading) {
@@ -300,6 +363,96 @@ export default function SettingsPage(): JSX.Element {
             ))}
           </select>
         </div>
+
+        <div className="space-y-2">
+          <label htmlFor="domain" className="text-sm font-medium">
+            Field / domain
+          </label>
+          <p className="text-xs text-muted-foreground">
+            The specific area you work in within your sector(s). Feeds the
+            commentary prompt so insights speak to your day-to-day.
+          </p>
+          <select
+            id="domain"
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          >
+            <option value="">Select a field…</option>
+            {getDomainOptionsForSectors(sectors).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="seniority" className="text-sm font-medium">
+            Seniority
+          </label>
+          <select
+            id="seniority"
+            value={seniority}
+            onChange={(e) => setSeniority(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          >
+            <option value="">Select your seniority…</option>
+            {SENIORITIES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {sectors.length > 0 && (
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Topics</p>
+              <p className="text-xs text-muted-foreground">
+                Narrow the commentary within each sector. Leaving all topics
+                unchecked for a sector means you want the full sector feed.
+              </p>
+            </div>
+            {sectors.map((sector) => {
+              const options = TOPICS_BY_SECTOR[sector] ?? [];
+              if (options.length === 0) return null;
+              const sectorLabel =
+                SECTORS.find((s) => s.value === sector)?.label ?? sector;
+              return (
+                <div key={sector} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {sectorLabel}
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {options.map((option) => {
+                      const checked = topics.some(
+                        (t) => t.sector === sector && t.topic === option.value,
+                      );
+                      return (
+                        <label
+                          key={option.value}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${
+                            checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTopic(sector, option.value)}
+                            className="h-4 w-4"
+                          />
+                          {option.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="space-y-2">
           <p className="text-sm font-medium">Commentary depth</p>

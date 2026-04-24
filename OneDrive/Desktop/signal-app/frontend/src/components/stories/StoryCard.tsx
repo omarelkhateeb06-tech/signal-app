@@ -1,8 +1,12 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessageSquare, ExternalLink } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
+import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import type { Story } from "@/types/story";
 
 function formatDate(value: string | null): string {
@@ -20,11 +24,76 @@ interface StoryCardProps {
   story: Story;
 }
 
+// Phase 12c — each card self-manages when to fire its commentary
+// fetch via IntersectionObserver with a rootMargin that provides
+// roughly 5 cards of lookahead. Coupled with COMMENTARY_MAX_CONCURRENT
+// in lib/commentaryQueue, this produces:
+//   - first page: ~first 5-8 cards above-the-fold trigger immediately,
+//     saturating the 8-slot semaphore; the remaining 2-5 queue and
+//     resolve as soon as the first wave returns.
+//   - scrolling: newly-visible cards (and ~5 more below them) flip
+//     to enabled; queue absorbs the spike.
+//
+// Card height is ~200-240px; 1200px of rootMargin ≈ 5-6 cards of
+// scroll-ahead, which matches the "5-story prefetch" product spec.
+// We use only vertical margin (0px horizontal) — the feed is a
+// single column.
+const VISIBILITY_ROOT_MARGIN = "1200px 0px";
+
 export function StoryCard({ story }: StoryCardProps): JSX.Element {
   const date = formatDate(story.published_at ?? story.created_at);
 
+  // Once a card has been "close enough" to the viewport to prefetch,
+  // we latch that state — scrolling away must NOT cancel an in-flight
+  // request (StrictMode would already double-fire; canceling would
+  // waste the slot and churn TanStack Query's cache).
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const cardRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || shouldLoad) return;
+    // If the browser doesn't support IntersectionObserver, fall back
+    // to enabling immediately. The 8-slot semaphore still caps fanout.
+    if (typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: VISIBILITY_ROOT_MARGIN },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [shouldLoad]);
+
+  const commentaryQuery = useStoryCommentary(story.id, { enabled: shouldLoad });
+
+  // Fallback text layering (in priority order):
+  //   1. the freshly-loaded commentary from the endpoint
+  //   2. any commentary that arrived pre-loaded on the story (future-
+  //      proofing for a server-side hydration path we don't ship in 12c)
+  //   3. the 12b why_it_matters_to_you personalization (the surface's
+  //      "always at least something" floor during the 12c rollout)
+  // We pass `loading` to the skeleton only while (1) and (2) are
+  // empty AND the query is actively fetching — otherwise the
+  // 12b fallback renders directly.
+  const resolvedCommentary =
+    commentaryQuery.data?.commentary ?? story.commentary ?? null;
+  const isCommentaryLoading =
+    shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
+  const displayText = resolvedCommentary ?? story.why_it_matters_to_you;
+
   return (
-    <article className="group rounded-lg border border-slate-200 bg-white p-6 transition-shadow hover:shadow-md">
+    <article
+      ref={cardRef}
+      className="group rounded-lg border border-slate-200 bg-white p-6 transition-shadow hover:shadow-md"
+    >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <SectorBadge sector={story.sector} />
@@ -42,7 +111,7 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
         </p>
       </Link>
 
-      <PersonalizationBox text={story.why_it_matters_to_you} />
+      <PersonalizationBox text={displayText} loading={isCommentaryLoading} />
 
       <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
         <div className="flex items-center gap-4">

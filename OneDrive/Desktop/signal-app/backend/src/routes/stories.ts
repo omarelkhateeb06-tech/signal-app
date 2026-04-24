@@ -7,6 +7,7 @@ import {
   searchStories,
   unsaveStory,
 } from "../controllers/storyController";
+import { getCommentary } from "../controllers/commentaryController";
 import {
   createComment,
   listStoryComments,
@@ -33,4 +34,8 @@ storiesRouter.post("/:id/save", saveStory);
 storiesRouter.delete("/:id/save", unsaveStory);
 storiesRouter.get("/:story_id/comments", listStoryComments);
 storiesRouter.post("/:story_id/comments", createComment);
+// Commentary (Phase 12c) is intentionally ungated by requireProfile —
+// story detail direct-links can land half-onboarded users here, and
+// the controller itself returns a clean 400 if the profile is missing.
+storiesRouter.get("/:id/commentary", getCommentary);
 storiesRouter.get("/:id", getStoryById);

@@ -26,10 +26,16 @@ const email = "a@b.com";
 
 // A minimally-valid completion payload. Tests override individual
 // fields to exercise validation edges.
+//
+// Phase 12c added `domain` (Screen 2) to the completion contract.
+// Using "general_not_sure" in the fixture because it's always valid
+// regardless of which sectors the test ships with — the per-sector
+// domain options may drift, but the sentinel is guaranteed stable.
 function validCompletionPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     sectors: ["ai"],
     role: "engineer",
+    domain: "general_not_sure",
     seniority: "mid",
     depth_preference: "standard",
     topics: [{ sector: "ai", topic: "foundation_models" }],

@@ -74,8 +74,12 @@ describe("Onboarding step dispatcher", () => {
     expect(pushMock).toHaveBeenCalledWith("/onboarding/2");
   });
 
-  it("Screen 5: skip fills the store with all topics for selected sectors", async () => {
-    paramsMock.current = { step: "5" };
+  // Phase 12c reordered the flow: topics moved from Screen 5 to Screen
+  // 4, goals from Screen 6 to Screen 5, depth from Screen 4 to Screen
+  // 6. Skip defaults + semantics are unchanged; only the step numbers
+  // and push targets move.
+  it("Screen 4 (topics, post-12c): skip fills the store with all topics for selected sectors and routes to 5", async () => {
+    paramsMock.current = { step: "4" };
     useOnboardingStore.getState().setSectors(["ai"]);
     const user = userEvent.setup();
     renderPage();
@@ -83,15 +87,27 @@ describe("Onboarding step dispatcher", () => {
     const topics = useOnboardingStore.getState().topics;
     expect(topics.length).toBeGreaterThan(0);
     expect(topics.every((t) => t.sector === "ai")).toBe(true);
-    expect(pushMock).toHaveBeenCalledWith("/onboarding/6");
+    expect(pushMock).toHaveBeenCalledWith("/onboarding/5");
   });
 
-  it("Screen 6: skip submits ['stay_current'] as the default goal", async () => {
-    paramsMock.current = { step: "6" };
+  it("Screen 5 (goals, post-12c): skip submits ['stay_current'] and routes to 6 (depth)", async () => {
+    paramsMock.current = { step: "5" };
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole("button", { name: /skip/i }));
     expect(useOnboardingStore.getState().goals).toEqual(["stay_current"]);
+    expect(pushMock).toHaveBeenCalledWith("/onboarding/6");
+  });
+
+  it("Screen 6 (depth, post-12c): Continue routes to 7 (digest)", async () => {
+    paramsMock.current = { step: "6" };
+    const user = userEvent.setup();
+    renderPage();
+    // Depth screen has canContinue={true} on initial render — the store
+    // seeds depthPreference="standard" so Continue is always live.
+    const cont = screen.getByRole("button", { name: /continue/i });
+    expect(cont).not.toBeDisabled();
+    await user.click(cont);
     expect(pushMock).toHaveBeenCalledWith("/onboarding/7");
   });
 
@@ -104,6 +120,11 @@ describe("Onboarding step dispatcher", () => {
     const store = useOnboardingStore.getState();
     store.setSectors(["ai"]);
     store.setRole("engineer");
+    // Phase 12c — domain required by the server-side completion schema.
+    // The test mocks the API so validation never actually runs, but
+    // seeding keeps the store shape realistic and future-proofs against
+    // a switch to a non-mock client.
+    store.setDomain("general_not_sure");
     store.setSeniority("mid");
     store.setDepthPreference("standard");
     store.setGoals(["stay_current"]);

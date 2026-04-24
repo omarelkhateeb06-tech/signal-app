@@ -61,11 +61,25 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     headline: row.headline,
     context: row.context,
     why_it_matters: row.whyItMatters,
+    // Phase 12b personalization output — kept on the payload for
+    // backward compatibility through the 12c rollout. The 12c client
+    // prefers `commentary` once it arrives; the 12b field will be
+    // removed in the 12d cleanup commit.
     why_it_matters_to_you: personalizeStory({
       whyItMatters: row.whyItMatters,
       whyItMattersTemplate: row.whyItMattersTemplate,
       role,
     }),
+    // Phase 12c contract: feed-list responses never carry the
+    // per-user commentary inline. The client hydrates it via
+    // GET /stories/:id/commentary after the feed lands. Returning
+    // nulls here (rather than omitting the keys) makes the "not yet
+    // loaded" state explicit on the wire and lets TypeScript consumers
+    // treat the field as `string | null` rather than `string | undefined`.
+    // The `commentary_source` field is the null-mirror of
+    // CommentaryResult.source — populated only by the dedicated endpoint.
+    commentary: null,
+    commentary_source: null,
     source_url: row.sourceUrl,
     source_name: row.sourceName,
     published_at: row.publishedAt,

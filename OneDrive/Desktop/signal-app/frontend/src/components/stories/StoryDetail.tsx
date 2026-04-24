@@ -1,7 +1,10 @@
+"use client";
+
 import { ExternalLink, MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
+import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import type { Story } from "@/types/story";
 
 function formatDate(value: string | null): string {
@@ -21,6 +24,19 @@ interface StoryDetailProps {
 
 export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
   const date = formatDate(story.published_at ?? story.created_at);
+
+  // Detail is a single-story surface — fire the commentary fetch
+  // immediately rather than gating on IntersectionObserver. The
+  // 8-slot semaphore still protects against an unlikely burst (e.g. a
+  // user rapidly cmd-clicking multiple story links into new tabs,
+  // each of which wakes a detail page that mounts this hook).
+  const commentaryQuery = useStoryCommentary(story.id, { enabled: true });
+
+  const resolvedCommentary =
+    commentaryQuery.data?.commentary ?? story.commentary ?? null;
+  const isCommentaryLoading =
+    resolvedCommentary === null && commentaryQuery.isFetching;
+  const displayText = resolvedCommentary ?? story.why_it_matters_to_you;
 
   return (
     <article className="space-y-6">
@@ -47,7 +63,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </div>
       </header>
 
-      <PersonalizationBox text={story.why_it_matters_to_you} />
+      <PersonalizationBox text={displayText} loading={isCommentaryLoading} />
 
       <section className="space-y-4">
         <div>

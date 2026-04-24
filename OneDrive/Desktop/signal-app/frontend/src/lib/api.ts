@@ -11,6 +11,7 @@ import type {
   UserProfile,
 } from "@/types/auth";
 import type {
+  CommentaryResponse,
   FeedResponse,
   SaveToggleResponse,
   SavedStoriesResponse,
@@ -119,6 +120,12 @@ export interface UpdateProfileInput {
   // the onboarding questionnaire. Optional to preserve backward compat
   // for any older caller that doesn't supply it.
   depth_preference?: DepthPreference;
+  // Phase 12c: Settings "Interests" card now also edits the full
+  // commentary-input set. Optional for backward compat — the backend
+  // diffs only the fields it receives, and leaves the others alone.
+  domain?: string;
+  seniority?: string;
+  topic_interests?: { sector: string; topic: string }[];
 }
 
 export interface UpdateUserInput {
@@ -206,6 +213,22 @@ export async function getFeedRequest(params: FeedParams = {}): Promise<FeedRespo
 export async function getStoryRequest(id: string): Promise<Story> {
   const res = await api.get<{ data: { story: Story } }>(`/api/v1/stories/${id}`);
   return res.data.data.story;
+}
+
+// Phase 12c — lazy per-user, per-story commentary fetch. The feed
+// endpoint returns `commentary: null` for every row; this call
+// hydrates one row. `depth` is optional: omit to let the server use
+// the user's stored depth_preference (the common path); pass it for
+// depth-selector overrides on story detail.
+export async function getStoryCommentaryRequest(
+  id: string,
+  depth?: "accessible" | "standard" | "technical",
+): Promise<CommentaryResponse> {
+  const res = await api.get<{ data: CommentaryResponse }>(
+    `/api/v1/stories/${id}/commentary`,
+    { params: depth ? { depth } : undefined },
+  );
+  return res.data.data;
 }
 
 export async function getRelatedStoriesRequest(id: string): Promise<Story[]> {
@@ -497,6 +520,10 @@ export async function revokeTeamInviteRequest(
 export interface OnboardingCompleteInput {
   sectors: string[];
   role: string;
+  // Phase 12c — Screen 2 field-within-sector dropdown. Required;
+  // validated server-side against the DOMAIN_OPTIONS union including
+  // the "general_not_sure" sentinel.
+  domain: string;
   seniority: string;
   depth_preference: DepthPreference;
   topics: { sector: string; topic: string }[];

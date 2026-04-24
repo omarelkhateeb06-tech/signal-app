@@ -16,6 +16,7 @@ import {
   SENIORITIES,
   isValidTopicForSector,
 } from "../constants/onboardingTopics";
+import { isValidDomain } from "../constants/domainOptions";
 
 // Keep these in sync with the CHECK constraints in migration 0008. If
 // a literal is added/removed here, update the migration AND the
@@ -47,11 +48,19 @@ const completeSchema = z.object({
     .array(z.enum(SECTORS))
     .min(1, "Select at least one sector")
     .max(SECTORS.length),
-  // Screen 2
+  // Screen 2 — role + domain (Phase 12c expanded Screen 2 to include
+  // domain). Domain validated via a refine() rather than z.enum so the
+  // error message is stable across sector-specific option lists.
   role: z.enum(ROLES),
+  domain: z
+    .string()
+    .min(1)
+    .refine(isValidDomain, { message: "Domain is not a recognized value" }),
   // Screen 3
   seniority: z.enum(SENIORITIES),
-  // Screen 4
+  // Screen 4 (Phase 12c: depth now shows *after* goals — the step
+  // number changed in the UI. The wire shape is unchanged — both
+  // depth_preference and goals travel together on this request.)
   depth_preference: z.enum(DEPTH_PREFERENCE_VALUES),
   // Screen 5 — may be empty if the user skipped; the server fills it
   // with "all topics across selected sectors" when empty.
@@ -194,6 +203,11 @@ export async function postOnboardingComplete(
       const patch = {
         sectors: input.sectors,
         role: input.role,
+        // Phase 12c — domain joins the completion payload. profile_version
+        // is deliberately NOT touched here; it defaults to 1 on insert
+        // and completion shouldn't bump it (bumps happen on post-
+        // onboarding Settings mutations per Decision 7 of the 12c spec).
+        domain: input.domain,
         seniority: input.seniority,
         depthPreference: input.depth_preference,
         goals: input.goals,
