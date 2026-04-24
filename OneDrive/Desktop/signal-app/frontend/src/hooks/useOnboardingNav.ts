@@ -11,6 +11,39 @@ import { sendOnboardingEventBeacon } from "@/lib/api";
 // event.
 const STARTED_SESSION_KEY = "signal-onboarding-started-sent";
 
+// Session-storage latch flipped synchronously when the completion
+// mutation resolves on Screen 7. The abandon beacon checks this flag
+// and skips emission — without it, a `beforeunload` that fires during
+// the Finish → /feed window (e.g. because the browser or an extension
+// flushes listeners eagerly, or the user reloads on /feed before the
+// profile refetch settles) would record the user as abandoning
+// immediately after they completed. sessionStorage's native lifetime
+// (same tab, clears on close) is the right scope: we want the guard
+// to survive a reload of /feed but not leak into a future session.
+// (Second fix-it: Defect 1.)
+const COMPLETED_SESSION_KEY = "signal-onboarding-completed";
+
+/**
+ * Flip the session-scoped "onboarding completed" latch. Call this
+ * synchronously from the success path of the completion mutation so
+ * the abandon beacon — which may still be attached because the
+ * profile query hasn't yet refetched the new `onboarding_completed:
+ * true` — skips its emission on the subsequent navigation/unload.
+ * (Second fix-it: Defect 1.)
+ */
+export function markOnboardingCompletedInSession(): void {
+  if (typeof window !== "undefined") {
+    window.sessionStorage.setItem(COMPLETED_SESSION_KEY, "1");
+  }
+}
+
+function isOnboardingCompletedInSession(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem(COMPLETED_SESSION_KEY) === "1"
+  );
+}
+
 /**
  * Fire exactly one `screen_view` event per mount cycle. React
  * StrictMode double-invokes effects in dev, which previously caused
@@ -99,16 +132,29 @@ export function useOnboardingNav(step: number): {
  * the Bearer header the zod schema requires — see
  * `sendOnboardingEventBeacon`).
  *
- * `isCompleted` should come from the profile query; when it flips
- * true we detach so the event never fires on the normal router.push
- * away from /onboarding after Finish. (Issue #7.)
+ * `isCompleted` comes from the profile query. It's not sufficient on
+ * its own: there's an async window between the user clicking Finish
+ * (which calls `markOnboardingCompletedInSession` synchronously) and
+ * the profile query refetching the new `onboarding_completed: true`.
+ * If the user reloads /feed inside that window — or the browser
+ * flushes beforeunload as part of the Next.js route transition —
+ * we'd register the just-completed user as abandoning. The session-
+ * scoped latch covers the gap: we check it at both effect-setup
+ * time (to avoid attaching at all when already complete) and inside
+ * the handler at fire time (in case completion happens after the
+ * listener is already attached). (Issue #7; second fix-it Defect 1.)
  */
 export function useOnboardingAbandonBeacon(isCompleted: boolean): void {
   useEffect(() => {
     if (isCompleted) return;
+    if (isOnboardingCompletedInSession()) return;
     if (typeof window === "undefined") return;
 
     const handler = (): void => {
+      // Re-check at fire time — completion may have happened since
+      // the effect ran, and we'd rather lose an abandon event than
+      // mis-attribute one on a successful finish.
+      if (isOnboardingCompletedInSession()) return;
       sendOnboardingEventBeacon([{ event_type: "onboarding_abandoned" }]);
     };
     window.addEventListener("beforeunload", handler);

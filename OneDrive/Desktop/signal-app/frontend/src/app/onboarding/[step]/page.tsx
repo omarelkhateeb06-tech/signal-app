@@ -16,6 +16,7 @@ import {
 } from "@/lib/onboarding";
 import { useOnboardingComplete } from "@/hooks/useProfile";
 import {
+  markOnboardingCompletedInSession,
   useOnboardingNav,
   useScreenViewEvent,
 } from "@/hooks/useOnboardingNav";
@@ -425,6 +426,15 @@ function Screen7(): JSX.Element {
         digest_preference: (store.digestPreference ?? "none") as DigestPreference,
         timezone: store.timezone ?? "UTC",
       });
+      // Synchronously latch "completed" in sessionStorage BEFORE the
+      // router.push to /feed. The abandon beacon (attached in the
+      // onboarding layout) checks this flag at fire time and skips
+      // emission — without it, any beforeunload that fires during the
+      // Finish → /feed transition (tab reload on /feed before the
+      // profile refetch settles, browser/extension flushing listeners
+      // eagerly) would mis-attribute a completed user as abandoning.
+      // (Second fix-it: Defect 1.)
+      markOnboardingCompletedInSession();
       store.reset();
       router.push("/feed");
     } catch (err) {
