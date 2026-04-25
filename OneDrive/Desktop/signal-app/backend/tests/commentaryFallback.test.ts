@@ -57,9 +57,10 @@ describe("buildFallbackCommentary — tier selection", () => {
     const out = buildFallbackCommentary(baseInput());
     expect(out.tier).toBe("tier1");
     expect(out.anomaly).toBeUndefined();
-    // Tier 1 should mention a matched topic by its human label
+    // Tier 1 thesis names a matched topic by its human label
     // ("foundation models") — anchors the fallback on the overlap.
-    expect(out.text.toLowerCase()).toContain("foundation models");
+    const combined = `${out.commentary.thesis} ${out.commentary.support}`.toLowerCase();
+    expect(combined).toContain("foundation models");
   });
 
   it("tier2: full profile + matched sector but NO matched topics", () => {
@@ -69,7 +70,8 @@ describe("buildFallbackCommentary — tier selection", () => {
     expect(out.tier).toBe("tier2");
     expect(out.anomaly).toBeUndefined();
     // Tier 2 still names the role.
-    expect(out.text.toLowerCase()).toContain("engineer");
+    const combined = `${out.commentary.thesis} ${out.commentary.support}`.toLowerCase();
+    expect(combined).toContain("engineer");
   });
 
   it("tier3 + anomaly: profile missing role", () => {
@@ -148,8 +150,9 @@ describe("buildFallbackCommentary — template banned-phrase scrub (defense-in-d
         storyWhyItMatters: "A game-changing release with revolutionary implications.",
       }),
     );
-    expect(out.text.toLowerCase()).not.toContain("game-changing");
-    expect(out.text.toLowerCase()).not.toContain("revolutionary");
+    const combined = `${out.commentary.thesis} ${out.commentary.support}`.toLowerCase();
+    expect(combined).not.toContain("game-changing");
+    expect(combined).not.toContain("revolutionary");
     // Tier becomes tier3 (the scrub is always an anomaly) and the
     // anomaly carries templateOffenders.
     expect(out.tier).toBe("tier3");
