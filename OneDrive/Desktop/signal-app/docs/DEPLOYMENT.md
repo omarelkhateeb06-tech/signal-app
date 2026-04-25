@@ -4,7 +4,7 @@
 
 - **Backend:** Express + TypeScript on Railway (`https://signal-app-production-cd33.up.railway.app`). Built from `backend/Dockerfile`. Auto-deploys on push to `main`.
 - **Frontend:** Next.js on Vercel. Auto-deploys on push to `main`; each deploy gets an immutable URL plus the `git-main` alias.
-- **Database:** Railway Postgres. Schema managed via Drizzle migrations under `backend/src/db/migrations/`.
+- **Database:** Railway Postgres. Schema managed via a homegrown migration runner (`backend/src/db/migrate.ts`) over SQL files under `backend/src/db/migrations/`.
 - **Cache/queue:** Railway Redis (BullMQ).
 
 ## Deploy Runbook
@@ -23,7 +23,7 @@ Migrations run automatically on every container start via the Dockerfile `CMD`:
 sh -c "node dist/db/migrate.js && node dist/server.js"
 ```
 
-`dist/db/migrate.js` is a programmatic migrator built on `drizzle-orm/node-postgres/migrator` (uses prod deps only — no `drizzle-kit` in the runner image). It reads `dist/db/migrations/` (copied into the image by the `build` script) and applies anything not yet recorded in the `__drizzle_migrations` table. Idempotent — a no-op once up to date. Typical cost on a warm DB is < 1s.
+`dist/db/migrate.js` is the homegrown migration runner. It uses prod deps only — no `drizzle-kit` in the runner image. It reads `dist/db/migrations/` (copied into the image by the `build` script), takes a Postgres advisory lock so two containers booting in parallel can't double-apply, and applies anything not yet recorded in the `schema_migrations` table. Each migration runs in its own `BEGIN`/`COMMIT`, with the row insert into `schema_migrations` in the same transaction — a partial apply leaves no row. Idempotent — a no-op once up to date. Typical cost on a warm DB is < 1s.
 
 **Fail-fast behavior:** if migrate exits non-zero, the container exits before binding the server port. Railway's health check fails, the deploy is marked failed, and the previous healthy container keeps serving traffic. The service never runs against a stale schema.
 
@@ -40,20 +40,24 @@ Preferred path is to let the container run migrations on deploy. If you must run
 ```bash
 export DATABASE_URL="<from Railway → Postgres → Connect>"
 cd backend
-npm run db:migrate       # drizzle-kit, uses devDeps
+npm run db:migrate       # homegrown runner via ts-node (uses devDeps)
 # or, after a build:
-node dist/db/migrate.js  # programmatic, same path prod uses
+node dist/db/migrate.js  # compiled runner, same path prod uses
 unset DATABASE_URL
 ```
 
 Never commit or paste `DATABASE_URL` anywhere.
 
+### Dev SQL access
+
+For ad-hoc SQL against the dev Neon database, use the Neon web editor. Direct `psql` connections need outbound port `5432`, which is blocked on UMN campus wifi — switch to a phone hotspot or the UMN VPN if you need a direct connection.
+
 ## Verifying a deploy
 
-- **Railway logs** should show `[migrate] running migrations from …` then `[migrate] done in Nms` immediately before the server starts listening.
+- **Railway logs** should show `[migrate] migrations dir: …` followed by `[migrate] lock acquired`, then either `[migrate] up to date (N applied, 0 pending)` on a no-op deploy or `[migrate] done — N applied in Xms` on a deploy with new migrations. The server starts listening only after the migrate step exits cleanly.
 - **Schema check** (Railway → Postgres → Query):
   ```sql
-  SELECT * FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 5;
+  SELECT filename, applied_at, applied_by FROM schema_migrations ORDER BY applied_at DESC LIMIT 5;
   ```
   Most recent entries should match the migrations you just shipped.
 - **Functional check:** hit `/health` on the backend, load a page that exercises the new schema on the frontend.

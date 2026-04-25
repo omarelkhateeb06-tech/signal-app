@@ -166,7 +166,7 @@ signal-app/
 │   │   ├── db/
 │   │   │   ├── index.ts                   # pg Pool + drizzle instance
 │   │   │   ├── schema.ts                  # SOURCE OF TRUTH
-│   │   │   ├── migrate.ts                 # runs on `npm start`
+│   │   │   ├── migrate.ts                 # homegrown runner; runs via Dockerfile CMD
 │   │   │   ├── migrations/
 │   │   │   │   ├── 0000_dashing_colleen_wing.sql
 │   │   │   │   ├── 0001_phase6_search_index.sql
@@ -176,7 +176,11 @@ signal-app/
 │   │   │   │   ├── 0005_phase11_api_keys.sql
 │   │   │   │   ├── 0006_phase11c5_story_aggregates.sql
 │   │   │   │   ├── 0007_phase12a_depth_variants.sql
-│   │   │   │   └── meta/_journal.json     # edit by hand alongside SQL
+│   │   │   │   ├── 0008_phase12b_onboarding.sql
+│   │   │   │   ├── 0009_phase12c_commentary_cache.sql
+│   │   │   │   ├── 0010_phase12d_expandable_commentary.sql
+│   │   │   │   ├── 0011_drop_phase12b_helper.sql
+│   │   │   │   └── 0012_deprecate_drizzle_migrations_table.sql
 │   │   │   ├── seed.ts
 │   │   │   ├── helpers.ts
 │   │   │   └── verify.ts
@@ -323,19 +327,78 @@ Full API reference: **`docs/API.md`**. Keep it in sync when you touch v2.
 
 A few tables from an abandoned earlier phase still exist in `schema.ts`. They have no controllers, no routes, no UI, no seed data. **Ignore them.** A future cleanup migration will drop them. Do not add code that reads or writes them, and do not link them from new features.
 
-### Migrations — hand-written SQL, not drizzle-kit generate
+### Migrations — hand-written SQL via homegrown runner
 
-The pattern since Phase 6:
+Migrations are hand-written `.sql` files applied by `backend/src/db/migrate.ts` — a homegrown runner that replaced `drizzle-kit migrate`. Drizzle ORM still owns runtime queries; only the schema-migration path swapped.
 
+**Workflow**
 1. Create `backend/src/db/migrations/NNNN_phaseXY_slug.sql` by hand. Plain SQL, one up-only file. No down migrations.
-2. Add an entry to `backend/src/db/migrations/meta/_journal.json` by hand — `idx`, `when` (ms timestamp), `tag` (file basename without `.sql`), `breakpoints: true`.
-3. Update `schema.ts` so types stay in sync with the DB.
-4. If the migration changes anything an existing test touches, update fixtures in the same commit.
-5. Run it in dev against a local Postgres (`npm run db:migrate` or just let `npm start` invoke `migrate.ts`).
+2. Update `schema.ts` so types stay in sync with the DB.
+3. If the migration changes anything an existing test touches, update fixtures in the same commit.
+4. Run `npm run db:migrate --workspace=backend` locally to apply against dev. `--dry-run` validates without writing.
+5. Commit. On deploy, the Dockerfile CMD runs the runner against prod before binding the server port (see `docs/DEPLOYMENT.md`).
 
-**Do not** run `drizzle-kit generate`. The `db:generate` script exists but would produce a migration that doesn't match our hand-written conventions. Drizzle-kit lives in the repo for `db:studio` (DB browser) and nothing else.
+`drizzle-kit migrate` and `drizzle-kit generate` are retired — the corresponding npm scripts are gone. `drizzle-kit` stays in `devDependencies` only for `db:studio` (DB browser).
 
-`COMMENT ON COLUMN` is a valid migration content when no DDL is needed — see `0007_phase12a_depth_variants.sql` for the reference pattern.
+**schema_migrations table**
+
+The runner's bookkeeping — the source of truth for whether a given migration has been applied. DDL:
+
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  filename TEXT PRIMARY KEY,
+  content_hash TEXT NOT NULL,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  applied_by TEXT
+);
+```
+
+- `filename` — migration filename (e.g. `0012_deprecate_drizzle_migrations_table.sql`); PK.
+- `content_hash` — SHA-256 hex digest of the migration's normalized content. Spec: hash the UTF-8 file bytes after (1) stripping a leading U+FEFF BOM if present, then (2) replacing every `\r\n` sequence with `\n`. Bare `\r` is not normalized. Output is the lowercase hex digest. This spec is stable across Windows CRLF and Linux LF line endings. Reproducible from any tool with SHA-256: read file bytes, strip a leading U+FEFF if present, replace `\r\n` with `\n`, take SHA-256, output as lowercase hex. The runner exports `lfNormalize(buf)` and `sha256Hex(s)` for in-repo callers.
+- `applied_at` — apply timestamp, default `now()`.
+- `applied_by` — identifier for who applied the migration; resolved as `process.env.GIT_COMMIT_SHA ?? process.env.USER ?? process.env.USERNAME ?? null`.
+
+The table is auto-bootstrapped: the runner runs `CREATE TABLE IF NOT EXISTS schema_migrations (...)` before reading applied rows on every run. A fresh database needs no manual setup; an existing database with the table is unaffected.
+
+**Failure modes**
+
+The runner refuses to proceed in two cases. Both are hard errors with no auto-recovery — the emitted message includes the row's `applied_at` and `applied_by` so you can find the offending commit.
+
+*content_hash mismatch* — the file on disk hashes to a different value than what was recorded when the migration was applied (i.e. the file was edited post-apply). Detection exists because applied migrations are immutable history; without it, the runner couldn't distinguish "already applied" from "applied a different version that is now this." **Recovery: revert the edit and create a new corrective migration. Never edit an applied file.** The terminal message:
+
+> `content_hash mismatch for "<filename>": disk=<disk-hash> db=<db-hash> (applied_at=<iso>, applied_by=<user|null>). Recovery: revert the file edit (migrations are immutable once applied), or if the edit is intentional, manually UPDATE schema_migrations.content_hash after confirming the change is a no-op against current schema.`
+
+*missing file* — `schema_migrations` has a row whose `filename` does not exist on disk. Detection exists because the codebase no longer matches the database's recorded history; silently skipping would let drift accumulate. **Recovery: restore the file from git. Never delete the `schema_migrations` row.** The terminal message:
+
+> `applied migration "<filename>" (db=<hash>, applied_at=<iso>, applied_by=<user|null>) has no corresponding file on disk. Recovery: restore the file from git history or, if intentionally removed, DELETE the row from schema_migrations after confirming the schema state.`
+
+The runner's own recovery hints describe escape hatches (`UPDATE schema_migrations.content_hash` for hash drift, `DELETE` of the row for missing file). These exist for narrow intentional cases — e.g. a comment-only fix to an applied file. Default to creating a corrective migration for hash drift, and restoring from git for missing files; reach for the escape hatches only after confirming the live schema state and only with a clear reason.
+
+**Authoring rules**
+
+**Schema-qualification.** The runner doesn't `SET search_path`; the session inherits whatever the database role's default is. A migration touching an object outside the default search_path — e.g. `drizzle.__drizzle_migrations` — must spell the schema explicitly: `COMMENT ON TABLE drizzle.__drizzle_migrations …`, not the bare table name.
+
+**Session state.** All pending migrations in one run share a single client. A non-`LOCAL` `SET` (`statement_timeout`, `role`, `search_path`, …) persists past the migration's `COMMIT` and leaks into every subsequent migration in that run. If a migration legitimately needs session state, use `SET LOCAL` so it expires at transaction end. This is an authoring rule, not a runner bug — the shared-client design is intentional, and it's the same reason "just `SET search_path` at the top of the file" is the wrong answer to the rule above.
+
+**Comment-only migrations.** When metadata is the only change and no DDL is needed, a one-line `COMMENT ON TABLE` / `COMMENT ON COLUMN` is the canonical form. See `0007_phase12a_depth_variants.sql` and `0012_deprecate_drizzle_migrations_table.sql` for reference patterns.
+
+**Manual prod SQL**
+
+**Default path.** State changes go through migrations, not `psql`. The runner is the canonical way to write to prod — every change has a filename, a hash, and a row in `schema_migrations`. Read-only operations (introspection, `EXPLAIN`, sampling) are fine; the convention is about writes.
+
+**Emergency override.** If a manual write is genuinely necessary — incident response where the deploy cycle is too slow — it has to be a conscious decision, and the exact SQL must be captured in a follow-up idempotent migration committed before the next deploy. Idempotent because dev/staging won't have the manual change applied; running the same SQL there must be a clean no-op (`CREATE … IF NOT EXISTS`, `DROP … IF EXISTS`, guarded `INSERT … ON CONFLICT`, etc.). Document the action somewhere recoverable — commit message, GitHub issue, or session note — so a future reader can reconstruct what happened and when.
+
+**Why this exists.** `0011_drop_phase12b_helper.sql` is a corrective migration for a stray `_phase12b_jsonb_to_text_array` function found on prod that no migration ever created — origin: manual SQL during `0008`'s development that never made it into a committed file. The function existed on prod but not dev; the convention exists because that gap is exactly what migrations are supposed to prevent.
+
+**Deprecation**
+
+**Deleted: `meta/_journal.json`.** drizzle-kit's old per-folder bookkeeping. The new runner tracks state in `schema_migrations` and doesn't read or write the journal, so the file (and the now-empty `meta/` directory) was removed.
+
+**Retained read-only: `drizzle.__drizzle_migrations`.** drizzle-kit's pre-runner migration log. Migration `0012_deprecate_drizzle_migrations_table.sql` applies a deprecation comment to the table; the table itself is kept as historical audit of what drizzle-kit thought it had applied before the cutover. The comment is queryable — `SELECT obj_description('drizzle.__drizzle_migrations'::regclass);` returns the deprecation string. Don't write to the table; the runner's source of truth is `schema_migrations`.
+
+**0001 hash artifact**
+
+`0001_phase6_search_index.sql`'s hash in `schema_migrations` differs from the value drizzle-kit recorded in `__drizzle_migrations` for the same file. This is a benign quirk in drizzle-kit's old hash function — the file is byte-identical since creation, and the new runner's hash is the source of truth going forward. For context: 8 of the 10 hashes drizzle-kit recorded did match the runner's recomputation, so 0001 is an outlier, not the pattern.
 
 ### Invariants
 
@@ -685,9 +748,8 @@ Same as above, **plus**:
 ### Add a new table
 
 1. Hand-write the migration SQL (§7).
-2. Update `meta/_journal.json` (same commit).
-3. Add the pgTable + inferred types to `schema.ts` (same commit).
-4. Add a row-shape section to `docs/SCHEMA.md` if the table is content-adjacent.
+2. Add the pgTable + inferred types to `schema.ts` (same commit).
+3. Add a row-shape section to `docs/SCHEMA.md` if the table is content-adjacent.
 
 ### Add a new background job
 
