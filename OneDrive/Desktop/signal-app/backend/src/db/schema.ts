@@ -445,7 +445,9 @@ export const commentaryCache = pgTable(
       .references(() => stories.id, { onDelete: "cascade" }),
     depth: text("depth").$type<DepthLevel>().notNull(),
     profileVersion: integer("profile_version").notNull(),
-    commentary: text("commentary").notNull(),
+    commentary: jsonb("commentary")
+      .$type<{ thesis: string; support: string }>()
+      .notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
     lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -71,6 +71,13 @@
       "when": 1777284000008,
       "tag": "0009_phase12c_commentary_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1777284000009,
+      "tag": "0010_phase12d_expandable_commentary",
+      "breakpoints": true
     }
   ]
 }
