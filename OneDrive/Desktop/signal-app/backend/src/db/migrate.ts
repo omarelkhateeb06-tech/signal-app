@@ -154,7 +154,7 @@ function validate(files: MigrationFile[], applied: AppliedRow[]): ValidationOk |
     const f = fileByName.get(a.filename);
     if (!f) {
       errors.push(
-        `applied migration "${a.filename}" (applied_at=${a.appliedAt.toISOString()}, applied_by=${a.appliedBy ?? "null"}) has no corresponding file on disk. Recovery: restore the file from git history or, if intentionally removed, DELETE the row from ${SCHEMA_MIGRATIONS_TABLE} after confirming the schema state.`
+        `applied migration "${a.filename}" (db=${a.contentHash}, applied_at=${a.appliedAt.toISOString()}, applied_by=${a.appliedBy ?? "null"}) has no corresponding file on disk. Recovery: restore the file from git history or, if intentionally removed, DELETE the row from ${SCHEMA_MIGRATIONS_TABLE} after confirming the schema state.`
       );
       continue;
     }
