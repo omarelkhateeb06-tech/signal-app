@@ -4,6 +4,7 @@ import { ExternalLink, MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
+import { Commentary } from "./Commentary";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import type { Story } from "@/types/story";
 
@@ -36,7 +37,6 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
     commentaryQuery.data?.commentary ?? story.commentary ?? null;
   const isCommentaryLoading =
     resolvedCommentary === null && commentaryQuery.isFetching;
-  const displayText = resolvedCommentary ?? story.why_it_matters_to_you;
 
   return (
     <article className="space-y-6">
@@ -63,7 +63,14 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </div>
       </header>
 
-      <PersonalizationBox text={displayText} loading={isCommentaryLoading} />
+      {resolvedCommentary ? (
+        <Commentary commentary={resolvedCommentary} />
+      ) : (
+        <PersonalizationBox
+          text={story.why_it_matters_to_you}
+          loading={isCommentaryLoading}
+        />
+      )}
 
       <section className="space-y-4">
         <div>
