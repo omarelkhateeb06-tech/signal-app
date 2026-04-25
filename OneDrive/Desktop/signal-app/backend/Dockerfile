@@ -49,9 +49,8 @@ COPY --from=builder --chown=signal:nodejs /app/package.json ./
 RUN npm install --omit=dev && \
     npm cache clean --force
 
-# Copy compiled code + drizzle config (for migrations)
+# Copy compiled code (includes migration runner + .sql migrations)
 COPY --from=builder --chown=signal:nodejs /app/dist ./dist
-COPY --from=builder --chown=signal:nodejs /app/drizzle.config.ts ./drizzle.config.ts
 
 USER signal
 
