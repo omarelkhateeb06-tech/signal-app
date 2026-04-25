@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/db/migrations','dist/db/migrations',{recursive:true})\"",
+    "build": "tsc -p tsconfig.json && node -e \"const fs=require('fs'),p=require('path'),s='src/db/migrations',d='dist/db/migrations';fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s).sort())if(f.endsWith('.sql'))fs.copyFileSync(p.join(s,f),p.join(d,f))\"",
     "start": "node dist/db/migrate.js && node dist/server.js",
     "start:no-migrate": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
