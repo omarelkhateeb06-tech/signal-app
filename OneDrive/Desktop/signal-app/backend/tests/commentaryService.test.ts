@@ -29,6 +29,7 @@ jest.mock("../src/db", () => ({
 }));
 
 import { getOrGenerateCommentary } from "../src/services/commentaryService";
+import { COMMENTARY_PREFILL } from "../src/services/commentaryPromptV2";
 
 const goodCommentary = {
   thesis:
@@ -38,11 +39,12 @@ const goodCommentary = {
 };
 
 function haikuJsonText(value: { thesis: string; support: string }): string {
-  // Service prepends the prefill to whatever the model returned; in
-  // tests we model that by returning the full JSON object as the
-  // continuation (the prefill prepend is exercised in the haiku-client
-  // unit test — here we just want the full string the parser sees).
-  return JSON.stringify(value);
+  // The Anthropic SDK returns only the model's continuation — the bytes
+  // after the assistant prefill. The haiku client re-attaches the prefill
+  // (COMMENTARY_PREFILL = "{") before the parser sees the assembled text.
+  // Strip the leading prefill bytes here so the post-prepend payload is a
+  // single well-formed JSON object rather than e.g. "{{...".
+  return JSON.stringify(value).slice(COMMENTARY_PREFILL.length);
 }
 
 describe("commentaryService — getOrGenerateCommentary", () => {
