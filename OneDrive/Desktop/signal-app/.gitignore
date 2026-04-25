@@ -41,3 +41,6 @@ coverage/
 .turbo/
 .vercel/
 .env.vault
+
+# Session working notes (handoffs between sessions; not part of PRs)
+docs/sessions/
