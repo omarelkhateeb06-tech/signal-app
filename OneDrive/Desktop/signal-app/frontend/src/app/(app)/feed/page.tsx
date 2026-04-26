@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import { useStories } from "@/hooks/useStories";
 import { useTeams } from "@/hooks/useTeams";
 import { useTeamsStore } from "@/store/teamsStore";
@@ -37,6 +39,16 @@ export default function FeedPage(): JSX.Element {
     fetchNextPage,
   } = useStories({ sectors });
 
+  const queryClient = useQueryClient();
+  // Prefix-match: any in-flight ["feed", …] query — including the
+  // initial load, sector-switch refetches, and the manual invalidation
+  // below — keeps the icon spinning.
+  const isFetchingFeed = useIsFetching({ queryKey: ["feed"] }) > 0;
+  const handleRefresh = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ["feed"] });
+    void queryClient.invalidateQueries({ queryKey: ["commentary"] });
+  };
+
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -60,7 +72,21 @@ export default function FeedPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <header className="space-y-3">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Your feed</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Your feed</h1>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isFetchingFeed}
+            aria-label="Refresh feed"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${isFetchingFeed ? "animate-spin" : ""}`}
+              aria-hidden
+            />
+          </button>
+        </div>
         <SectorFilter selected={sectors} onChange={setSectors} />
         {!isLoading && (
           <p className="text-xs text-slate-500">

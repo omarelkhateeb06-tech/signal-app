@@ -266,57 +266,109 @@ export default function SettingsPage(): JSX.Element {
 
       <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
         <div>
-          <h2 className="text-lg font-semibold">Profile</h2>
-          <p className="text-xs text-muted-foreground">Signed in as {user?.email}</p>
+          <h2 className="text-lg font-semibold">Commentary depth & topics</h2>
+          <p className="text-xs text-muted-foreground">
+            How deep the commentary goes, and which topics within each sector.
+          </p>
         </div>
-        <form onSubmit={onSubmitProfile} className="space-y-4" noValidate>
-          <div className="space-y-1">
-            <label htmlFor="name" className="text-sm font-medium">
-              Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              autoComplete="name"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              {...register("name")}
-            />
-            {errors.name && (
-              <p className="text-xs text-destructive">{errors.name.message}</p>
-            )}
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Commentary depth</p>
+          <p className="text-xs text-muted-foreground">
+            How deep the commentary goes on each story. Change any time.
+          </p>
+          <div
+            role="radiogroup"
+            aria-label="Commentary depth"
+            className="grid grid-cols-1 gap-2 sm:grid-cols-3"
+          >
+            {DEPTH_PREFERENCES.map((option) => {
+              const checked = depthPreference === option.value;
+              return (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer flex-col gap-1 rounded-md border p-3 text-sm ${
+                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="depth_preference"
+                      value={option.value}
+                      checked={checked}
+                      onChange={() =>
+                        setDepthPreference(option.value as DepthPreference)
+                      }
+                      className="h-4 w-4"
+                    />
+                    <span className="font-medium">{option.label}</span>
+                  </span>
+                  {option.description && (
+                    <span className="text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
           </div>
-          <div className="space-y-1">
-            <label htmlFor="profile_picture_url" className="text-sm font-medium">
-              Profile picture URL
-            </label>
-            <input
-              id="profile_picture_url"
-              type="url"
-              placeholder="https://…"
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              {...register("profile_picture_url")}
-            />
-            {errors.profile_picture_url && (
-              <p className="text-xs text-destructive">{errors.profile_picture_url.message}</p>
-            )}
+        </div>
+
+        {sectors.length > 0 && (
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Topics</p>
+              <p className="text-xs text-muted-foreground">
+                Narrow the commentary within each sector. Leaving all topics
+                unchecked for a sector means you want the full sector feed.
+              </p>
+            </div>
+            {sectors.map((sector) => {
+              const options = TOPICS_BY_SECTOR[sector] ?? [];
+              if (options.length === 0) return null;
+              const sectorLabel =
+                SECTORS.find((s) => s.value === sector)?.label ?? sector;
+              return (
+                <div key={sector} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {sectorLabel}
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {options.map((option) => {
+                      const checked = topics.some(
+                        (t) => t.sector === sector && t.topic === option.value,
+                      );
+                      return (
+                        <label
+                          key={option.value}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${
+                            checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTopic(sector, option.value)}
+                            className="h-4 w-4"
+                          />
+                          {option.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
-            >
-              {isSubmitting ? "Saving…" : "Save profile"}
-            </button>
-          </div>
-        </form>
+        )}
       </section>
 
       <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
         <div>
-          <h2 className="text-lg font-semibold">Interests</h2>
+          <h2 className="text-lg font-semibold">Sectors & goals</h2>
           <p className="text-xs text-muted-foreground">
-            What we use to personalize your feed and insights.
+            What you&apos;re tracking and what you want to get out of the feed.
           </p>
         </div>
 
@@ -343,6 +395,44 @@ export default function SettingsPage(): JSX.Element {
               );
             })}
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Goals</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {GOALS.map((goal) => {
+              const checked = goals.includes(goal.value);
+              return (
+                <label
+                  key={goal.value}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${
+                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleGoal(goal.value)}
+                    className="h-4 w-4"
+                  />
+                  {goal.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* The "Save interests" button at the bottom of this section is
+          the single commit point for everything in the three sections
+          above — depth, topics, sectors, goals, role, domain, seniority
+          all flow through one saveInterests mutation. */}
+      <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold">Profile basics</h2>
+          <p className="text-xs text-muted-foreground">
+            Helps us calibrate commentary to your role and seniority.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -406,122 +496,6 @@ export default function SettingsPage(): JSX.Element {
           </select>
         </div>
 
-        {sectors.length > 0 && (
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium">Topics</p>
-              <p className="text-xs text-muted-foreground">
-                Narrow the commentary within each sector. Leaving all topics
-                unchecked for a sector means you want the full sector feed.
-              </p>
-            </div>
-            {sectors.map((sector) => {
-              const options = TOPICS_BY_SECTOR[sector] ?? [];
-              if (options.length === 0) return null;
-              const sectorLabel =
-                SECTORS.find((s) => s.value === sector)?.label ?? sector;
-              return (
-                <div key={sector} className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {sectorLabel}
-                  </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {options.map((option) => {
-                      const checked = topics.some(
-                        (t) => t.sector === sector && t.topic === option.value,
-                      );
-                      return (
-                        <label
-                          key={option.value}
-                          className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${
-                            checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleTopic(sector, option.value)}
-                            className="h-4 w-4"
-                          />
-                          {option.label}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Commentary depth</p>
-          <p className="text-xs text-muted-foreground">
-            How deep the commentary goes on each story. Change any time.
-          </p>
-          <div
-            role="radiogroup"
-            aria-label="Commentary depth"
-            className="grid grid-cols-1 gap-2 sm:grid-cols-3"
-          >
-            {DEPTH_PREFERENCES.map((option) => {
-              const checked = depthPreference === option.value;
-              return (
-                <label
-                  key={option.value}
-                  className={`flex cursor-pointer flex-col gap-1 rounded-md border p-3 text-sm ${
-                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="depth_preference"
-                      value={option.value}
-                      checked={checked}
-                      onChange={() =>
-                        setDepthPreference(option.value as DepthPreference)
-                      }
-                      className="h-4 w-4"
-                    />
-                    <span className="font-medium">{option.label}</span>
-                  </span>
-                  {option.description && (
-                    <span className="text-xs text-muted-foreground">
-                      {option.description}
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Goals</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {GOALS.map((goal) => {
-              const checked = goals.includes(goal.value);
-              return (
-                <label
-                  key={goal.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm ${
-                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleGoal(goal.value)}
-                    className="h-4 w-4"
-                  />
-                  {goal.label}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="flex justify-end">
           <button
             type="button"
@@ -532,6 +506,54 @@ export default function SettingsPage(): JSX.Element {
             {updateProfile.isPending ? "Saving…" : "Save interests"}
           </button>
         </div>
+      </section>
+
+      <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold">Account</h2>
+          <p className="text-xs text-muted-foreground">Signed in as {user?.email}</p>
+        </div>
+        <form onSubmit={onSubmitProfile} className="space-y-4" noValidate>
+          <div className="space-y-1">
+            <label htmlFor="name" className="text-sm font-medium">
+              Name
+            </label>
+            <input
+              id="name"
+              type="text"
+              autoComplete="name"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              {...register("name")}
+            />
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name.message}</p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="profile_picture_url" className="text-sm font-medium">
+              Profile picture URL
+            </label>
+            <input
+              id="profile_picture_url"
+              type="url"
+              placeholder="https://…"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              {...register("profile_picture_url")}
+            />
+            {errors.profile_picture_url && (
+              <p className="text-xs text-destructive">{errors.profile_picture_url.message}</p>
+            )}
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {isSubmitting ? "Saving…" : "Save profile"}
+            </button>
+          </div>
+        </form>
       </section>
 
       <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">

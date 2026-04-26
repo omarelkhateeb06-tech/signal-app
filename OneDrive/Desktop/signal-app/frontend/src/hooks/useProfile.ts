@@ -72,6 +72,16 @@ export function useOnboardingEvents(): ReturnType<
  * (app) layout's useRequireOnboarded keeps reading the stale cache and
  * (if completed_at was previously null and has just been set elsewhere)
  * can bounce back to /onboarding/1 after a perfectly successful save.
+ *
+ * Also invalidates the feed and per-story commentary caches because a
+ * Settings save can change anything that affects ranking or commentary
+ * generation (sectors, role, domain, seniority, depth, topics, goals).
+ * Without this, navigating back to the feed after a Settings save shows
+ * the pre-save copy until the next foreground refetch — which is the
+ * "no in-app affordance for 'my settings changed'" UX gap reported by
+ * users. ["feed"] and ["commentary"] are TanStack prefix matches so
+ * every variant (per-sector, per-story, per-depth) is invalidated in
+ * one call.
  */
 export function useUpdateMyProfile(): ReturnType<
   typeof useMutation<UserProfile, Error, UpdateProfileInput>
@@ -80,7 +90,11 @@ export function useUpdateMyProfile(): ReturnType<
   return useMutation({
     mutationFn: updateMyProfileRequest,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: PROFILE_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["feed"] }),
+        queryClient.invalidateQueries({ queryKey: ["commentary"] }),
+      ]);
     },
   });
 }
