@@ -66,12 +66,17 @@ const BANNED_PATTERNS: readonly RegExp[] = BANNED_PHRASES.map(
 // 12d — banned openers (positional, per-field). The prompt forbids
 // thesis/support from opening with these patronizing audience-framing
 // templates; this is the post-generation trip-wire. Anchored at start
-// (modulo leading whitespace), case-insensitive, and require a word
-// after so we don't flag e.g. "As you've already seen" via overly
-// loose matching — the `\w+` is the audience verb that makes the
-// opener feel addressed-at rather than analytical.
+// (modulo leading whitespace), case-insensitive. The `As you\b` pattern
+// catches both bare-verb ("As you build…") and apostrophe-contracted
+// ("As you're thinking…") forms via the word boundary after `you`.
+// `For (a|an|the) \w+` catches role-framing openers ("For an ML
+// engineer…", "For a researcher…") and is intentionally permissive —
+// it false-positives on temporal phrasings like "For a brief moment…",
+// which is acceptable because a hit demotes to Tier 3 fallback rather
+// than erroring.
 export const BANNED_OPENERS: readonly RegExp[] = [
-  /^\s*As you\s+\w+/i,
+  /^\s*As you\b/i,
+  /^\s*For (a|an|the)\s+\w+/i,
   /^\s*For someone\s+\w+/i,
 ] as const;
 
