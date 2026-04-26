@@ -48,17 +48,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         <h1 className="text-3xl font-bold leading-tight text-slate-900">
           {story.headline}
         </h1>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm text-slate-600">
-            {story.author && (
-              <div>
-                <span className="font-medium text-slate-900">{story.author.name}</span>
-                {story.author.bio && (
-                  <span className="ml-2 text-slate-500">{story.author.bio}</span>
-                )}
-              </div>
-            )}
-          </div>
+        <div className="flex items-center justify-end">
           <StorySaveButton story={story} />
         </div>
       </header>
@@ -75,18 +65,10 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
       <section className="space-y-4">
         <div>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Context
+            From the source
           </h2>
           <p className="whitespace-pre-line text-base leading-relaxed text-slate-800">
             {story.context}
-          </p>
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-            Why it matters
-          </h2>
-          <p className="whitespace-pre-line text-base leading-relaxed text-slate-800">
-            {story.why_it_matters}
           </p>
         </div>
       </section>
