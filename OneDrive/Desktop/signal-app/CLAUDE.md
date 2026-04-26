@@ -396,9 +396,14 @@ The runner's own recovery hints describe escape hatches (`UPDATE schema_migratio
 
 **Retained read-only: `drizzle.__drizzle_migrations`.** drizzle-kit's pre-runner migration log. Migration `0012_deprecate_drizzle_migrations_table.sql` applies a deprecation comment to the table; the table itself is kept as historical audit of what drizzle-kit thought it had applied before the cutover. The comment is queryable — `SELECT obj_description('drizzle.__drizzle_migrations'::regclass);` returns the deprecation string. Don't write to the table; the runner's source of truth is `schema_migrations`.
 
-**0001 hash artifact**
+**0001 and 0008 hash artifacts**
 
-`0001_phase6_search_index.sql`'s hash in `schema_migrations` differs from the value drizzle-kit recorded in `__drizzle_migrations` for the same file. This is a benign quirk in drizzle-kit's old hash function — the file is byte-identical since creation, and the new runner's hash is the source of truth going forward. For context: 8 of the 10 hashes drizzle-kit recorded did match the runner's recomputation, so 0001 is an outlier, not the pattern.
+Two of the ten migrations applied via drizzle-kit recorded a hash in `__drizzle_migrations` that differs from the runner's recomputation of the same file:
+
+- `0001_phase6_search_index.sql`: drizzle-kit `797c2f6aa6b0bb8987eb009de9429f0b3fa7fcc5832851755b26b6d0c6077411` vs runner-spec `eb19c6774fde809b0cc287a7ec193fc710fc92f19d4841d598325c875780d096`.
+- `0008_phase12b_onboarding.sql`: drizzle-kit `09a30af9de2d00af491e62475529659cd26d60dc09839a150c1af5f0ec5d31b8` vs runner-spec `dabd101b958bdd0d3ee01108a3de065b1d9f64c618a48871cb4daaf6135a53b4`.
+
+Both are benign quirks of drizzle-kit's old hash function, not file-integrity or line-ending issues — the runner's LF-normalize + BOM-strip + SHA-256 spec hashes both files to the same value across Windows CRLF and Linux LF. The runner-spec hashes are the source of truth going forward; `schema_migrations` records them and the runner re-computes on every boot. Don't try to reconcile the drizzle-kit values; tracked here for archaeology.
 
 ### Invariants
 
