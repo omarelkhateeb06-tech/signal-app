@@ -3,7 +3,7 @@
 // This stubs getOrGenerateCommentary at the service module boundary
 // (rather than wiring a full mock DB through every cache-hit / Haiku /
 // fallback codepath) because the service itself is covered end-to-end
-// by commentaryFallback / commentaryPrompt / matchedInterests unit
+// by commentaryFallback / commentaryPromptV2 / matchedInterests unit
 // suites. What we're guarding here is the controller contract:
 //   - auth gate
 //   - uuid validation
@@ -87,7 +87,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
       { depthPreference: "technical", profileVersion: 4 },
     ]);
     getOrGenerateCommentaryMock.mockResolvedValueOnce({
-      commentary: "A deep-insider take on the release.",
+      commentary: { thesis: "A short thesis.", support: "An elaborating support body." },
       depth: "technical",
       profileVersion: 4,
       source: "haiku",
@@ -99,7 +99,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      commentary: "A deep-insider take on the release.",
+      commentary: { thesis: "A short thesis.", support: "An elaborating support body." },
       depth: "technical",
       profile_version: 4,
       source: "haiku",
@@ -121,7 +121,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
       { depthPreference: "accessible", profileVersion: 1 },
     ]);
     getOrGenerateCommentaryMock.mockResolvedValueOnce({
-      commentary: "…",
+      commentary: { thesis: "…", support: "…" },
       depth: "technical",
       profileVersion: 1,
       source: "cache",
@@ -140,7 +140,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
       { depthPreference: null, profileVersion: 1 },
     ]);
     getOrGenerateCommentaryMock.mockResolvedValueOnce({
-      commentary: "…",
+      commentary: { thesis: "…", support: "…" },
       depth: "standard",
       profileVersion: 1,
       source: "fallback_tier2",

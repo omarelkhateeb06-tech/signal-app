@@ -1,8 +1,11 @@
 // Phase 12c — deterministic fallback commentary.
+// Phase 12d — native `{thesis, support}` shape; banned-opener regex
+// gate; expanded Tier-3 reason union for JSON-shape failures.
 //
-// When Haiku is unreachable, times out, returns empty, or emits banned
-// clichés, we fall back to a locally-constructed template so the feed
-// is never left with a null "why this matters". The template is tiered
+// When Haiku is unreachable, times out, returns empty, fails to emit
+// parseable JSON, or trips a banned-phrase / banned-opener check, we
+// fall back to a locally-constructed structured commentary so the feed
+// is never left with a null "why this matters". Templates are tiered
 // by how much personalization context is available:
 //
 //   Tier 1 — role + sector match + at least one matched topic.
@@ -18,9 +21,14 @@
 //
 // Banned-phrase enforcement: we reject a short list of well-known
 // commentary clichés ("game-changing", "revolutionary", etc.) both in
-// Haiku output (reroute → fallback with reason="banned_phrase") and in
-// the fallback templates themselves (defense-in-depth; a template that
-// trips this is a code bug and logs an anomaly).
+// Haiku output (reroute → fallback with reason="haiku_banned_phrase")
+// and in the fallback templates themselves (defense-in-depth; a
+// template that trips this is a code bug and logs an anomaly).
+//
+// Banned-opener enforcement (12d): the prompt asks the model not to
+// open thesis or support with "As you …" or "For someone …". The
+// regex check below is the post-generation trip-wire — positional, run
+// per-field, separate from the substring banned-phrase list.
 //
 // Pure module — no DB, no I/O. Structured-log emission is done through
 // a caller-supplied logger so tests don't need to monkeypatch console.
@@ -55,6 +63,18 @@ const BANNED_PATTERNS: readonly RegExp[] = BANNED_PHRASES.map(
   (p) => new RegExp(`\\b${p.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`, "i"),
 );
 
+// 12d — banned openers (positional, per-field). The prompt forbids
+// thesis/support from opening with these patronizing audience-framing
+// templates; this is the post-generation trip-wire. Anchored at start
+// (modulo leading whitespace), case-insensitive, and require a word
+// after so we don't flag e.g. "As you've already seen" via overly
+// loose matching — the `\w+` is the audience verb that makes the
+// opener feel addressed-at rather than analytical.
+export const BANNED_OPENERS: readonly RegExp[] = [
+  /^\s*As you\s+\w+/i,
+  /^\s*For someone\s+\w+/i,
+] as const;
+
 export interface BannedPhraseResult {
   clean: boolean;
   offenders: string[];
@@ -77,6 +97,36 @@ export function checkBannedPhrases(text: string): BannedPhraseResult {
   return { clean: offenders.length === 0, offenders };
 }
 
+export interface BannedOpenerResult {
+  clean: boolean;
+  // Per-field offending pattern source. Empty when clean. Field names
+  // match the structured commentary shape so the anomaly log can point
+  // an operator at the exact field that tripped.
+  offenders: { field: "thesis" | "support"; pattern: string }[];
+}
+
+/**
+ * 12d — Check thesis and support openers against `BANNED_OPENERS`.
+ * Independent of `checkBannedPhrases`; both run during the cache-miss
+ * Haiku gate, in order (phrase first, then opener). Empty `offenders`
+ * means clean; non-empty triggers a `haiku_banned_opener` fallback.
+ */
+export function checkBannedOpeners(commentary: {
+  thesis: string;
+  support: string;
+}): BannedOpenerResult {
+  const offenders: { field: "thesis" | "support"; pattern: string }[] = [];
+  for (const pat of BANNED_OPENERS) {
+    if (pat.test(commentary.thesis)) {
+      offenders.push({ field: "thesis", pattern: pat.source });
+    }
+    if (pat.test(commentary.support)) {
+      offenders.push({ field: "support", pattern: pat.source });
+    }
+  }
+  return { clean: offenders.length === 0, offenders };
+}
+
 export type FallbackTier = "tier1" | "tier2" | "tier3";
 
 export type Tier3Reason =
@@ -85,6 +135,10 @@ export type Tier3Reason =
   | "haiku_api_error"
   | "haiku_no_api_key"
   | "haiku_banned_phrase"
+  // 12d additions — JSON-shape and banned-opener gate failures.
+  | "haiku_json_parse"
+  | "haiku_json_shape"
+  | "haiku_banned_opener"
   // Post-insert re-read came up empty — no row from onConflictDoNothing
   // and no row from the follow-up select. Unreachable under the current
   // write path (the insert either returns our row or loses to a racer
@@ -112,8 +166,16 @@ export interface FallbackInput {
   haikuFailureReason?: Tier3Reason;
 }
 
+// 12d — fallback now produces the same shape as Haiku output. Single
+// data shape across the system; no first-sentence-split heuristic at
+// the consumer.
+export interface FallbackCommentary {
+  thesis: string;
+  support: string;
+}
+
 export interface FallbackResult {
-  text: string;
+  commentary: FallbackCommentary;
   tier: FallbackTier;
   // Populated when tier === "tier3". The service consumer emits this
   // via its structured logger exactly once per fallback invocation.
@@ -147,23 +209,23 @@ function roleFragment(role: string): string {
   // is the failure-mode copy.
   switch (role) {
     case "engineer":
-      return "As an engineer";
+      return "engineers";
     case "researcher":
-      return "As a researcher";
+      return "researchers";
     case "manager":
-      return "As a manager";
+      return "managers";
     case "vc":
-      return "As an investor";
+      return "investors";
     case "analyst":
-      return "As an analyst";
+      return "analysts";
     case "founder":
-      return "As a founder";
+      return "founders";
     case "executive":
-      return "As an executive";
+      return "executives";
     case "student":
-      return "As a student";
+      return "students";
     default:
-      return "For anyone tracking this space";
+      return "anyone tracking this space";
   }
 }
 
@@ -178,26 +240,38 @@ function topicFragment(topics: string[]): string {
   return `${display.slice(0, -1).join(", ")}, and ${display[display.length - 1]}`;
 }
 
-function buildTier1(i: FallbackInput): string {
+// 12d — All builders return a `{thesis, support}` pair. Thesis is a
+// short standalone take; support elaborates without restating. Phrasing
+// is intentionally analytical, not addressed-at-reader, so the same
+// banned-opener regexes that gate Haiku output don't trip these.
+
+function buildTier1(i: FallbackInput): FallbackCommentary {
   const role = roleFragment(i.profile.role!);
   const sector = sectorLabel(i.storySector);
   const topics = topicFragment(i.matched.matchedTopics);
-  // Short, concrete, no superlatives. The cliché list above would
-  // catch us if we strayed.
-  return `${role} tracking ${sector}, this touches ${topics} — the area you flagged as most relevant. ${i.storyWhyItMatters}`;
+  return {
+    thesis: `This story sits in ${sector} and touches ${topics} — areas ${role} tracking the space have flagged as relevant.`,
+    support: i.storyWhyItMatters,
+  };
 }
 
-function buildTier2(i: FallbackInput): string {
+function buildTier2(i: FallbackInput): FallbackCommentary {
   const role = roleFragment(i.profile.role!);
   const sector = sectorLabel(i.storySector);
-  return `${role} following ${sector}, this is worth your attention: ${i.storyWhyItMatters}`;
+  return {
+    thesis: `This story is worth attention from ${role} following ${sector}.`,
+    support: i.storyWhyItMatters,
+  };
 }
 
-function buildTier3(i: FallbackInput): string {
+function buildTier3(i: FallbackInput): FallbackCommentary {
   // Deliberately free of profile anchors — we don't have enough to
   // pretend otherwise. Leans on the editorial why_it_matters baseline.
   const sector = sectorLabel(i.storySector);
-  return `Worth knowing if you follow ${sector}: ${i.storyWhyItMatters}`;
+  return {
+    thesis: `Worth knowing for anyone who follows ${sector}.`,
+    support: i.storyWhyItMatters,
+  };
 }
 
 /** Fields the Tier 1/2 templates need from a profile. */
@@ -212,17 +286,17 @@ function missingProfileFields(
 }
 
 /**
- * Build a fallback commentary string plus tier metadata. The result is
- * always safe to serve — the function sanitizes its own output against
- * the banned-phrase list, swapping matches for neutral synonyms so the
- * user never sees placeholder text or a blank card.
+ * Build a fallback `{thesis, support}` plus tier metadata. The result
+ * is always safe to serve — the function sanitizes its own output
+ * against the banned-phrase list, swapping matches for neutral
+ * synonyms so the user never sees placeholder text or a blank card.
  *
  * Tier selection:
+ *   - Haiku failure reason supplied         → tier3 (anomaly)
  *   - profile missing role/domain/seniority → tier3 (anomaly)
- *   - or Haiku failure reason supplied       → tier3 (anomaly)
- *   - or story sector not in user's sectors  → tier3 (anomaly, "off_sector")
- *   - else matched topics > 0                → tier1
- *   - else                                   → tier2
+ *   - story sector not in user's sectors    → tier3 (anomaly, "off_sector")
+ *   - else matched topics > 0               → tier1
+ *   - else                                  → tier2
  */
 export function buildFallbackCommentary(input: FallbackInput): FallbackResult {
   const missing = missingProfileFields(input.profile);
@@ -254,7 +328,7 @@ export function buildFallbackCommentary(input: FallbackInput): FallbackResult {
     tier = "tier2";
   }
 
-  let text =
+  let commentary =
     tier === "tier1"
       ? buildTier1(input)
       : tier === "tier2"
@@ -262,12 +336,16 @@ export function buildFallbackCommentary(input: FallbackInput): FallbackResult {
         : buildTier3(input);
 
   // Defense-in-depth: the template strings above are human-reviewed,
-  // but a future edit could slip in a banned phrase. We check and
-  // surgically replace — the output is still useful, and the anomaly
-  // log tells an operator to fix the template.
-  const banCheck = checkBannedPhrases(text);
+  // but a future edit could slip in a banned phrase. We check both
+  // fields and surgically replace — the output is still useful, and
+  // the anomaly log tells an operator to fix the template.
+  const combined = `${commentary.thesis}\n${commentary.support}`;
+  const banCheck = checkBannedPhrases(combined);
   if (!banCheck.clean) {
-    text = scrubBannedPhrases(text);
+    commentary = {
+      thesis: scrubBannedPhrases(commentary.thesis),
+      support: scrubBannedPhrases(commentary.support),
+    };
     const existing = anomaly ?? {
       event: "commentary_tier3_fallback" as const,
       reason: "template_banned_phrase" as const,
@@ -283,7 +361,7 @@ export function buildFallbackCommentary(input: FallbackInput): FallbackResult {
     tier = "tier3";
   }
 
-  return { text, tier, anomaly };
+  return { commentary, tier, anomaly };
 }
 
 // Neutral substitutions used by the defense-in-depth scrubber. Keys

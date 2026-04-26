@@ -6,6 +6,7 @@ import { MessageSquare, ExternalLink } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
+import { Commentary } from "./Commentary";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import type { Story } from "@/types/story";
 
@@ -74,20 +75,17 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
 
   const commentaryQuery = useStoryCommentary(story.id, { enabled: shouldLoad });
 
-  // Fallback text layering (in priority order):
-  //   1. the freshly-loaded commentary from the endpoint
-  //   2. any commentary that arrived pre-loaded on the story (future-
-  //      proofing for a server-side hydration path we don't ship in 12c)
-  //   3. the 12b why_it_matters_to_you personalization (the surface's
-  //      "always at least something" floor during the 12c rollout)
-  // We pass `loading` to the skeleton only while (1) and (2) are
-  // empty AND the query is actively fetching — otherwise the
-  // 12b fallback renders directly.
+  // 12d — commentary is now `{thesis, support}` from the endpoint.
+  // Resolution priority (unchanged):
+  //   1. freshly-loaded commentary from the endpoint
+  //   2. commentary pre-loaded on the story (server-side hydration path)
+  //   3. the 12b why_it_matters_to_you personalization (last-resort string)
+  // (3) renders through PersonalizationBox (string-only); (1) and (2)
+  // render through Commentary (structured).
   const resolvedCommentary =
     commentaryQuery.data?.commentary ?? story.commentary ?? null;
   const isCommentaryLoading =
     shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
-  const displayText = resolvedCommentary ?? story.why_it_matters_to_you;
 
   return (
     <article
@@ -111,7 +109,14 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
         </p>
       </Link>
 
-      <PersonalizationBox text={displayText} loading={isCommentaryLoading} />
+      {resolvedCommentary ? (
+        <Commentary commentary={resolvedCommentary} />
+      ) : (
+        <PersonalizationBox
+          text={story.why_it_matters_to_you}
+          loading={isCommentaryLoading}
+        />
+      )}
 
       <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
         <div className="flex items-center gap-4">

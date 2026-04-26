@@ -24,6 +24,15 @@ export type CommentarySource =
   | "fallback_tier2"
   | "fallback_tier3";
 
+// Phase 12d — commentary is structured: thesis renders by default,
+// support reveals via a "Go deeper" affordance. Same shape across
+// Haiku output and all fallback tiers; the consumer doesn't branch on
+// `source` for layout.
+export interface CommentaryShape {
+  thesis: string;
+  support: string;
+}
+
 export interface Story {
   id: string;
   sector: Sector | string;
@@ -37,7 +46,11 @@ export interface Story {
   // Phase 12c: null on feed-list responses; populated by the dedicated
   // /stories/:id/commentary endpoint. `commentary_source` mirrors the
   // service-layer CommentaryResult.source and is null until hydrated.
-  commentary: string | null;
+  // 12d: shape switched from `string` to `{thesis, support}` so the UI
+  // can split the rendered text between default (thesis) and the
+  // "Go deeper" expansion (support). Server payload is the same
+  // jsonb shape that lands in commentary_cache.
+  commentary: CommentaryShape | null;
   commentary_source: CommentarySource | null;
   source_url: string;
   source_name: string | null;
@@ -53,7 +66,7 @@ export interface Story {
 // `depth` field is echoed back because the server may have resolved
 // a ?depth= override against the user's stored preference.
 export interface CommentaryResponse {
-  commentary: string;
+  commentary: CommentaryShape;
   depth: "accessible" | "standard" | "technical";
   profile_version: number;
   source: CommentarySource;

@@ -1,23 +1,31 @@
 // Phase 12c — per-user, per-story commentary orchestrator.
+// Phase 12d — JSON-shaped Haiku output `{thesis, support}` + four-stage
+// JSON enforcement (prompt instruction, one-shot example, assistant
+// prefill, service-layer parse-and-retry-with-fallback).
 //
 // Cache-miss path:
 //   1. Load user_profiles + user_topic_interests for this user.
 //   2. Compute matched_interests (sector overlap + in-sector topics).
-//   3. Build the Haiku prompt.
-//   4. Call Haiku. Success → check banned phrases → on pass, insert
-//      into commentary_cache and return. Any failure → tiered
-//      fallback (not cached).
-//   5. Anomaly log when Tier 3 fires, whatever the cause.
+//   3. Build the V2 expandable prompt.
+//   4. Call Haiku with `assistantPrefill = "{"`.
+//   5. parseCommentaryJson on the prefilled text.
+//        ok       → continue.
+//        not ok   → ONE retry of step 4 (same prompt, same prefill).
+//                   second failure → fallback (tier3, json_parse | json_shape).
+//   6. checkBannedPhrases on (thesis + support).
+//        not clean → fallback (tier3, haiku_banned_phrase).
+//   7. checkBannedOpeners on {thesis, support}.
+//        not clean → fallback (tier3, haiku_banned_opener).
+//   8. validateWordBudgets — log warnings, never reject.
+//   9. Insert `{thesis, support}` jsonb row → return source:"haiku".
 //
 // Cache-hit path:
-//   1. Update last_accessed_at to now(). See LAST_ACCESSED_UPDATE_MODE
-//      below — in 12c we do this on every hit; 12c.1 may batch.
+//   1. Update last_accessed_at to now() (every_hit mode in 12c).
 //   2. Return the cached commentary.
 //
-// Cache key is (userId, storyId, depth, profileVersion). `depth`
-// comes in as the user's declared depth_preference or an explicit
-// override on the /commentary route (e.g. a Premium user toggling the
-// depth selector on story detail).
+// Cache key is (userId, storyId, depth, profileVersion) — unchanged
+// across 12c → 12d. Expand/collapse is pure frontend session state per
+// Decision 12d.3 and so does not enter the cache key.
 
 import { and, eq } from "drizzle-orm";
 import type { db as DbType } from "../db";
@@ -30,16 +38,31 @@ import {
 } from "../db/schema";
 import {
   buildFallbackCommentary,
+  checkBannedOpeners,
   checkBannedPhrases,
   type FallbackResult,
   type Tier3Reason,
 } from "./commentaryFallback";
-import { buildCommentaryPrompt } from "./commentaryPrompt";
+import {
+  buildExpandableCommentaryPrompt,
+  COMMENTARY_PREFILL,
+  getWordBudgets,
+} from "./commentaryPromptV2";
 import {
   callHaikuForCommentary,
   type HaikuClientDeps,
   type HaikuFailureReason,
+  type HaikuResult,
 } from "./haikuCommentaryClient";
+import {
+  parseCommentaryJson,
+  type CommentaryParseResult,
+  type ParsedCommentary,
+} from "./commentaryJsonParser";
+import {
+  validateWordBudgets,
+  type WordCountWarning,
+} from "./commentaryWordCount";
 import { computeMatchedInterests } from "../utils/matchedInterests";
 
 // 12c decision: update last_accessed_at on every cache hit. This lets
@@ -73,8 +96,15 @@ export interface GetOrGenerateInput {
   profileVersion: number;
 }
 
+// 12d — wire shape for both Haiku output and fallback output. Frontend
+// renders thesis by default; "Go deeper" reveals support.
+export interface CommentaryShape {
+  thesis: string;
+  support: string;
+}
+
 export interface CommentaryResult {
-  commentary: string;
+  commentary: CommentaryShape;
   depth: DepthLevel;
   profileVersion: number;
   // Source identifies which path produced the text. "haiku" is the
@@ -107,6 +137,12 @@ function haikuReasonToTier3(reason: HaikuFailureReason): Tier3Reason {
   }
 }
 
+function parseFailureToTier3(
+  reason: "json_parse" | "json_shape",
+): Tier3Reason {
+  return reason === "json_parse" ? "haiku_json_parse" : "haiku_json_shape";
+}
+
 /**
  * Orchestrator. Cache-first, Haiku on miss, tiered fallback on any
  * Haiku-side failure. Returns a structured result so the controller
@@ -134,14 +170,14 @@ export async function getOrGenerateCommentary(
     .limit(1);
 
   if (hit) {
-    // 12c: update last_accessed_at on every hit. See
-    // LAST_ACCESSED_UPDATE_MODE comment.
     if (LAST_ACCESSED_UPDATE_MODE === "every_hit") {
       await deps.db
         .update(commentaryCache)
         .set({ lastAccessedAt: now() })
         .where(eq(commentaryCache.id, hit.id));
     }
+    // jsonb $type<{thesis, support}>() means hit.commentary already
+    // arrives typed at the column level — no parse step on cache hits.
     return {
       commentary: hit.commentary,
       depth: input.depth,
@@ -163,9 +199,6 @@ export async function getOrGenerateCommentary(
     .where(eq(stories.id, input.storyId))
     .limit(1);
   if (!story) {
-    // Caller should have validated this, but surface a deterministic
-    // error rather than letting Haiku hallucinate against an unknown
-    // headline. Controller maps this to 404.
     throw new Error(`story not found: ${input.storyId}`);
   }
 
@@ -200,89 +233,89 @@ export async function getOrGenerateCommentary(
     goals: profile?.goals ?? null,
   };
 
-  // ---- 3. Call Haiku ----
-  const prompt = buildCommentaryPrompt({
+  // ---- 3. Build the V2 prompt ----
+  const prompt = buildExpandableCommentaryPrompt({
     depth: input.depth,
     profile: profileShape,
     matchedTopics: matched.matchedTopics,
     story,
   });
 
-  const result = await callHaikuForCommentary(prompt, deps.haiku);
+  // ---- 4 & 5. Call + parse, with one parse-failure retry ----
+  const callOpts = { assistantPrefill: COMMENTARY_PREFILL };
+  let haiku: HaikuResult = await callHaikuForCommentary(
+    prompt,
+    deps.haiku,
+    callOpts,
+  );
 
-  // ---- 4a. Haiku succeeded — banned-phrase gate, then insert ----
-  if (result.ok) {
-    const banCheck = checkBannedPhrases(result.text);
-    if (banCheck.clean) {
-      const [row] = await deps.db
-        .insert(commentaryCache)
-        .values({
-          userId: input.userId,
-          storyId: input.storyId,
-          depth: input.depth,
-          profileVersion: input.profileVersion,
-          commentary: result.text,
-          generatedAt: now(),
-          lastAccessedAt: now(),
-        })
-        // onConflictDoNothing handles the narrow race where two
-        // concurrent cache-miss requests for the same key try to
-        // insert simultaneously. The bare form suffices — there's
-        // only one unique constraint on the table beyond the PK, so
-        // "any conflict" and "conflict on (userId, storyId, depth,
-        // profileVersion)" are equivalent here. The second insert is
-        // a no-op; the second caller falls through to the next read
-        // below (which will hit the now-populated row).
-        .onConflictDoNothing()
-        .returning();
-      // If the insert was pre-empted by another request, the returning
-      // clause is empty — re-read to get the canonical row.
-      if (row) {
-        return {
-          commentary: row.commentary,
-          depth: input.depth,
-          profileVersion: input.profileVersion,
-          source: "haiku",
-        };
-      }
-      const [raced] = await deps.db
-        .select()
-        .from(commentaryCache)
-        .where(
-          and(
-            eq(commentaryCache.userId, input.userId),
-            eq(commentaryCache.storyId, input.storyId),
-            eq(commentaryCache.depth, input.depth),
-            eq(commentaryCache.profileVersion, input.profileVersion),
-          ),
-        )
-        .limit(1);
-      if (raced) {
-        return {
-          commentary: raced.commentary,
-          depth: input.depth,
-          profileVersion: input.profileVersion,
-          source: "cache",
-        };
-      }
-      // Truly unexpected — the insert returned no row AND the re-read
-      // came up empty. Route through the fallback so the user still
-      // gets deterministic commentary, but use a dedicated Tier 3
-      // reason: stamping this as "haiku_banned_phrase" (the old
-      // fall-through destination) would mislead operators investigating
-      // the anomaly log. Unreachable in normal operation.
+  // Transport failure (timeout, empty, api_error, no_api_key) — no
+  // retry, fall through to fallback.
+  if (!haiku.ok) {
+    return buildAndLogFallback(
+      input,
+      story,
+      profileShape,
+      matched,
+      haikuReasonToTier3(haiku.reason),
+      logger,
+      haiku.reason === "api_error" && haiku.detail
+        ? { detail: haiku.detail }
+        : undefined,
+    );
+  }
+
+  let parsed: CommentaryParseResult = parseCommentaryJson(haiku.text);
+  let retried = false;
+  if (!parsed.ok) {
+    // One retry on parse failure. Same prompt, same prefill — the
+    // model's vocabulary preference is unlikely to flip on retry, but
+    // intermittent JSON-shape glitches (truncation, an extra leading
+    // token) sometimes do. If the retry's transport fails, we surface
+    // the parse reason from the original attempt — that's the more
+    // diagnostic of the two failure modes.
+    retried = true;
+    haiku = await callHaikuForCommentary(prompt, deps.haiku, callOpts);
+    if (!haiku.ok) {
       return buildAndLogFallback(
         input,
         story,
         profileShape,
         matched,
-        "cache_race_unexpected",
+        haikuReasonToTier3(haiku.reason),
         logger,
-        undefined,
+        {
+          retried: true,
+          ...(haiku.reason === "api_error" && haiku.detail
+            ? { detail: haiku.detail }
+            : {}),
+        },
       );
     }
-    // Haiku text tripped the banned-phrase gate. Reroute to fallback
-    // with an explicit reason so the Tier 3 anomaly log says why.
+    parsed = parseCommentaryJson(haiku.text);
+  }
+
+  if (!parsed.ok) {
+    return buildAndLogFallback(
+      input,
+      story,
+      profileShape,
+      matched,
+      parseFailureToTier3(parsed.reason),
+      logger,
+      {
+        retried,
+        rawSample: parsed.rawSample,
+        ...(parsed.missingFields ? { missingFields: parsed.missingFields } : {}),
+      },
+    );
+  }
+
+  const commentary: ParsedCommentary = parsed.value;
+
+  // ---- 6. Banned-phrase gate (substring anywhere in thesis+support) ----
+  const banCheck = checkBannedPhrases(`${commentary.thesis}\n${commentary.support}`);
+  if (!banCheck.clean) {
     return buildAndLogFallback(
       input,
       story,
@@ -290,27 +323,102 @@ export async function getOrGenerateCommentary(
       matched,
       "haiku_banned_phrase",
       logger,
-      { offenders: banCheck.offenders },
+      { offenders: banCheck.offenders, retried },
     );
   }
 
-  // ---- 4b. Haiku failed — fall through to fallback ----
+  // ---- 7. Banned-opener gate (positional, per-field) ----
+  const openerCheck = checkBannedOpeners(commentary);
+  if (!openerCheck.clean) {
+    return buildAndLogFallback(
+      input,
+      story,
+      profileShape,
+      matched,
+      "haiku_banned_opener",
+      logger,
+      { openerOffenders: openerCheck.offenders, retried },
+    );
+  }
+
+  // ---- 8. Word-budget validator (warn-only, never reject) ----
+  const warnings = validateWordBudgets(commentary, getWordBudgets(input.depth));
+  if (warnings.length > 0) {
+    emitWordBudgetWarnings(input, warnings, logger);
+  }
+
+  // ---- 9. Insert ----
+  const [row] = await deps.db
+    .insert(commentaryCache)
+    .values({
+      userId: input.userId,
+      storyId: input.storyId,
+      depth: input.depth,
+      profileVersion: input.profileVersion,
+      commentary,
+      generatedAt: now(),
+      lastAccessedAt: now(),
+    })
+    // onConflictDoNothing handles the narrow race where two concurrent
+    // cache-miss requests for the same key try to insert simultaneously.
+    .onConflictDoNothing()
+    .returning();
+  if (row) {
+    return {
+      commentary: row.commentary,
+      depth: input.depth,
+      profileVersion: input.profileVersion,
+      source: "haiku",
+    };
+  }
+  // Pre-empted by a concurrent insert — re-read the canonical row.
+  const [raced] = await deps.db
+    .select()
+    .from(commentaryCache)
+    .where(
+      and(
+        eq(commentaryCache.userId, input.userId),
+        eq(commentaryCache.storyId, input.storyId),
+        eq(commentaryCache.depth, input.depth),
+        eq(commentaryCache.profileVersion, input.profileVersion),
+      ),
+    )
+    .limit(1);
+  if (raced) {
+    return {
+      commentary: raced.commentary,
+      depth: input.depth,
+      profileVersion: input.profileVersion,
+      source: "cache",
+    };
+  }
+  // Truly unexpected — neither insert nor re-read produced a row.
   return buildAndLogFallback(
     input,
     story,
     profileShape,
     matched,
-    haikuReasonToTier3(result.reason),
+    "cache_race_unexpected",
     logger,
-    result.reason === "api_error" && result.detail
-      ? { detail: result.detail }
-      : undefined,
+    { retried },
   );
 }
 
-// Shared fallback-path emitter. Builds the fallback text, projects the
-// tier into the source string, and emits the Tier 3 anomaly log
-// exactly once per invocation.
+interface FallbackLogExtras {
+  offenders?: string[];
+  openerOffenders?: { field: "thesis" | "support"; pattern: string }[];
+  detail?: string;
+  retried?: boolean;
+  rawSample?: string;
+  missingFields?: readonly ("thesis" | "support")[];
+}
+
+// Shared fallback-path emitter. Builds the fallback commentary,
+// projects the tier into the source string, and emits the Tier 3
+// anomaly log exactly once per invocation. All log lines carry
+// {userId, storyId, depth, profileVersion} as structured fields so
+// dashboard filters can correlate by user/story/depth without regex
+// parsing.
 function buildAndLogFallback(
   input: GetOrGenerateInput,
   story: { sector: string; headline: string; whyItMatters: string },
@@ -318,7 +426,7 @@ function buildAndLogFallback(
   matched: { matchedSector: boolean; matchedTopics: string[] },
   haikuFailureReason: Tier3Reason | undefined,
   logger: Pick<Console, "info" | "warn" | "error">,
-  extra: { offenders?: string[]; detail?: string } | undefined,
+  extra: FallbackLogExtras | undefined,
 ): CommentaryResult {
   const fb: FallbackResult = buildFallbackCommentary({
     storyHeadline: story.headline,
@@ -330,8 +438,6 @@ function buildAndLogFallback(
   });
 
   if (fb.anomaly) {
-    // One structured warn per fallback invocation. `event` field is
-    // stable so dashboards / log filters key off it directly.
     logger.warn({
       ...fb.anomaly,
       userId: input.userId,
@@ -339,7 +445,15 @@ function buildAndLogFallback(
       depth: input.depth,
       profileVersion: input.profileVersion,
       ...(extra?.offenders ? { haikuOffenders: extra.offenders } : {}),
+      ...(extra?.openerOffenders
+        ? { haikuOpenerOffenders: extra.openerOffenders }
+        : {}),
       ...(extra?.detail ? { haikuErrorDetail: extra.detail } : {}),
+      ...(extra?.retried !== undefined ? { retried: extra.retried } : {}),
+      ...(extra?.rawSample ? { rawSample: extra.rawSample } : {}),
+      ...(extra?.missingFields
+        ? { missingFields: extra.missingFields }
+        : {}),
     });
   }
 
@@ -351,9 +465,33 @@ function buildAndLogFallback(
         : ("fallback_tier3" as const);
 
   return {
-    commentary: fb.text,
+    commentary: fb.commentary,
     depth: input.depth,
     profileVersion: input.profileVersion,
     source,
   };
+}
+
+// Word-budget warnings are observability only — we don't reject the
+// commentary, but each drift event is logged so dashboards can pick
+// up persistent over- or under-budget output across a depth tier.
+function emitWordBudgetWarnings(
+  input: GetOrGenerateInput,
+  warnings: WordCountWarning[],
+  logger: Pick<Console, "info" | "warn" | "error">,
+): void {
+  for (const w of warnings) {
+    logger.warn({
+      event: "commentary_word_budget_drift",
+      userId: input.userId,
+      storyId: input.storyId,
+      depth: input.depth,
+      profileVersion: input.profileVersion,
+      field: w.field,
+      direction: w.direction,
+      actualWords: w.actualWords,
+      budgetWords: w.budgetWords,
+      driftRatio: Number(w.driftRatio.toFixed(3)),
+    });
+  }
 }

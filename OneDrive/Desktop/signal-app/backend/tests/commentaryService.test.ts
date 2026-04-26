@@ -1,10 +1,14 @@
 // Phase 12c — service-level orchestration tests.
+// Phase 12d — updated for {thesis, support} JSON shape, the four-stage
+// JSON enforcement, and the parse-failure retry.
 //
-// commentaryEndpoint.test.ts mocks the service boundary; the prompt/
-// fallback/haiku-client modules have unit tests of their own. What's
-// left untested is getOrGenerateCommentary's own logic: the cache hit
-// branch, the cache-miss-then-Haiku-success persistence path, and the
-// cache-miss-then-Haiku-failure tier3 path with its anomaly log.
+// commentaryEndpoint.test.ts mocks the service boundary; the prompt /
+// fallback / haiku-client / parser / word-count modules have unit
+// tests of their own. What's left untested is getOrGenerateCommentary's
+// own logic: the cache hit branch, the cache-miss-then-Haiku-success
+// persistence path, the parse-failure-then-retry path, banned-opener
+// rejection, and the cache-miss-then-Haiku-failure tier3 path with its
+// anomaly log.
 //
 // The mockDb helper ignores WHERE predicates and just drains queued
 // result lists in call order — so the implicit contract here is the
@@ -25,6 +29,23 @@ jest.mock("../src/db", () => ({
 }));
 
 import { getOrGenerateCommentary } from "../src/services/commentaryService";
+import { COMMENTARY_PREFILL } from "../src/services/commentaryPromptV2";
+
+const goodCommentary = {
+  thesis:
+    "The release shifts the capability frontier and changes how product teams should pace their roadmap against frontier model availability.",
+  support:
+    "The new chain-of-thought mode plus a doubled context window changes which workloads can run cheaply against a hosted model rather than fine-tuned in-house. Teams running retrieval-heavy stacks should re-examine the cost curve over the next quarter — what was previously infrastructure work may now be a hosted-API call.",
+};
+
+function haikuJsonText(value: { thesis: string; support: string }): string {
+  // The Anthropic SDK returns only the model's continuation — the bytes
+  // after the assistant prefill. The haiku client re-attaches the prefill
+  // (COMMENTARY_PREFILL = "{") before the parser sees the assembled text.
+  // Strip the leading prefill bytes here so the post-prepend payload is a
+  // single well-formed JSON object rather than e.g. "{{...".
+  return JSON.stringify(value).slice(COMMENTARY_PREFILL.length);
+}
 
 describe("commentaryService — getOrGenerateCommentary", () => {
   const baseInput = {
@@ -39,7 +60,6 @@ describe("commentaryService — getOrGenerateCommentary", () => {
   });
 
   it("returns source=cache when a cache row exists, without calling Haiku", async () => {
-    // 1. Cache lookup returns a row.
     mock.queueSelect([
       {
         id: "cache-1",
@@ -47,11 +67,9 @@ describe("commentaryService — getOrGenerateCommentary", () => {
         storyId: baseInput.storyId,
         depth: baseInput.depth,
         profileVersion: baseInput.profileVersion,
-        commentary: "cached text",
+        commentary: goodCommentary,
       },
     ]);
-    // 2. last_accessed_at update runs (mockDb treats it as delete-
-    //    style, just returns rowCount:1 — no queue entry needed).
 
     const create = jest.fn();
     const result = await getOrGenerateCommentary(baseInput, {
@@ -60,19 +78,16 @@ describe("commentaryService — getOrGenerateCommentary", () => {
     });
 
     expect(result).toEqual({
-      commentary: "cached text",
+      commentary: goodCommentary,
       depth: "standard",
       profileVersion: 3,
       source: "cache",
     });
-    // Cache-hit path must not wake the model.
     expect(create).not.toHaveBeenCalled();
   });
 
   it("calls Haiku on cache miss and persists + returns source=haiku", async () => {
-    // 1. Cache lookup — miss.
-    mock.queueSelect([]);
-    // 2. Story lookup.
+    mock.queueSelect([]); // cache miss
     mock.queueSelect([
       {
         id: baseInput.storyId,
@@ -82,7 +97,6 @@ describe("commentaryService — getOrGenerateCommentary", () => {
         whyItMatters: "base reason",
       },
     ]);
-    // 3. Profile lookup.
     mock.queueSelect([
       {
         role: "engineer",
@@ -92,9 +106,7 @@ describe("commentaryService — getOrGenerateCommentary", () => {
         goals: ["stay_current"],
       },
     ]);
-    // 4. Topic interests.
     mock.queueSelect([{ sector: "ai", topic: "agents" }]);
-    // 5. Insert .returning() — Haiku success persists.
     mock.queueInsert([
       {
         id: "cache-new",
@@ -102,14 +114,12 @@ describe("commentaryService — getOrGenerateCommentary", () => {
         storyId: baseInput.storyId,
         depth: baseInput.depth,
         profileVersion: baseInput.profileVersion,
-        commentary: "fresh Haiku commentary for the engineer",
+        commentary: goodCommentary,
       },
     ]);
 
     const create = jest.fn().mockResolvedValue({
-      content: [
-        { type: "text", text: "fresh Haiku commentary for the engineer" },
-      ],
+      content: [{ type: "text", text: haikuJsonText(goodCommentary) }],
     });
 
     const result = await getOrGenerateCommentary(baseInput, {
@@ -119,24 +129,21 @@ describe("commentaryService — getOrGenerateCommentary", () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(result.source).toBe("haiku");
-    expect(result.commentary).toBe("fresh Haiku commentary for the engineer");
+    expect(result.commentary).toEqual(goodCommentary);
     expect(result.profileVersion).toBe(3);
   });
 
-  it("routes to tier3 fallback and emits a warn when Haiku times out", async () => {
-    // 1. Cache miss.
-    mock.queueSelect([]);
-    // 2. Story.
+  it("retries once on parse failure and succeeds on the second call", async () => {
+    mock.queueSelect([]); // cache miss
     mock.queueSelect([
       {
         id: baseInput.storyId,
         sector: "ai",
-        headline: "Headline",
+        headline: "A headline",
         context: "context",
         whyItMatters: "base reason",
       },
     ]);
-    // 3. Profile.
     mock.queueSelect([
       {
         role: "engineer",
@@ -146,14 +153,212 @@ describe("commentaryService — getOrGenerateCommentary", () => {
         goals: ["stay_current"],
       },
     ]);
-    // 4. Topics.
-    mock.queueSelect([]);
+    mock.queueSelect([{ sector: "ai", topic: "agents" }]);
+    mock.queueInsert([
+      {
+        id: "cache-new",
+        userId: baseInput.userId,
+        storyId: baseInput.storyId,
+        depth: baseInput.depth,
+        profileVersion: baseInput.profileVersion,
+        commentary: goodCommentary,
+      },
+    ]);
+
+    // First call returns prose; second call returns clean JSON.
+    const create = jest
+      .fn()
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "I'm sorry, here's the commentary in plain prose." }],
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: haikuJsonText(goodCommentary) }],
+      });
+
+    const result = await getOrGenerateCommentary(baseInput, {
+      db: mock.db,
+      haiku: { client: { create } },
+    });
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(result.source).toBe("haiku");
+    expect(result.commentary).toEqual(goodCommentary);
+  });
+
+  it("falls back to tier3 on parse failure that survives the retry", async () => {
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([
+      {
+        id: baseInput.storyId,
+        sector: "ai",
+        headline: "A headline",
+        context: "context",
+        whyItMatters: "base reason",
+      },
+    ]);
+    mock.queueSelect([
+      {
+        role: "engineer",
+        domain: "ml_engineering",
+        seniority: "senior",
+        sectors: ["ai"],
+        goals: ["stay_current"],
+      },
+    ]);
+    mock.queueSelect([{ sector: "ai", topic: "agents" }]);
     // No insert queued — tier3 path must not persist.
 
-    // Simulate the SDK aborting on timeout. The client raises an
-    // AbortError-shaped exception; the Haiku client normalizes this to
-    // `{ ok: false, reason: "timeout" }` and the service routes that
-    // through the tier3 mapper (`haiku_timeout`).
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: "still not json on the retry either" }],
+    });
+
+    const warn = jest.fn();
+    const result = await getOrGenerateCommentary(baseInput, {
+      db: mock.db,
+      haiku: { client: { create } },
+      logger: { info: jest.fn(), warn, error: jest.fn() },
+    });
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(result.source).toBe("fallback_tier3");
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [payload] = warn.mock.calls[0];
+    expect(payload).toMatchObject({
+      reason: "haiku_json_parse",
+      retried: true,
+    });
+  });
+
+  it("falls back to tier3 with reason=haiku_banned_opener when thesis opens with 'As you …'", async () => {
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([
+      {
+        id: baseInput.storyId,
+        sector: "ai",
+        headline: "A headline",
+        context: "context",
+        whyItMatters: "base reason",
+      },
+    ]);
+    mock.queueSelect([
+      {
+        role: "engineer",
+        domain: "ml_engineering",
+        seniority: "senior",
+        sectors: ["ai"],
+        goals: ["stay_current"],
+      },
+    ]);
+    mock.queueSelect([{ sector: "ai", topic: "agents" }]);
+
+    const tripsOpener = {
+      thesis: "As you track foundation models, this release shifts the capability frontier in your space.",
+      support: "Two new modes plus a wider context window change which workloads stay cheap against the hosted API.",
+    };
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: haikuJsonText(tripsOpener) }],
+    });
+
+    const warn = jest.fn();
+    const result = await getOrGenerateCommentary(baseInput, {
+      db: mock.db,
+      haiku: { client: { create } },
+      logger: { info: jest.fn(), warn, error: jest.fn() },
+    });
+
+    expect(result.source).toBe("fallback_tier3");
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [payload] = warn.mock.calls[0];
+    expect(payload).toMatchObject({
+      reason: "haiku_banned_opener",
+    });
+    expect(payload.haikuOpenerOffenders).toBeDefined();
+  });
+
+  it("logs a word-budget drift warning but still persists when over budget", async () => {
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([
+      {
+        id: baseInput.storyId,
+        sector: "ai",
+        headline: "A headline",
+        context: "context",
+        whyItMatters: "base reason",
+      },
+    ]);
+    mock.queueSelect([
+      {
+        role: "engineer",
+        domain: "ml_engineering",
+        seniority: "senior",
+        sectors: ["ai"],
+        goals: ["stay_current"],
+      },
+    ]);
+    mock.queueSelect([{ sector: "ai", topic: "agents" }]);
+
+    // 100-word thesis vs 40-word standard budget = 150% over → flagged.
+    // Support is in-budget at 90.
+    const overBudget = {
+      thesis: Array.from({ length: 100 }, (_, i) => `t${i}`).join(" "),
+      support: Array.from({ length: 90 }, (_, i) => `s${i}`).join(" "),
+    };
+    mock.queueInsert([
+      {
+        id: "cache-new",
+        userId: baseInput.userId,
+        storyId: baseInput.storyId,
+        depth: baseInput.depth,
+        profileVersion: baseInput.profileVersion,
+        commentary: overBudget,
+      },
+    ]);
+
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: haikuJsonText(overBudget) }],
+    });
+
+    const warn = jest.fn();
+    const result = await getOrGenerateCommentary(baseInput, {
+      db: mock.db,
+      haiku: { client: { create } },
+      logger: { info: jest.fn(), warn, error: jest.fn() },
+    });
+
+    expect(result.source).toBe("haiku");
+    // Drift warning emitted exactly once for the thesis.
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [payload] = warn.mock.calls[0];
+    expect(payload).toMatchObject({
+      event: "commentary_word_budget_drift",
+      field: "thesis",
+      direction: "over",
+    });
+  });
+
+  it("routes to tier3 fallback and emits a warn when Haiku times out", async () => {
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([
+      {
+        id: baseInput.storyId,
+        sector: "ai",
+        headline: "Headline",
+        context: "context",
+        whyItMatters: "base reason",
+      },
+    ]);
+    mock.queueSelect([
+      {
+        role: "engineer",
+        domain: "ml_engineering",
+        seniority: "senior",
+        sectors: ["ai"],
+        goals: ["stay_current"],
+      },
+    ]);
+    mock.queueSelect([]);
+
+    // SDK aborts → AbortError → reason="timeout" → tier3.
     const abortErr = Object.assign(new Error("aborted"), { name: "AbortError" });
     const create = jest.fn().mockRejectedValue(abortErr);
 
@@ -164,15 +369,12 @@ describe("commentaryService — getOrGenerateCommentary", () => {
       logger: { info: jest.fn(), warn, error: jest.fn() },
     });
 
-    expect(create).toHaveBeenCalledTimes(1);
-    // Tier3 is the tier the fallback module produces for a haiku-side
-    // failure (prompt wasn't the problem — the model was).
+    expect(create).toHaveBeenCalledTimes(1); // transport failure → no retry
     expect(result.source).toBe("fallback_tier3");
-    // Anomaly log ran exactly once with the userId/storyId context
-    // plus the reason key stamped into the event payload.
     expect(warn).toHaveBeenCalledTimes(1);
     const [payload] = warn.mock.calls[0];
     expect(payload).toMatchObject({
+      reason: "haiku_timeout",
       userId: baseInput.userId,
       storyId: baseInput.storyId,
       depth: baseInput.depth,
@@ -181,11 +383,8 @@ describe("commentaryService — getOrGenerateCommentary", () => {
   });
 
   it("throws STORY_NOT_FOUND-shaped error when the story is missing", async () => {
-    // 1. Cache miss.
-    mock.queueSelect([]);
-    // 2. Story lookup — empty. Service throws so the controller can
-    //    map to a 404 before touching Haiku or the profile.
-    mock.queueSelect([]);
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([]); // story missing
 
     const create = jest.fn();
     await expect(
