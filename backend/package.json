@@ -19,6 +19,7 @@
     "audit:story-urls": "ts-node src/scripts/auditStoryUrls.ts",
     "send-digest-now": "ts-node src/scripts/sendDigestNow.ts",
     "run-aggregation": "ts-node src/scripts/runAggregation.ts",
+    "run-ingestion-poll": "ts-node src/scripts/runIngestionPoll.ts",
     "regenerate-depth-variants": "ts-node src/scripts/regenerateDepthVariants.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"
   },
