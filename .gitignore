@@ -47,3 +47,6 @@ docs/sessions/
 
 # Claude Code worktrees (auto-spawned per-session; never tracked)
 .claude/worktrees/
+
+# scratch space for ingestion discovery / fixture preparation
+tmp/
