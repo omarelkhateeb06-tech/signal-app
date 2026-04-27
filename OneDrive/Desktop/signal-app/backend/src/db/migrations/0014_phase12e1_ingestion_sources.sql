@@ -51,13 +51,26 @@ CREATE INDEX ingestion_sources_enabled_interval_idx
 
 -- Seed: 42 paired (writer, source) rows.
 --
--- Pattern: insert all 42 writers in one statement returning (id, name),
--- then in a second statement insert sources and JOIN against the
--- writers table by name to resolve paired_writer_id. Names are unique
--- across the 42 new rows (and don't collide with the existing
--- "SIGNAL Editorial" writer), so the join is unambiguous.
+-- Pattern: INSERT ... SELECT ... WHERE NOT EXISTS guards the writers
+-- step against name collisions. `writers.name` is not UNIQUE in the
+-- schema (matches existing seedStories.ts behavior — SELECT-by-name,
+-- INSERT-if-absent), so a future seed or partial replay that already
+-- created a writer with one of these 42 names would, without the
+-- guard, double-insert. The runner's transactional file-per-migration
+-- behavior already protects against partial-failure rollback within a
+-- single run; this guard adds defense for cross-migration overlap. On
+-- a clean DB, all 42 rows insert; on a DB where any subset already
+-- exists, only the missing rows insert.
+--
+-- The downstream INSERT into ingestion_sources joins on
+-- writers.name to resolve paired_writer_id. None of the 42 names
+-- collide with each other or with the existing "SIGNAL Editorial"
+-- writer, so the join remains unambiguous regardless of which subset
+-- this statement actually inserted.
 
-INSERT INTO writers (name, sectors) VALUES
+INSERT INTO writers (name, sectors)
+SELECT src.name, src.sectors
+FROM (VALUES
   ('Anthropic News',                       '["ai"]'::jsonb),
   ('OpenAI News',                          '["ai"]'::jsonb),
   ('Google DeepMind Blog',                 '["ai"]'::jsonb),
@@ -99,7 +112,11 @@ INSERT INTO writers (name, sectors) VALUES
   ('Marginal Revolution',                  '["finance"]'::jsonb),
   ('Stratechery (free tier)',              '["finance"]'::jsonb),
   ('Reddit r/SecurityAnalysis + r/investing', '["finance"]'::jsonb),
-  ('FRED API',                             '["finance"]'::jsonb);--> statement-breakpoint
+  ('FRED API',                             '["finance"]'::jsonb)
+) AS src(name, sectors)
+WHERE NOT EXISTS (
+  SELECT 1 FROM writers existing WHERE existing.name = src.name
+);--> statement-breakpoint
 
 INSERT INTO ingestion_sources
   (slug, display_name, adapter_type, endpoint, sectors,
