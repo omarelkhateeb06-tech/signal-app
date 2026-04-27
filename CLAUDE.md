@@ -17,7 +17,7 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 
 **Delivery model:**
 - Stories are hand-curated (Phase 4.5 seeded 20 stories; the `seed-data/stories.json` file is the content-source-of-truth). A content pipeline ingesting from raw sources is not in scope for the 12-series.
-- Commentary ("why it matters") is authored / generated with three **depth variants** per story — `accessible` (plain-English, free-tier default), `briefed` (working-professional), `technical` (insider). See §9.
+- Commentary ("why it matters") is authored / generated with three **depth variants** per story — `accessible` (plain-English, free-tier default), `briefed` (working-professional), `technical` (insider). See §8.
 - Personalization in 12b+ layers on top of depth variants — the pipeline is depth → role → (optional) company.
 
 **Pricing (post-12 launch):**
@@ -28,7 +28,7 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 | Standard | **$10 / mo** | **100 stories / day**  | caller picks any of 3 depths   |
 | Premium  | **$30 / mo** | unlimited              | all depths + Phase 12 extras   |
 
-Paywall gating is enforced at the API boundary. Specifics (which endpoints count toward the cap, how resets work, how depth access is signaled) are being designed as part of the 12-series — see §16.
+Paywall gating is enforced at the API boundary. Specifics (which endpoints count toward the cap, how resets work, how depth access is signaled) are being designed as part of the 12-series — see §15.
 
 **NOT in the product:**
 - **Learning paths are dead.** The Phase 10 checkbox-tracker concept was abandoned. Do not add learning-path code, routes, UI, or references. Some orphan tables exist in the Drizzle schema from an earlier phase — leave them; a future cleanup migration drops them.
@@ -37,24 +37,7 @@ Paywall gating is enforced at the API boundary. Specifics (which endpoints count
 
 ---
 
-## 2. REPO PATH QUIRK (READ THIS BEFORE ANY FILE OPERATION)
-
-All 211 tracked files on `origin/main` live under the prefix:
-
-```
-OneDrive/Desktop/signal-app/
-```
-
-…inside the repo root. That is **not** a worktree bug, an OneDrive sync artifact, or something to "clean up." `git ls-tree -r origin/main --name-only | head` confirms every path starts with `OneDrive/Desktop/signal-app/`. The `CLAUDE.md` you are reading, for example, is tracked as `OneDrive/Desktop/signal-app/CLAUDE.md`.
-
-**Rules:**
-1. Before any mass `git mv`, rename, or "let me flatten this" refactor, run `git ls-tree -r origin/main --name-only | head -20` and cite the output.
-2. The flatten is tracked in `docs/ROADMAP.md` as a deferred infra item (#18). Do it as a dedicated, coordinated session — not incidentally.
-3. When you `cd backend`, you're at `OneDrive/Desktop/signal-app/backend`, not the worktree root.
-
----
-
-## 3. TECH STACK (AUTHORITATIVE)
+## 2. TECH STACK (AUTHORITATIVE)
 
 Deviation requires an explicit decision recorded somewhere durable (commit message, ROADMAP, a follow-up issue).
 
@@ -94,7 +77,7 @@ Deviation requires an explicit decision recorded somewhere durable (commit messa
 
 ---
 
-## 4. MONOREPO LAYOUT
+## 3. MONOREPO LAYOUT
 
 npm workspaces rooted at the repo root. All workspace scripts dispatch via `npm-run-all` from the root `package.json`.
 
@@ -179,8 +162,12 @@ signal-app/
 │   │   │   │   ├── 0008_phase12b_onboarding.sql
 │   │   │   │   ├── 0009_phase12c_commentary_cache.sql
 │   │   │   │   ├── 0010_phase12d_expandable_commentary.sql
+│   │   │   │   ├── 0011_a_create_drizzle_audit_schema.sql
 │   │   │   │   ├── 0011_drop_phase12b_helper.sql
-│   │   │   │   └── 0012_deprecate_drizzle_migrations_table.sql
+│   │   │   │   ├── 0012_deprecate_drizzle_migrations_table.sql
+│   │   │   │   ├── 0013_rename_standard_tier.sql
+│   │   │   │   ├── 0014_phase12e1_ingestion_sources.sql
+│   │   │   │   └── 0015_phase12e1_events_and_candidates.sql
 │   │   │   ├── seed.ts
 │   │   │   ├── helpers.ts
 │   │   │   └── verify.ts
@@ -236,7 +223,7 @@ signal-app/
 
 ---
 
-## 5. BACKEND ARCHITECTURE
+## 4. BACKEND ARCHITECTURE
 
 ### Boot sequence (`server.ts`)
 
@@ -259,7 +246,7 @@ Every Redis-dependent subsystem **degrades gracefully** when `REDIS_URL` is unse
 2. `cors(buildCorsOptions())` — allowlist from `ALLOWED_ORIGINS` + regex from `ALLOWED_ORIGIN_PATTERNS`. Missing Origin = allowed (fail-open for server-to-server).
 3. `express.json({ limit: "1mb" })`
 4. `express.urlencoded({ extended: true })`
-5. Routers (see §6), each with its own rate limiter layer.
+5. Routers (see §5), each with its own rate limiter layer.
 6. Sentry error handler
 7. `notFoundHandler` → `errorHandler`
 
@@ -273,7 +260,7 @@ Throw `AppError(code, message, httpStatus, details?)` from anywhere; `errorHandl
 
 ---
 
-## 6. ROUTES
+## 5. ROUTES
 
 ### v1 (`/api/v1/*`, JWT-authenticated)
 
@@ -305,7 +292,7 @@ Full API reference: **`docs/API.md`**. Keep it in sync when you touch v2.
 
 ---
 
-## 7. DATA LAYER
+## 6. DATA LAYER
 
 ### Source of truth
 
@@ -315,7 +302,7 @@ Full API reference: **`docs/API.md`**. Keep it in sync when you touch v2.
 
 - `users`, `userProfiles` — account + onboarding sectors/role
 - `writers` — story author metadata (no slug, no `updated_at`)
-- `stories` — content. Commentary columns: `whyItMatters` (TEXT, role-neutral fallback) + `whyItMattersTemplate` (TEXT holding JSON-stringified `{accessible, briefed, technical}` — see §9)
+- `stories` — content. Commentary columns: `whyItMatters` (TEXT, role-neutral fallback) + `whyItMattersTemplate` (TEXT holding JSON-stringified `{accessible, briefed, technical}` — see §8)
 - `storyAggregates` — weekly rollup per `(sector, period)`; populated by the aggregation job; read by `/api/v2/trends/:sector`
 - `userSaves` — N:M user↔story
 - `comments` — threaded, nullable `parentCommentId`; `teamId` nullable for team-scoped comments
@@ -417,7 +404,7 @@ Both are benign quirks of drizzle-kit's old hash function, not file-integrity or
 
 ---
 
-## 8. JOBS & SCHEDULERS
+## 7. JOBS & SCHEDULERS
 
 Two BullMQ queues, both backed by the shared Redis connection:
 
@@ -434,11 +421,11 @@ Manual triggers for ops:
 
 - `npm run send-digest-now --workspace=backend` — run the weekly digest immediately
 - `npm run run-aggregation --workspace=backend [-- --period=2026-W17]` — one-off rollup
-- `npm run regenerate-depth-variants --workspace=backend` — Phase 12a one-time batch (see §9)
+- `npm run regenerate-depth-variants --workspace=backend` — Phase 12a one-time batch (see §8)
 
 ---
 
-## 9. DEPTH-VARIANT COMMENTARY (Phase 12a)
+## 8. DEPTH-VARIANT COMMENTARY (Phase 12a)
 
 ### The shape
 
@@ -528,7 +515,7 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 
 ---
 
-## 10. PAYWALL & CONSUMPTION
+## 9. PAYWALL & CONSUMPTION
 
 **Status:** designed, not yet enforced in code. The 12-series will wire this up.
 
@@ -544,7 +531,7 @@ When building a feature that reads stories, ask: does this increment the counter
 
 ---
 
-## 11. FRONTEND ARCHITECTURE
+## 10. FRONTEND ARCHITECTURE
 
 ### App Router conventions
 
@@ -565,7 +552,7 @@ When building a feature that reads stories, ask: does this increment the counter
 
 ---
 
-## 12. CODING STANDARDS
+## 11. CODING STANDARDS
 
 ### TypeScript (both sides)
 
@@ -602,7 +589,7 @@ When building a feature that reads stories, ask: does this increment the counter
 
 ---
 
-## 13. ENVIRONMENT VARIABLES
+## 12. ENVIRONMENT VARIABLES
 
 ### Backend (`backend/.env.example`)
 
@@ -639,7 +626,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ---
 
-## 14. TESTING
+## 13. TESTING
 
 ### Gates (run before every commit)
 
@@ -666,7 +653,7 @@ vitest; not much coverage yet. Add tests with every new component that has meani
 
 ---
 
-## 15. GIT & COMMITS
+## 14. GIT & COMMITS
 
 - **Branch naming** for agent-driven work: `claude/<random-slug>`. Worktrees in `.claude/worktrees/*` are the working dirs.
 - **Commit granularity**: one logical change per commit. Phase 12a shipped as 3 commits — schema+parser, script+seed, API projection+docs. That's the target shape.
@@ -677,13 +664,11 @@ vitest; not much coverage yet. Add tests with every new component that has meani
 
 ### Workspace topology
 
-Three on-disk locations of the SIGNAL repo, each playing a distinct role:
+Single canonical clone:
 
-- **`C:\Users\elkha\OneDrive\Desktop\signal-app-12c\`** — primary worktree, holds the actual `.git/` directory. Default rest state is detached HEAD at `origin/main` (see "Worktree hygiene" below for why detached rather than on a branch).
-- **`C:\Users\elkha\OneDrive\Desktop\sa-imr\`** — secondary worktree, always checked out on `main`. Reference snapshot of "what's currently in main" without disturbing the primary's working state. Has two intentionally-untracked PR-body markdown files (`pr-body-cluster-1.1.md`, `pr-body-cluster-1.2.md`) — leave alone.
-- **`C:\dev\signal-app\`** — separate clone (its own `.git/`, not a worktree of the above). The active CC workhorse: cluster-session branches and their `.claude/worktrees/<slug>/` sub-worktrees live under here.
+- **`C:\dev\signal-app\`** — the only working copy. Holds `.git/`. Project files live at the clone root (no nesting). The CC harness auto-spawns per-session worktrees under `.claude/worktrees/<slug>/`; those paths are gitignored and treated as ephemeral.
 
-The home-dir-as-repo at `C:\Users\elkha\.git\` was a historical botch — for a stretch, the user-profile directory itself was a git worktree of this repo, with the OneDrive-prefixed paths from §2 as its tracked files. It was removed during the 2026-04-27 cleanup session. If `git -C "C:\Users\elkha"` ever returns a valid worktree again, something has regressed — investigate before trusting.
+Historical layouts no longer exist: the OneDrive-nested clone (`C:\Users\elkha\OneDrive\Desktop\signal-app-12c\`), the secondary `sa-imr\` reference worktree, and the home-dir-as-repo botch at `C:\Users\elkha\.git\` were all retired in the 2026-04 cleanup arc that this restructure PR concluded. If `git -C "C:\Users\elkha"` ever returns a valid worktree again, something has regressed — investigate before trusting.
 
 ### Worktree hygiene
 
@@ -692,17 +677,17 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 1. **Switch the worktree off the merged branch** — `git -C <worktree> checkout --detach origin/main` (or a working ref). The remote branch is about to be deleted by the merge-and-delete pattern; if the worktree stays pinned to it, the next `git pull` fails with `no such ref was fetched`.
 2. **Delete the local branch ref** — `git -C <worktree> branch -D <branch>`. The remote ref is gone post-merge; the local ref is otherwise orphaned.
 3. **Prune stale remote-tracking refs** — `git -C <worktree> remote prune origin`. `git fetch` doesn't auto-prune; without this, `origin/<branch>` lingers locally even after origin deletes the branch.
-4. **Remove the worktree if no longer needed** — `git -C <main-worktree> worktree remove <path>`. The `.claude/worktrees/<slug>/` worktrees that CC spawns for cluster sessions almost always belong here. Long-lived reference worktrees like `sa-imr` stay.
+4. **Remove the worktree if no longer needed** — `git -C <main-worktree> worktree remove <path>`. The `.claude/worktrees/<slug>/` worktrees that CC spawns for cluster sessions almost always belong here.
 
-**Two worktrees can't share a branch.** Git's single-checkout rule: if `sa-imr` is on `main`, the primary worktree (`signal-app-12c`) cannot also check out `main`. Detached HEAD at `origin/main` is the right default rest state for the primary — it's not a workaround, it's the canonical resolution.
+**Two worktrees can't share a branch.** Git's single-checkout rule means if the primary clone is on `main`, no spawned worktree can also check out `main`. New worktrees should be created off a fresh `claude/<slug>` branch (`git worktree add <path> -b claude/<slug> origin/main`), never `main` directly.
 
 **Whose responsibility:**
 - During a cluster session: the spawning agent (CC) owns the worktree. Cleanup is part of the merge-PR's verification checklist alongside `npm test` and the linting gates.
-- Outside a session: periodic audit via the inventory pattern at `C:\Temp\worktree-audit-*.txt`. Run when `git pull` starts misbehaving or every few weeks, whichever comes first.
+- Outside a session: periodic audit via `git worktree list`. Run when `git pull` starts misbehaving or every few weeks, whichever comes first.
 
 ---
 
-## 16. PHASE STATUS
+## 15. PHASE STATUS
 
 **Numbering convention.** "Phase 12e.1" is a **roadmap title-number** — a sub-session slug inside the 12e ingestion-pipeline cluster. It has nothing to do with GitHub issue or PR numbers (`#35`, `#41`, `#42`). Title-numbers identify scope; GH numbers identify artifacts. A single sub-session usually closes one PR, but the numbers do not align — `#41` was the tier-rename PR (no roadmap title-number); `Phase 12e.1` will close one or more PRs whose `#` is decided by GitHub at PR-create time. When in doubt: title-number is what the planning chat calls a session; GH number is what `gh pr view` returns.
 
@@ -738,7 +723,7 @@ The 12-series is the push to public launch — every sub-phase is load-bearing f
 |-----------|-----------------------------------------------------------------------------------------|
 | **12a** (shipped) | depth-variant schema + offline regeneration                                     |
 | **12b** (shipped) | 7-screen onboarding questionnaire + `why_it_matters_to_you` template floor      |
-| **12c** (shipped) | per-user, per-story commentary — Haiku request path, cache with `profile_version`, Settings bump, feed/detail hydration (see §9 "Phase 12c") |
+| **12c** (shipped) | per-user, per-story commentary — Haiku request path, cache with `profile_version`, Settings bump, feed/detail hydration (see §8 "Phase 12c") |
 | 12d       | depth-selector UI on story detail + feed (pick depth per-view, backed by the 12c cache entry for that (user, story, depth, profile_version)) |
 | **12e**   | **ingestion pipeline — raw-source crawl → editorial-review queue → published stories.** Replaces `seed-data/stories.json` as the sole content source. Launch blocker. |
 | 12f–12i   | paywall enforcement, Stripe/billing, depth-aware digest, launch polish (marketing/pricing pages, onboarding redesign, support inbox). Interior ordering not yet pinned — decide at the start of each session. |
@@ -758,11 +743,11 @@ Known 12c follow-ups (tracked inline as TODO comments, not blockers):
 
 ### Deferred infra
 
-Tracked in `docs/ROADMAP.md` — SendGrid domain auth, pg error handling, Railway Docker cache, **flatten the OneDrive path prefix** (#18), `GIT_COMMIT_SHA` in `/health`. Do these in dedicated sessions.
+Tracked in `docs/ROADMAP.md` — SendGrid domain auth, pg error handling, Railway Docker cache, `GIT_COMMIT_SHA` in `/health`. Do these in dedicated sessions.
 
 ---
 
-## 17. COMMON TASKS
+## 16. COMMON TASKS
 
 ### Add a new v1 endpoint
 
@@ -781,7 +766,7 @@ Same as above, **plus**:
 
 ### Add a new table
 
-1. Hand-write the migration SQL (§7).
+1. Hand-write the migration SQL (§6).
 2. Add the pgTable + inferred types to `schema.ts` (same commit).
 3. Add a row-shape section to `docs/SCHEMA.md` if the table is content-adjacent.
 
@@ -803,10 +788,10 @@ Same as above, **plus**:
 
 ---
 
-## 18. RULES FOR CLAUDE CODE
+## 17. RULES FOR CLAUDE CODE
 
 1. **Read this file first.** You just did — good.
-2. **Inspect before you change.** `git ls-tree`, `git status`, `git log --oneline` before any destructive action. §2 is not optional.
+2. **Inspect before you change.** `git ls-tree`, `git status`, `git log --oneline` before any destructive action.
 3. **Ask when requirements are ambiguous.** Guessing at product decisions (pricing, paywall rules, depth access) is a blocker.
 4. **Tests ship with features.** No "I'll add tests later."
 5. **Gates before commit.** Type-check + lint + test. Paste the output in the PR/session summary.
@@ -818,7 +803,7 @@ Same as above, **plus**:
 
 ---
 
-## 19. SUCCESS CRITERIA
+## 18. SUCCESS CRITERIA
 
 A phase / feature is done when:
 

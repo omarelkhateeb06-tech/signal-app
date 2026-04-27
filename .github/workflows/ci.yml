@@ -9,12 +9,6 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# The tracked code lives in OneDrive/Desktop/signal-app/ (historical layout).
-# Every job cds into that directory before running npm.
-defaults:
-  run:
-    working-directory: OneDrive/Desktop/signal-app
-
 jobs:
   backend:
     name: Backend
@@ -33,7 +27,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: OneDrive/Desktop/signal-app/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run lint --workspace=backend
       - run: npm run type-check --workspace=backend
@@ -50,7 +44,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: OneDrive/Desktop/signal-app/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run lint --workspace=frontend
       - run: npm run type-check --workspace=frontend

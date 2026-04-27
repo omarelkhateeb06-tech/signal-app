@@ -67,7 +67,7 @@ Production topology (Phase 8):
 
 | Piece            | Host                      | Notes                                                       |
 | ---------------- | ------------------------- | ----------------------------------------------------------- |
-| Frontend         | Vercel                    | Root = `OneDrive/Desktop/signal-app/frontend`.              |
+| Frontend         | Vercel                    | Root = `frontend`.                                          |
 | Backend          | Railway                   | Built from `backend/Dockerfile`, port 3001, healthcheck `/health`. |
 | PostgreSQL       | Railway                   | `DATABASE_URL` linked via Railway reference.                |
 | Redis            | Railway                   | `REDIS_URL` linked via Railway reference.                   |

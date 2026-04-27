@@ -12,7 +12,7 @@ import { Pool, type PoolClient } from "pg";
 // of truth, also used by the seed-printer.
 //
 // Hash: SHA-256 over LF-normalized + BOM-stripped UTF-8 file bytes — stable
-// across Windows CRLF / Linux LF / OneDrive auto-conversion.
+// across Windows CRLF / Linux LF.
 //
 // Concurrency: pg_advisory_lock(8675309) gates the whole run so two
 // containers booting in parallel can't double-apply.

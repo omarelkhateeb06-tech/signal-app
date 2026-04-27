@@ -18,7 +18,6 @@
       "Bash(powershell.exe -NoProfile -Command \"Get-Service -Name '*postgres*' -ErrorAction SilentlyContinue | Select-Object Name,Status\")",
       "Bash(cmd.exe //c \"where psql\")",
       "Bash(cmd.exe //c \"where docker\")",
-      "Bash(awk 'tolower\\($0\\) ~ /\\(add constraint|references|unique\\)/ {print NR\": \"$0}' \"C:/Users/elkha/OneDrive/Desktop/signal-app/backend/src/db/migrations/0000_dashing_colleen_wing.sql\")",
       "Bash(npx ts-node *)",
       "Bash(grep -v -E \"SECURITY WARNING|SSL modes|In the next major|To prepare|explicitly use|libpq compatibility|postgresql.org|Use .node --trace|^$\")"
     ]

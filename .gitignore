@@ -44,3 +44,6 @@ coverage/
 
 # Session working notes (handoffs between sessions; not part of PRs)
 docs/sessions/
+
+# Claude Code worktrees (auto-spawned per-session; never tracked)
+.claude/worktrees/
