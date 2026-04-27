@@ -394,7 +394,9 @@ The runner's own recovery hints describe escape hatches (`UPDATE schema_migratio
 
 **Deleted: `meta/_journal.json`.** drizzle-kit's old per-folder bookkeeping. The new runner tracks state in `schema_migrations` and doesn't read or write the journal, so the file (and the now-empty `meta/` directory) was removed.
 
-**Retained read-only: `drizzle.__drizzle_migrations`.** drizzle-kit's pre-runner migration log. Migration `0012_deprecate_drizzle_migrations_table.sql` applies a deprecation comment to the table; the table itself is kept as historical audit of what drizzle-kit thought it had applied before the cutover. The comment is queryable — `SELECT obj_description('drizzle.__drizzle_migrations'::regclass);` returns the deprecation string. Don't write to the table; the runner's source of truth is `schema_migrations`.
+**Retained read-only: `drizzle.__drizzle_migrations`.** drizzle-kit's pre-runner migration log. Migration `0012_deprecate_drizzle_migrations_table.sql` applies a deprecation comment to the table; the table itself is kept as historical audit of what drizzle-kit thought it had applied before the cutover. The comment is queryable — `SELECT obj_description('drizzle.__drizzle_migrations'::regclass);` returns the deprecation string. Don't write to the table; the runner's source of truth is `schema_migrations`. On fresh DBs that never ran drizzle-kit, the schema and table are bootstrapped idempotently by `0011_a_create_drizzle_audit_schema.sql` so 0012's `COMMENT ON TABLE` succeeds in any environment.
+
+**Mid-sequence repair migrations.** Use the `NNNN_a_*` / `NNNN_b_*` naming form when a fix needs to land between two existing numbered migrations (sorts alphabetically between adjacent numbered files; passes the runner's `^\d{4}_.*\.sql$` filename regex). Reserve for genuine repair cases — usually a previously-applied migration assumed precondition state that newly-provisioned environments don't have.
 
 **0001 and 0008 hash artifacts**
 
