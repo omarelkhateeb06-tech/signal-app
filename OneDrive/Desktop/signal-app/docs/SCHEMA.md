@@ -13,7 +13,7 @@ The authoritative schema lives in [`backend/src/db/schema.ts`](../backend/src/db
 | `headline`                  | varchar(255)    | not null                                      |
 | `context`                   | text            | not null                                      |
 | `why_it_matters`            | text            | **not null** — role-neutral fallback          |
-| `why_it_matters_template`   | text            | JSON-stringified `{accessible, standard, technical}` depth variants (Phase 12a+) |
+| `why_it_matters_template`   | text            | JSON-stringified `{accessible, briefed, technical}` depth variants (Phase 12a+) |
 | `source_url`                | text            | not null, **no unique constraint**            |
 | `source_name`               | varchar(255)    | nullable                                      |
 | `author_id`                 | uuid FK         | → `writers.id`, `on delete set null`          |
@@ -83,8 +83,8 @@ The seeder loads hand-curated content from `backend/seed-data/stories.json` and 
         // Phase 12a+ depth-variant shape. The seeder's Zod is strict:
         // extra keys, missing keys, empty strings, and the pre-12a
         // sector keys (ai/finance/semiconductors) are all rejected.
-        "accessible": "...",                // plain-English framing
-        "standard":   "...",                // working-professional framing (free-tier default)
+        "accessible": "...",                // plain-English framing (free-tier default)
+        "briefed":    "...",                // working-professional framing
         "technical":  "..."                 // insider/expert framing
       },
       "source_url": "https://...",
@@ -158,9 +158,9 @@ If `data` is non-empty and pagination has the expected shape, the seed landed.
 
 | key           | audience framing                                                |
 |---------------|-----------------------------------------------------------------|
-| `accessible`  | plain-English, no jargon — a curious non-expert                 |
-| `standard`    | working professional in an adjacent field — **free-tier default** |
-| `technical`   | insider/expert — assumes the vocabulary of the sector           |
+| `accessible`  | plain-English, no jargon — a curious non-expert — **free-tier default** |
+| `briefed`     | working professional in an adjacent field                              |
+| `technical`   | insider/expert — assumes the vocabulary of the sector                   |
 
 ### Schema & migration
 
@@ -199,7 +199,7 @@ Requires `ANTHROPIC_API_KEY` in the environment. Per-story failures (rate limits
 curl "https://<prod>/api/v2/stories?limit=1" \
   -H "X-API-Key: $SIGNAL_API_KEY" \
   | jq '.data[0].why_it_matters_template | keys'
-# → ["accessible","standard","technical"]
+# → ["accessible","briefed","technical"]
 ```
 
 If `why_it_matters_template` is `null` for a given row, the controller's lenient parser rejected the stored payload as non-conforming — that row still needs regeneration.
