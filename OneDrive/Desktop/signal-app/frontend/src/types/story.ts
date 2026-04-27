@@ -67,7 +67,7 @@ export interface Story {
 // a ?depth= override against the user's stored preference.
 export interface CommentaryResponse {
   commentary: CommentaryShape;
-  depth: "accessible" | "standard" | "technical";
+  depth: "accessible" | "briefed" | "technical";
   profile_version: number;
   source: CommentarySource;
 }

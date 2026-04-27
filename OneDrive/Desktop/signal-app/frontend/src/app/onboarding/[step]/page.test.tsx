@@ -104,7 +104,7 @@ describe("Onboarding step dispatcher", () => {
     const user = userEvent.setup();
     renderPage();
     // Depth screen has canContinue={true} on initial render — the store
-    // seeds depthPreference="standard" so Continue is always live.
+    // seeds depthPreference="accessible" so Continue is always live.
     const cont = screen.getByRole("button", { name: /continue/i });
     expect(cont).not.toBeDisabled();
     await user.click(cont);
@@ -126,7 +126,7 @@ describe("Onboarding step dispatcher", () => {
     // a switch to a non-mock client.
     store.setDomain("general_not_sure");
     store.setSeniority("mid");
-    store.setDepthPreference("standard");
+    store.setDepthPreference("briefed");
     store.setGoals(["stay_current"]);
     store.setTopics([{ sector: "ai", topic: "foundation_models" }]);
     store.setDigestPreference("morning");

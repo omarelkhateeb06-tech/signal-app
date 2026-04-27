@@ -9,7 +9,7 @@
  *   npm run regenerate-depth-variants --workspace=backend -- --yes
  *
  * Idempotent — overwrites any existing template. Call Haiku three times
- * per story (once per depth: accessible / standard / technical) and UPDATE
+ * per story (once per depth: accessible / briefed / technical) and UPDATE
  * each row's `why_it_matters_template` with the JSON-stringified result.
  *
  * Phase 12a. Prod DB runbook lives in docs/SCHEMA.md.

@@ -18,10 +18,10 @@ import {
 } from "../constants/onboardingTopics";
 import { isValidDomain } from "../constants/domainOptions";
 
-// Keep these in sync with the CHECK constraints in migration 0008. If
-// a literal is added/removed here, update the migration AND the
-// frontend LabeledOption list in lib/onboarding.ts.
-const DEPTH_PREFERENCE_VALUES = ["accessible", "standard", "technical"] as const;
+// Keep these in sync with the CHECK constraints in migrations 0008
+// and 0013. If a literal is added/removed here, update the migrations
+// AND the frontend LabeledOption list in lib/onboarding.ts.
+const DEPTH_PREFERENCE_VALUES = ["accessible", "briefed", "technical"] as const;
 const DIGEST_PREFERENCE_VALUES = ["morning", "evening", "none"] as const;
 
 // IANA timezone max length — the longest identifier in tzdata is

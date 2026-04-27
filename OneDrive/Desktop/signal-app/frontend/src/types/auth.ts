@@ -7,7 +7,7 @@ export interface AuthUser {
 
 export type EmailFrequency = "daily" | "weekly" | "never";
 
-export type DepthPreference = "accessible" | "standard" | "technical";
+export type DepthPreference = "accessible" | "briefed" | "technical";
 export type DigestPreference = "morning" | "evening" | "none";
 
 export interface UserProfile {

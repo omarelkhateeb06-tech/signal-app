@@ -60,7 +60,7 @@ const WriterSeedSchema = z
 const WhyItMattersTemplateSchema = z
   .object({
     accessible: z.string().min(1),
-    standard: z.string().min(1),
+    briefed: z.string().min(1),
     technical: z.string().min(1),
   })
   .strict();

@@ -30,7 +30,7 @@ export interface OnboardingState {
   domain: string | null;
   // Screen 3 — required, single
   seniority: string | null;
-  // Screen 4 — required, defaults to "standard"
+  // Screen 4 — required, defaults to "accessible"
   depthPreference: DepthPreference;
   // Screen 5 — skippable; when the user clicks Skip we fill with every
   // topic from every selected sector (handled at submit time).
@@ -75,7 +75,7 @@ const initialState: Omit<
   role: null,
   domain: null,
   seniority: null,
-  depthPreference: "standard",
+  depthPreference: "accessible",
   topics: [],
   goals: [],
   digestPreference: null,

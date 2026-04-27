@@ -7,7 +7,7 @@ import { BANNED_PHRASES } from "../src/services/commentaryFallback";
 
 function baseInputs(): Parameters<typeof buildExpandableCommentaryPrompt>[0] {
   return {
-    depth: "standard",
+    depth: "briefed",
     profile: {
       role: "engineer",
       domain: "climate_weather_forecasting",
@@ -73,13 +73,13 @@ describe("buildExpandableCommentaryPrompt", () => {
       ...baseInputs(),
       depth: "accessible",
     });
-    expect(accessible).toContain("Audience depth: Beginner");
+    expect(accessible).toContain("Audience depth: Accessible");
 
-    const standard = buildExpandableCommentaryPrompt({
+    const briefed = buildExpandableCommentaryPrompt({
       ...baseInputs(),
-      depth: "standard",
+      depth: "briefed",
     });
-    expect(standard).toContain("Audience depth: Standard");
+    expect(briefed).toContain("Audience depth: Briefed");
 
     const technical = buildExpandableCommentaryPrompt({
       ...baseInputs(),
@@ -104,12 +104,12 @@ describe("buildExpandableCommentaryPrompt", () => {
 
   it("differentiates per-depth budgets in the prompt body", () => {
     // Each depth should advertise distinct word budgets so the model
-    // doesn't read accessible/standard/technical as interchangeable.
+    // doesn't read accessible/briefed/technical as interchangeable.
     const a = buildExpandableCommentaryPrompt({ ...baseInputs(), depth: "accessible" });
-    const s = buildExpandableCommentaryPrompt({ ...baseInputs(), depth: "standard" });
+    const b = buildExpandableCommentaryPrompt({ ...baseInputs(), depth: "briefed" });
     const t = buildExpandableCommentaryPrompt({ ...baseInputs(), depth: "technical" });
     expect(a).toContain("~35 words");
-    expect(s).toContain("~40 words");
+    expect(b).toContain("~40 words");
     expect(t).toContain("~130 words");
   });
 });
@@ -117,7 +117,7 @@ describe("buildExpandableCommentaryPrompt", () => {
 describe("getWordBudgets", () => {
   it("returns the per-depth budget pair the prompt advertises", () => {
     expect(getWordBudgets("accessible")).toEqual({ thesis: 35, support: 70 });
-    expect(getWordBudgets("standard")).toEqual({ thesis: 40, support: 90 });
+    expect(getWordBudgets("briefed")).toEqual({ thesis: 40, support: 90 });
     expect(getWordBudgets("technical")).toEqual({ thesis: 40, support: 130 });
   });
 });

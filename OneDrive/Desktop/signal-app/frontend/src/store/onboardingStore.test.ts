@@ -17,7 +17,7 @@ describe("useOnboardingStore", () => {
     expect(s.sectors).toEqual(["ai", "finance", "semiconductors"]);
     expect(s.topics).toEqual([]);
     expect(s.goals).toEqual([]);
-    expect(s.depthPreference).toBe("standard");
+    expect(s.depthPreference).toBe("accessible");
     expect(s.role).toBeNull();
     expect(s.digestPreference).toBeNull();
   });
@@ -49,6 +49,6 @@ describe("useOnboardingStore", () => {
     expect(after.topics).toEqual([]);
     expect(after.goals).toEqual([]);
     expect(after.timezone).toBeNull();
-    expect(after.depthPreference).toBe("standard");
+    expect(after.depthPreference).toBe("accessible");
   });
 });

@@ -51,7 +51,7 @@ describe("commentaryService — getOrGenerateCommentary", () => {
   const baseInput = {
     userId: "user-1",
     storyId: "story-1",
-    depth: "standard" as const,
+    depth: "briefed" as const,
     profileVersion: 3,
   };
 
@@ -79,7 +79,7 @@ describe("commentaryService — getOrGenerateCommentary", () => {
 
     expect(result).toEqual({
       commentary: goodCommentary,
-      depth: "standard",
+      depth: "briefed",
       profileVersion: 3,
       source: "cache",
     });
@@ -297,7 +297,7 @@ describe("commentaryService — getOrGenerateCommentary", () => {
     ]);
     mock.queueSelect([{ sector: "ai", topic: "agents" }]);
 
-    // 100-word thesis vs 40-word standard budget = 150% over → flagged.
+    // 100-word thesis vs 40-word briefed budget = 150% over → flagged.
     // Support is in-budget at 90.
     const overBudget = {
       thesis: Array.from({ length: 100 }, (_, i) => `t${i}`).join(" "),

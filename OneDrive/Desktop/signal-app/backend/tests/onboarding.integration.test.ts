@@ -37,7 +37,7 @@ function validCompletionPayload(overrides: Record<string, unknown> = {}): Record
     role: "engineer",
     domain: "general_not_sure",
     seniority: "mid",
-    depth_preference: "standard",
+    depth_preference: "briefed",
     topics: [{ sector: "ai", topic: "foundation_models" }],
     goals: ["stay_current"],
     digest_preference: "morning",
@@ -203,7 +203,7 @@ describe("POST /api/v1/onboarding/complete", () => {
         sectors: ["ai"],
         role: "engineer",
         seniority: "mid",
-        depthPreference: "standard",
+        depthPreference: "briefed",
         goals: ["stay_current"],
         digestPreference: "morning",
         timezone: "America/New_York",
@@ -230,7 +230,7 @@ describe("POST /api/v1/onboarding/complete", () => {
         sectors: ["ai"],
         role: "engineer",
         seniority: "mid",
-        depthPreference: "standard",
+        depthPreference: "briefed",
         goals: ["stay_current"],
         digestPreference: "morning",
         timezone: "America/New_York",
@@ -254,7 +254,7 @@ describe("POST /api/v1/onboarding/complete", () => {
       {
         userId,
         completedAt: new Date(),
-        depthPreference: "standard",
+        depthPreference: "briefed",
       },
     ]); // insert .returning()
 

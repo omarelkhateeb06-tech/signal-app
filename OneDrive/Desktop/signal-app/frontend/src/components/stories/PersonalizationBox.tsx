@@ -11,7 +11,7 @@ interface PersonalizationBoxProps {
 }
 
 // Three-line shimmer that visually matches the commentary density
-// produced by DEPTH_GUIDANCE["standard"] (~120-160 words, ~3 lines in
+// produced by DEPTH_GUIDANCE["briefed"] (~120-160 words, ~3 lines in
 // the feed card width). Using pulse rather than a moving gradient
 // because tailwind ships it out of the box and it doesn't fight
 // React 18 StrictMode's double-render in dev.

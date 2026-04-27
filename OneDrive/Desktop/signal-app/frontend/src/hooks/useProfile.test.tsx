@@ -18,7 +18,7 @@ const samplePayload: UpdateProfileInput = {
   seniority: "mid",
   topic_interests: [],
   goals: ["stay_informed"],
-  depth_preference: "standard",
+  depth_preference: "briefed",
   email_frequency: "weekly",
   email_unsubscribed: false,
 };

@@ -424,7 +424,7 @@ function Screen6(): JSX.Element {
     <OnboardingShell
       step={6}
       title="How deep do you want to go?"
-      description="The free tier defaults to Standard. You can change this any time."
+      description="The free tier defaults to Accessible. You can change this any time."
       canContinue={true}
       onContinue={() => nav.goNext(7)}
       onBack={nav.goBack}
