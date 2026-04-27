@@ -25,11 +25,11 @@ import { BANNED_PHRASES } from "./commentaryFallback";
 import type { DepthLevel } from "../db/schema";
 
 // User-facing label used in the prompt. Maps the internal enum
-// (accessible | standard | technical) to the product copy
-// (Beginner | Standard | Technical) that the brief speaks in.
+// (accessible | briefed | technical) to the product copy
+// (Accessible | Briefed | Technical) that the brief speaks in.
 const DEPTH_LABEL: Record<DepthLevel, string> = {
-  accessible: "Beginner",
-  standard: "Standard",
+  accessible: "Accessible",
+  briefed: "Briefed",
   technical: "Technical",
 };
 
@@ -51,7 +51,7 @@ const DEPTH_BUDGETS: Record<DepthLevel, DepthBudget> = {
     supportWords: 70,
     register: "plain language, no jargon without an inline gloss",
   },
-  standard: {
+  briefed: {
     thesisSentences: "2 sentences",
     thesisWords: 40,
     supportSentences: "3–5 sentences",

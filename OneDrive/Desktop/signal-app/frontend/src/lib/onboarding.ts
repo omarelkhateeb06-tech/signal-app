@@ -89,12 +89,12 @@ export const DEPTH_PREFERENCES: readonly LabeledOption[] = [
   {
     value: "accessible",
     label: "Accessible",
-    description: "Plain-English framing, no jargon. Best for a curious non-expert.",
+    description: "Plain-English framing, no jargon. Best for a curious non-expert. The free-tier default.",
   },
   {
-    value: "standard",
-    label: "Standard",
-    description: "Working-professional framing. The free-tier default.",
+    value: "briefed",
+    label: "Briefed",
+    description: "Working-professional framing.",
   },
   {
     value: "technical",
@@ -103,7 +103,7 @@ export const DEPTH_PREFERENCES: readonly LabeledOption[] = [
   },
 ] as const;
 
-export const DEFAULT_DEPTH_PREFERENCE = "standard" as const;
+export const DEFAULT_DEPTH_PREFERENCE = "accessible" as const;
 
 // ---------- Topics per sector (Screen 4 as of Phase 12c; was Screen 5 in 12b) ----------
 

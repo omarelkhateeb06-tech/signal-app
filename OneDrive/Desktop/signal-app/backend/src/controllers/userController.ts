@@ -22,7 +22,7 @@ const TOPIC_MAX_LENGTH = 64;
 // third-party integrations that predate 12b shouldn't be forced to set
 // it on every save. The CHECK constraint on the column matches this
 // three-value set.
-const DEPTH_PREFERENCE_VALUES = ["accessible", "standard", "technical"] as const;
+const DEPTH_PREFERENCE_VALUES = ["accessible", "briefed", "technical"] as const;
 
 // Phase 12c — the Settings UI now edits the full commentary-input set
 // (role/domain/seniority/sectors/goals/topics). All three new fields

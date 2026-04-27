@@ -86,7 +86,7 @@ describe("regenerateDepthVariants", () => {
     it("calls the generator once per story and reports all succeeded", async () => {
       const generate = jest.fn().mockResolvedValue({
         accessible: "a",
-        standard: "s",
+        briefed: "b",
         technical: "t",
       });
       const stories = [makeStory(), makeStory({ id: "2" }), makeStory({ id: "3" })];
@@ -98,7 +98,7 @@ describe("regenerateDepthVariants", () => {
     it("produces a payload containing exactly the three depth keys", async () => {
       let capturedTemplate: Record<string, string> | null = null;
       const generate = jest.fn(async () => {
-        const template = { accessible: "a", standard: "s", technical: "t" };
+        const template = { accessible: "a", briefed: "b", technical: "t" };
         capturedTemplate = template;
         return template;
       });
@@ -107,7 +107,7 @@ describe("regenerateDepthVariants", () => {
       const template = capturedTemplate as unknown as Record<string, string>;
       expect(Object.keys(template).sort()).toEqual([
         "accessible",
-        "standard",
+        "briefed",
         "technical",
       ]);
     });
@@ -115,9 +115,9 @@ describe("regenerateDepthVariants", () => {
     it("records per-story failures without stopping the run", async () => {
       const generate = jest
         .fn()
-        .mockResolvedValueOnce({ accessible: "a", standard: "s", technical: "t" })
+        .mockResolvedValueOnce({ accessible: "a", briefed: "b", technical: "t" })
         .mockRejectedValueOnce(new Error("rate limit"))
-        .mockResolvedValueOnce({ accessible: "a", standard: "s", technical: "t" });
+        .mockResolvedValueOnce({ accessible: "a", briefed: "b", technical: "t" });
       const stories = [makeStory(), makeStory({ id: "2" }), makeStory({ id: "3" })];
       const summary = await regenerateAll(stories, db, { generate });
       expect(summary.total).toBe(3);
@@ -128,7 +128,7 @@ describe("regenerateDepthVariants", () => {
     it("skips the UPDATE write in dry-run mode but still calls the generator", async () => {
       const generate = jest
         .fn()
-        .mockResolvedValue({ accessible: "a", standard: "s", technical: "t" });
+        .mockResolvedValue({ accessible: "a", briefed: "b", technical: "t" });
       const updateSpy = jest.spyOn(db, "update");
       const summary = await regenerateAll([makeStory()], db, { generate, dryRun: true });
       expect(summary.succeeded).toBe(1);

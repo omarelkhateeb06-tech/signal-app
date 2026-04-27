@@ -30,7 +30,7 @@ Keyset-paginated feed of published stories.
       "why_it_matters": "Role-neutral fallback commentary.",
       "why_it_matters_template": {
         "accessible": "Plain-English framing.",
-        "standard":   "Working-professional framing.",
+        "briefed":    "Working-professional framing.",
         "technical":  "Insider framing."
       },
       "url": "https://...",
@@ -46,7 +46,7 @@ Drafts (`published_at IS NULL`) are excluded unconditionally.
 
 **Commentary fields (Phase 12a):**
 - `why_it_matters` — role-neutral fallback prose. Always a string.
-- `why_it_matters_template` — depth-variant payload keyed by `accessible` / `standard` / `technical`. **Returns `null`** when the stored payload is missing or in the pre-12a sector-variant shape (`{ai, finance, semiconductors}`) — the endpoint is lenient-on-read so it stays live during the regeneration window. Clients should fall back to `why_it_matters` whenever the template is `null` or a requested depth key is missing.
+- `why_it_matters_template` — depth-variant payload keyed by `accessible` / `briefed` / `technical`. **Returns `null`** when the stored payload is missing or in the pre-12a sector-variant shape (`{ai, finance, semiconductors}`) — the endpoint is lenient-on-read so it stays live during the regeneration window. Clients should fall back to `why_it_matters` whenever the template is `null` or a requested depth key is missing.
 
 ## `GET /api/v2/trends/:sector`
 

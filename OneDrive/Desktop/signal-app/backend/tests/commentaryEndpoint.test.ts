@@ -135,13 +135,13 @@ describe("GET /api/v1/stories/:id/commentary", () => {
     expect(getOrGenerateCommentaryMock.mock.calls[0][0].depth).toBe("technical");
   });
 
-  it("falls back to 'standard' when the user has no depth preference stored", async () => {
+  it("falls back to 'accessible' when the user has no depth preference stored", async () => {
     mock.queueSelect([
       { depthPreference: null, profileVersion: 1 },
     ]);
     getOrGenerateCommentaryMock.mockResolvedValueOnce({
       commentary: { thesis: "…", support: "…" },
-      depth: "standard",
+      depth: "accessible",
       profileVersion: 1,
       source: "fallback_tier2",
     });
@@ -151,7 +151,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
       .set(...auth(token));
 
     expect(res.status).toBe(200);
-    expect(getOrGenerateCommentaryMock.mock.calls[0][0].depth).toBe("standard");
+    expect(getOrGenerateCommentaryMock.mock.calls[0][0].depth).toBe("accessible");
     expect(res.body.data.source).toBe("fallback_tier2");
   });
 
@@ -166,7 +166,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
 
   it("maps 'story not found' from the service layer to a proper 404", async () => {
     mock.queueSelect([
-      { depthPreference: "standard", profileVersion: 1 },
+      { depthPreference: "briefed", profileVersion: 1 },
     ]);
     getOrGenerateCommentaryMock.mockRejectedValueOnce(
       new Error(`story not found: ${storyId}`),

@@ -40,7 +40,7 @@ function makeStoryRow(overrides: Record<string, unknown> = {}): Record<string, u
     // Stored as TEXT containing JSON — the controller parses on read.
     whyItMattersTemplate: JSON.stringify({
       accessible: "Plain-English framing.",
-      standard: "Working-professional framing.",
+      briefed: "Working-professional framing.",
       technical: "Insider framing.",
     }),
     url: "https://example.com/post",
@@ -122,7 +122,7 @@ describe("GET /api/v2/stories", () => {
       expect(res.body.data[0].why_it_matters).toBe("Role-neutral fallback commentary.");
       expect(res.body.data[0].why_it_matters_template).toEqual({
         accessible: "Plain-English framing.",
-        standard: "Working-professional framing.",
+        briefed: "Working-professional framing.",
         technical: "Insider framing.",
       });
     });

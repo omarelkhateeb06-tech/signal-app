@@ -80,13 +80,13 @@ export async function getCommentary(
     }
 
     // Depth precedence: explicit query override > stored preference >
-    // "standard" as the last-resort default. The default exists because
-    // early-onboarding users may not have saved a depth yet; the
-    // onboarding flow makes it mandatory but a direct API caller
-    // could bypass. See §9 of CLAUDE.md — "standard" is the free-tier
+    // "accessible" as the last-resort default. The default exists
+    // because early-onboarding users may not have saved a depth yet;
+    // the onboarding flow makes it mandatory but a direct API caller
+    // could bypass. See §9 of CLAUDE.md — "accessible" is the free-tier
     // default and the right floor here.
     const depth: DepthLevel =
-      depthOverride ?? profile.depthPreference ?? "standard";
+      depthOverride ?? profile.depthPreference ?? "accessible";
 
     const result = await getOrGenerateCommentary(
       {

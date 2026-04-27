@@ -222,7 +222,7 @@ export async function getStoryRequest(id: string): Promise<Story> {
 // depth-selector overrides on story detail.
 export async function getStoryCommentaryRequest(
   id: string,
-  depth?: "accessible" | "standard" | "technical",
+  depth?: "accessible" | "briefed" | "technical",
 ): Promise<CommentaryResponse> {
   const res = await api.get<{ data: CommentaryResponse }>(
     `/api/v1/stories/${id}/commentary`,

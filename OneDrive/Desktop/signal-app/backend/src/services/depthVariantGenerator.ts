@@ -12,7 +12,7 @@ const DEPTH_GUIDANCE: Record<DepthLevel, string> = {
     "Write for a smart non-specialist — a founder, journalist, or generalist executive. " +
     "Use plain language. Assume no domain jargon. Prioritize the single most important " +
     "thing the reader should walk away knowing. ~80–120 words.",
-  standard:
+  briefed:
     "Write for a working professional in the sector but not an insider at this specific " +
     "company. Light domain terminology is fine. Focus on implications and second-order " +
     "effects over narrative recap. ~120–160 words.",

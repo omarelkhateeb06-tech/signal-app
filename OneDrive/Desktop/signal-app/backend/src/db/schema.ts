@@ -54,7 +54,7 @@ export const users = pgTable("users", {
 // at the DB boundary, not pgEnums (see migration 0008). The allowed
 // value sets are re-declared here as const tuples so the controller's
 // Zod schemas can reference them.
-export const DEPTH_PREFERENCES = ["accessible", "standard", "technical"] as const;
+export const DEPTH_PREFERENCES = ["accessible", "briefed", "technical"] as const;
 export type DepthPreference = (typeof DEPTH_PREFERENCES)[number];
 export const DIGEST_PREFERENCES = ["morning", "evening", "none"] as const;
 export type DigestPreference = (typeof DIGEST_PREFERENCES)[number];
@@ -159,7 +159,7 @@ export const writers = pgTable("writers", {
 // the earlier sector-variant shape ({ai, finance, semiconductors}) with
 // depth variants; the column name intentionally did not change so
 // existing JOINs / analytics queries kept working.
-export const DEPTH_LEVELS = ["accessible", "standard", "technical"] as const;
+export const DEPTH_LEVELS = ["accessible", "briefed", "technical"] as const;
 export type DepthLevel = (typeof DEPTH_LEVELS)[number];
 export type WhyItMattersTemplate = Record<DepthLevel, string>;
 

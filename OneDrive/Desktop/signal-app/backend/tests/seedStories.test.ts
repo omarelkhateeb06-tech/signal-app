@@ -47,7 +47,7 @@ function validStory(overrides: Partial<StorySeed> = {}): StorySeed {
     // pre-12a sector keys (ai/finance/semiconductors) outright.
     why_it_matters_template: {
       accessible: "Accessible-depth commentary.",
-      standard: "Standard-depth commentary.",
+      briefed: "Briefed-depth commentary.",
       technical: "Technical-depth commentary.",
     },
     source_url: "https://example.com/article/openai-round",

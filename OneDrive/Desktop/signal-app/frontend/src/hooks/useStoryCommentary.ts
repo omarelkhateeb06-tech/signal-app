@@ -23,7 +23,7 @@ import { getStoryCommentaryRequest } from "@/lib/api";
 import { withCommentarySlot } from "@/lib/commentaryQueue";
 import type { CommentaryResponse } from "@/types/story";
 
-export type DepthOverride = "accessible" | "standard" | "technical";
+export type DepthOverride = "accessible" | "briefed" | "technical";
 
 interface UseStoryCommentaryOptions {
   enabled?: boolean;

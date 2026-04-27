@@ -7,7 +7,7 @@ import {
 describe("depthVariants utility", () => {
   const valid = {
     accessible: "Plain-English framing.",
-    standard: "Working-professional framing.",
+    briefed: "Working-professional framing.",
     technical: "Insider framing.",
   };
 
@@ -23,7 +23,7 @@ describe("depthVariants utility", () => {
 
     it("rejects empty strings", () => {
       expect(
-        WhyItMattersTemplateSchema.safeParse({ ...valid, standard: "" }).success,
+        WhyItMattersTemplateSchema.safeParse({ ...valid, briefed: "" }).success,
       ).toBe(false);
     });
 

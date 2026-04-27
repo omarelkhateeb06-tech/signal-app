@@ -17,14 +17,14 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 
 **Delivery model:**
 - Stories are hand-curated (Phase 4.5 seeded 20 stories; the `seed-data/stories.json` file is the content-source-of-truth). A content pipeline ingesting from raw sources is not in scope for the 12-series.
-- Commentary ("why it matters") is authored / generated with three **depth variants** per story — `accessible` (plain-English), `standard` (working-professional, free-tier default), `technical` (insider). See §9.
+- Commentary ("why it matters") is authored / generated with three **depth variants** per story — `accessible` (plain-English, free-tier default), `briefed` (working-professional), `technical` (insider). See §9.
 - Personalization in 12b+ layers on top of depth variants — the pipeline is depth → role → (optional) company.
 
 **Pricing (post-12 launch):**
 
 | tier     | price        | consumption cap        | depth access                   |
 |----------|--------------|------------------------|--------------------------------|
-| Free     | $0           | **10 stories / day**   | `standard` only                |
+| Free     | $0           | **10 stories / day**   | `accessible` only              |
 | Standard | **$10 / mo** | **100 stories / day**  | caller picks any of 3 depths   |
 | Premium  | **$30 / mo** | unlimited              | all depths + Phase 12 extras   |
 
@@ -315,7 +315,7 @@ Full API reference: **`docs/API.md`**. Keep it in sync when you touch v2.
 
 - `users`, `userProfiles` — account + onboarding sectors/role
 - `writers` — story author metadata (no slug, no `updated_at`)
-- `stories` — content. Commentary columns: `whyItMatters` (TEXT, role-neutral fallback) + `whyItMattersTemplate` (TEXT holding JSON-stringified `{accessible, standard, technical}` — see §9)
+- `stories` — content. Commentary columns: `whyItMatters` (TEXT, role-neutral fallback) + `whyItMattersTemplate` (TEXT holding JSON-stringified `{accessible, briefed, technical}` — see §9)
 - `storyAggregates` — weekly rollup per `(sector, period)`; populated by the aggregation job; read by `/api/v2/trends/:sector`
 - `userSaves` — N:M user↔story
 - `comments` — threaded, nullable `parentCommentId`; `teamId` nullable for team-scoped comments
@@ -444,9 +444,9 @@ Every story has a `why_it_matters_template` payload with exactly three depth key
 
 | key          | audience framing                                                  |
 |--------------|-------------------------------------------------------------------|
-| `accessible` | plain-English, no jargon — a curious non-expert                   |
-| `standard`   | working professional in an adjacent field — **free-tier default** |
-| `technical`  | insider/expert — assumes sector vocabulary                        |
+| `accessible` | plain-English, no jargon — a curious non-expert — **free-tier default** |
+| `briefed`    | working professional in an adjacent field                              |
+| `technical`  | insider/expert — assumes sector vocabulary                              |
 
 The pre-12a sector-variant shape (`{ai, finance, semiconductors}`) is dead. Zod's `.strict()` rejects it.
 
@@ -496,7 +496,7 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 
 **Endpoint — `GET /api/v1/stories/:id/commentary?depth=`**
 - JWT-auth. No `requireProfile` gate — pre-onboarding direct-link users get a clean `400 PROFILE_NOT_FOUND` rather than a 403.
-- `depth` query param is optional and validated against `{accessible, standard, technical}`. Precedence: explicit query > stored `depthPreference` > `"standard"` floor.
+- `depth` query param is optional and validated against `{accessible, briefed, technical}`. Precedence: explicit query > stored `depthPreference` > `"accessible"` floor.
 - 404 `STORY_NOT_FOUND` on unknown story id. Any service failure below is hidden behind the tiered fallback — the endpoint never 5xxs on a content path.
 
 **Storage — `commentary_cache` (migration 0009)**
@@ -534,7 +534,7 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 - Daily consumption counter keyed by user (web) or API key (v2).
 - Resets at 00:00 UTC.
 - A "consumption" is counted on story-detail reads and on API `GET /stories` list responses (per row returned). Feed browsing is free.
-- Free: 10/day, locked to `standard` depth.
+- Free: 10/day, locked to `accessible` depth.
 - Standard ($10/mo): 100/day, free choice of depth.
 - Premium ($30/mo): unlimited, all depths.
 
