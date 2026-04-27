@@ -52,7 +52,7 @@ Committed work with no specific session slot. Reorder as priorities shift.
 - **P3 #10 — pg connection error handling.** Shipped in Session 5, verify the branch is actually hit in prod (may require an intentional Redis/DB blip smoke test).
 - **P3 #12 — File Railway Postgres query tab rendering bug report** with Railway support. Your task (10 min, not a session). `SELECT ... ORDER BY DESC LIMIT N` returns zero rows despite rows existing; filtered queries work.
 - **P3 #13 — Investigate Railway Docker build cache** serving stale code on non-Dockerfile changes. Skip unless it becomes a blocker again; empty-commit workaround has proven reliable.
-- **P3 #18 — Flatten `OneDrive/Desktop/signal-app/` path prefix** out of tracked paths. Medium-risk session: mass `git mv` + parallel updates to CI config, Vercel build config, Railway build config. Cosmetic not functional — deferred until friction compounds enough to justify.
+- **P3 #18 — Flatten `OneDrive/Desktop/signal-app/` path prefix.** ✅ Shipped 2026-04-27 — mass `git mv` + CI/Vercel/Railway root-directory updates. Tracked code now lives at the repo root. (Audit: `docs/discovery/restructure-stage1-findings.md`.)
 - **P3 #19 — Wire `GIT_COMMIT_SHA` + `BUILD_TIME` through Railway build args** so `/health` shows real commit SHA instead of `"unknown"`. 10 min in Railway Variables UI, not a code change.
 
 ### Product direction (strategic, not tactical)
@@ -98,7 +98,7 @@ Hard-won principles from this project. Internalize before scoping new phases.
 - **Don't leak your differentiator.** SIGNAL's "why it matters to you" text is the product. An API without personalization context has no good way to surface it. Keep it inside the app until the personalization-for-API design is real.
 - **GitHub secret scanners pattern-match on prefixes.** `sk_live_` means Stripe. Use vendor-specific prefixes (`sgnl_live_`) to avoid false positives on committed test fixtures.
 - **Docker caches lie.** Railway's "Active + green checkmark" doesn't mean your code is running. `/health` endpoint returning commit SHA is load-bearing for diagnosis. Terse migration output ("done in 208ms" without naming migration files) is normal, verify via direct DB probe.
-- **Path prefixes in tracked files compound.** The `OneDrive/Desktop/signal-app/` legacy prefix causes real friction every session. Address before it gets worse or accept the cost explicitly.
+- **Path prefixes in tracked files compound.** The `OneDrive/Desktop/signal-app/` legacy prefix caused real friction every session for ~9 months before being flattened in #18 (2026-04-27). Lesson: address structural debt before it gets worse, or accept the cost explicitly.
 
 ---
 

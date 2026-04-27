@@ -19,7 +19,7 @@ The differentiation that earns premium pricing: not consolidation alone (which c
 
 ## 2. Where We Are Today
 
-Phases 0 through 12d shipped. Cluster 1 complete: 1.1 (drizzle journal reconciliation), 1.2 (story detail UX cleanup), 1.3 (12c smoke-test issue cluster), 1.4 (Commentary keyboard a11y verification). Discovery Session 2 complete (April 27, 2026): produced the depth tier rename — `accessible / briefed / technical` replaces `beginner / standard / technical`, default tier `accessible` (was `standard`). Reasoning lives in `docs/decisions/discovery-session-2-accessible-tier.md`. PR #41 shipped the rename across the codebase. Workspace cleanup complete: PR #42 cleaned up the worktree residue from the OneDrive flatten and home-dir-repo work.
+Phases 0 through 12d shipped. Cluster 1 complete: 1.1 (drizzle journal reconciliation), 1.2 (story detail UX cleanup), 1.3 (12c smoke-test issue cluster), 1.4 (Commentary keyboard a11y verification). Discovery Session 2 complete (April 27, 2026): produced the depth tier rename — `accessible / briefed / technical` replaces `beginner / standard / technical`, default tier `accessible` (was `standard`). Reasoning lives in `docs/decisions/discovery-session-2-accessible-tier.md`. PR #41 shipped the rename across the codebase. Workspace cleanup complete: PR #42 cleaned up the worktree residue from the workspace relocation; the path-prefix flatten (deferred-infra #18) shipped 2026-04-27 — tracked code now lives at the repo root, no more `OneDrive/Desktop/signal-app/` prefix.
 
 Phase 12e is scoped end-to-end (see §5.4 below). The next session is 12e.1 stage 1 — read-only audit of current backend state ahead of schema and worker scaffolding.
 
@@ -29,7 +29,7 @@ What 1.2 became: clean template diff in one file (+2/−20 in `frontend/src/comp
 
 Side win this week: Claude Code permissions reconfigured. `~/.claude/settings.json` allow/deny rules shipped — allow common dev commands, explicitly deny destructive git ops. Auto mode enabled in Desktop settings; bypass mode disabled.
 
-Workspace cleanup complete: both OneDrive flatten and home-dir-repo cleanup shipped. Working tree at `C:\dev\signal-app\OneDrive\Desktop\signal-app\` — out of OneDrive sync scope, plain directory, all gates green at the new path. Old OneDrive paths (`signal-app-12c\`, `sa-imr\`, home-dir signal-app tree) remain pending a few days of stability confirmation before deletion.
+Workspace cleanup complete: workspace relocation (out of OneDrive sync scope) and home-dir-repo cleanup both shipped earlier in April 2026; the path-prefix flatten (deferred-infra #18) shipped 2026-04-27. Working tree at `C:\dev\signal-app\` — flat layout, project files at the clone root, all gates green. Old paths from prior layouts (`signal-app-12c\`, `sa-imr\`, home-dir signal-app tree) were deleted as part of the same cleanup arc.
 
 What's loaded for the next session is Phase 12e.1 stage 1 — the read-only audit.
 
@@ -155,9 +155,12 @@ Pricing finalization: the $8 / $15–20 numbers are working values. Final pricin
 
 ### 5.3 Workspace Cleanup ✅ Complete
 
-Two distinct jobs, both shipped April 26–27, 2026. OneDrive flatten + home-dir-repo cleanup. Working tree now at `C:\dev\signal-app\OneDrive\Desktop\signal-app\`. PR #42 cleaned up worktree residue.
+Three distinct jobs, all shipped April 26–27, 2026:
+1. Workspace relocation — moved the active clone out of OneDrive sync scope to `C:\dev\signal-app\`.
+2. Home-dir-repo cleanup — removed the accidental git worktree at `C:\Users\elkha\.git\`.
+3. Path-prefix flatten (deferred-infra #18) — `git mv` of every tracked file out from under the `OneDrive/Desktop/signal-app/` prefix to the repo root, plus CI/Vercel/Railway root-directory updates. Working tree now at `C:\dev\signal-app\`, flat layout.
 
-Outstanding cosmetic followups: old OneDrive paths (`signal-app-12c\`, `sa-imr\`, home-dir signal-app tree, home-dir `.github\`) pending a few days of stability before deletion. Worktree-creation source remains undiagnosed; periodic cleanup will recur until that's understood. Diagnosis is its own follow-up, not blocking 12e.
+PR #42 cleaned up worktree residue from (1) and (2). The path-prefix flatten in (3) was its own dedicated PR following the discovery audit at `docs/discovery/restructure-stage1-findings.md`. All prior on-disk clones (`signal-app-12c\`, `sa-imr\`, home-dir signal-app tree, home-dir `.github\`) were retired.
 
 ### 5.4 Phase 12e — Ingestion & Event Model
 
@@ -511,7 +514,7 @@ Domain purchase, SendGrid domain authentication, legal entity formation, busines
 
 ### Still relevant
 - **Worktree-creation diagnosis** — Claude Code's worktree-per-session feature continues at the new clone path. Periodic cleanup will recur until diagnosed. Brief follow-up session, not blocking 12e.
-- **OneDrive path remnants** — `signal-app-12c\`, `sa-imr\`, home-dir signal-app tree pending stability confirmation.
+- **~~OneDrive path remnants~~** — ✅ Resolved 2026-04-27. Old on-disk clones deleted; the path-prefix flatten (#18) eliminated the in-tree `OneDrive/Desktop/signal-app/` prefix as well. No remaining references to OneDrive in tracked code.
 - **Story detail reactions + share** — V4-adjacent.
 - **`stories` table deprecation** — post-12e, post-launch. Currently kept for backward compatibility.
 
