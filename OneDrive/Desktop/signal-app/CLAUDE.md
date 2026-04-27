@@ -673,6 +673,31 @@ vitest; not much coverage yet. Add tests with every new component that has meani
 - **Never `--no-verify`** — fix the hook failure.
 - Co-author trailer on agent commits: `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>`.
 
+### Workspace topology
+
+Three on-disk locations of the SIGNAL repo, each playing a distinct role:
+
+- **`C:\Users\elkha\OneDrive\Desktop\signal-app-12c\`** — primary worktree, holds the actual `.git/` directory. Default rest state is detached HEAD at `origin/main` (see "Worktree hygiene" below for why detached rather than on a branch).
+- **`C:\Users\elkha\OneDrive\Desktop\sa-imr\`** — secondary worktree, always checked out on `main`. Reference snapshot of "what's currently in main" without disturbing the primary's working state. Has two intentionally-untracked PR-body markdown files (`pr-body-cluster-1.1.md`, `pr-body-cluster-1.2.md`) — leave alone.
+- **`C:\dev\signal-app\`** — separate clone (its own `.git/`, not a worktree of the above). The active CC workhorse: cluster-session branches and their `.claude/worktrees/<slug>/` sub-worktrees live under here.
+
+The home-dir-as-repo at `C:\Users\elkha\.git\` was a historical botch — for a stretch, the user-profile directory itself was a git worktree of this repo, with the OneDrive-prefixed paths from §2 as its tracked files. It was removed during the 2026-04-27 cleanup session. If `git -C "C:\Users\elkha"` ever returns a valid worktree again, something has regressed — investigate before trusting.
+
+### Worktree hygiene
+
+Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktree owns its cleanup at session end. Default cleanup post-PR-merge:
+
+1. **Switch the worktree off the merged branch** — `git -C <worktree> checkout --detach origin/main` (or a working ref). The remote branch is about to be deleted by the merge-and-delete pattern; if the worktree stays pinned to it, the next `git pull` fails with `no such ref was fetched`.
+2. **Delete the local branch ref** — `git -C <worktree> branch -D <branch>`. The remote ref is gone post-merge; the local ref is otherwise orphaned.
+3. **Prune stale remote-tracking refs** — `git -C <worktree> remote prune origin`. `git fetch` doesn't auto-prune; without this, `origin/<branch>` lingers locally even after origin deletes the branch.
+4. **Remove the worktree if no longer needed** — `git -C <main-worktree> worktree remove <path>`. The `.claude/worktrees/<slug>/` worktrees that CC spawns for cluster sessions almost always belong here. Long-lived reference worktrees like `sa-imr` stay.
+
+**Two worktrees can't share a branch.** Git's single-checkout rule: if `sa-imr` is on `main`, the primary worktree (`signal-app-12c`) cannot also check out `main`. Detached HEAD at `origin/main` is the right default rest state for the primary — it's not a workaround, it's the canonical resolution.
+
+**Whose responsibility:**
+- During a cluster session: the spawning agent (CC) owns the worktree. Cleanup is part of the merge-PR's verification checklist alongside `npm test` and the linting gates.
+- Outside a session: periodic audit via the inventory pattern at `C:\Temp\worktree-audit-*.txt`. Run when `git pull` starts misbehaving or every few weeks, whichever comes first.
+
 ---
 
 ## 16. PHASE STATUS
