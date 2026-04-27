@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  customType,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -16,6 +18,18 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
+// ---------- Custom column types ----------
+
+// Phase 12e.1 — `events.embedding` is a placeholder bytea column. The
+// drizzle-orm/pg-core barrel doesn't export a `bytea` helper, so we
+// declare it here with customType. Converted to vector(N) in 12e.6a
+// once the embedding model is picked.
+const bytea = customType<{ data: Buffer; notNull: false }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
 // ---------- Enums ----------
 
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "deleted"]);
@@ -24,6 +38,47 @@ export const commentVisibilityEnum = pgEnum("comment_visibility", ["public", "te
 export const teamMemberRoleEnum = pgEnum("team_member_role", ["admin", "member", "viewer"]);
 export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sent", "failed"]);
 export const apiKeyTierEnum = pgEnum("api_key_tier", ["starter", "pro", "enterprise"]);
+
+// Phase 12e.1 ingestion enums.
+export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
+  "rss",
+  "arxiv_atom",
+  "sec_edgar_json",
+  "hackernews_api",
+  "reddit_api",
+]);
+export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
+  "discovered",
+  "heuristic_filtered",
+  "llm_rejected",
+  "enriching",
+  "published",
+  "duplicate",
+  "failed",
+]);
+
+export const INGESTION_ADAPTER_TYPES = [
+  "rss",
+  "arxiv_atom",
+  "sec_edgar_json",
+  "hackernews_api",
+  "reddit_api",
+] as const;
+export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
+
+export const INGESTION_CANDIDATE_STATUSES = [
+  "discovered",
+  "heuristic_filtered",
+  "llm_rejected",
+  "enriching",
+  "published",
+  "duplicate",
+  "failed",
+] as const;
+export type IngestionCandidateStatus = (typeof INGESTION_CANDIDATE_STATUSES)[number];
+
+export const EVENT_SOURCE_ROLES = ["primary", "alternate"] as const;
+export type EventSourceRole = (typeof EVENT_SOURCE_ROLES)[number];
 
 // ---------- Users ----------
 
@@ -463,6 +518,145 @@ export const commentaryCache = pgTable(
   }),
 );
 
+// ---------- Phase 12e ingestion tables ----------
+//
+// Curated catalog of content sources polled by the ingestion workers
+// under backend/src/jobs/ingestion/. Seeded with the 42-source registry
+// in migration 0014. Each row has a paired `writers` row reachable via
+// `paired_writer_id` so feed bylines reflect source provenance.
+//
+// `endpoint` is nullable specifically so the FRED row can land seeded-
+// disabled without a placeholder URL — the FRED adapter is deferred
+// post-launch (roadmap §13).
+export const ingestionSources = pgTable(
+  "ingestion_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    displayName: text("display_name").notNull(),
+    adapterType: ingestionAdapterTypeEnum("adapter_type").notNull(),
+    endpoint: text("endpoint"),
+    sectors: text("sectors").array().notNull(),
+    fetchIntervalSeconds: integer("fetch_interval_seconds").notNull().default(1800),
+    qualityScore: smallint("quality_score").notNull().default(5),
+    enabled: boolean("enabled").notNull().default(true),
+    pairedWriterId: uuid("paired_writer_id").references(() => writers.id, {
+      onDelete: "set null",
+    }),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    consecutiveFailureCount: integer("consecutive_failure_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    enabledIntervalIdx: index("ingestion_sources_enabled_interval_idx").on(
+      t.enabled,
+      t.fetchIntervalSeconds,
+    ),
+  }),
+);
+
+// Event-centric data model (Phase 12e). One real-world event = one
+// `events` row with one or more linked `event_sources` rows. The
+// existing `stories` table is preserved untouched through 12e for
+// backward compatibility; deprecation is post-launch.
+//
+// `why_it_matters_template` mirrors `stories.why_it_matters_template` —
+// TEXT-as-JSON of `WhyItMattersTemplate` consumed via the same parser
+// at backend/src/utils/depthVariants.ts.
+//
+// `embedding` is a bytea placeholder; converted to vector(N) in 12e.6a.
+// `facts` is JSONB; populated by the 12e.5a fact-extraction worker.
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sector: varchar("sector", { length: 50 }).notNull(),
+    headline: varchar("headline", { length: 255 }).notNull(),
+    context: text("context").notNull(),
+    whyItMatters: text("why_it_matters").notNull(),
+    whyItMattersTemplate: text("why_it_matters_template"),
+    primarySourceUrl: text("primary_source_url").notNull(),
+    primarySourceName: varchar("primary_source_name", { length: 255 }),
+    authorId: uuid("author_id").references(() => writers.id, { onDelete: "set null" }),
+    facts: jsonb("facts").$type<Record<string, unknown>>().notNull().default({}),
+    embedding: bytea("embedding"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    sectorPublishedIdx: index("events_sector_published_at_idx").on(t.sector, t.publishedAt),
+    createdAtIdx: index("events_created_at_idx").on(t.createdAt),
+  }),
+);
+
+// Multi-source attribution. Exactly one `role = 'primary'` per event
+// (enforced by partial unique index in migration 0015); any number of
+// `role = 'alternate'` rows. Deleting an `ingestion_sources` row sets
+// the FK null rather than cascading — the event keeps its source
+// history even if the catalog row goes away.
+export const eventSources = pgTable(
+  "event_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    ingestionSourceId: uuid("ingestion_source_id").references(() => ingestionSources.id, {
+      onDelete: "set null",
+    }),
+    url: text("url").notNull(),
+    name: varchar("name", { length: 255 }),
+    role: text("role").$type<EventSourceRole>().notNull().default("alternate"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    eventUrlUnique: unique("event_sources_event_id_url_key").on(t.eventId, t.url),
+    eventIdx: index("event_sources_event_idx").on(t.eventId),
+  }),
+);
+
+// Per-candidate row representing one item pulled from a source. The
+// pipeline advances `status` through the enum values as candidates
+// pass each filter / enrichment stage; terminal states are
+// `published` (made it to events), `duplicate` (clustered onto an
+// existing event), and `failed` (dead-lettered).
+export const ingestionCandidates = pgTable(
+  "ingestion_candidates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ingestionSourceId: uuid("ingestion_source_id")
+      .notNull()
+      .references(() => ingestionSources.id, { onDelete: "cascade" }),
+    externalId: text("external_id").notNull(),
+    url: text("url").notNull(),
+    rawTitle: text("raw_title"),
+    rawSummary: text("raw_summary"),
+    rawPublishedAt: timestamp("raw_published_at", { withTimezone: true }),
+    rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
+    status: ingestionCandidateStatusEnum("status").notNull().default("discovered"),
+    statusReason: text("status_reason"),
+    resolvedEventId: uuid("resolved_event_id").references(() => events.id, {
+      onDelete: "set null",
+    }),
+    discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    sourceExternalIdUnique: unique("ingestion_candidates_source_external_id_key").on(
+      t.ingestionSourceId,
+      t.externalId,
+    ),
+    statusDiscoveredIdx: index("ingestion_candidates_status_discovered_idx").on(
+      t.status,
+      t.discoveredAt,
+    ),
+  }),
+);
+
 // ---------- Exported row types ----------
 
 export type User = typeof users.$inferSelect;
@@ -496,3 +690,11 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
 export type CommentaryCacheRow = typeof commentaryCache.$inferSelect;
 export type NewCommentaryCacheRow = typeof commentaryCache.$inferInsert;
+export type IngestionSource = typeof ingestionSources.$inferSelect;
+export type NewIngestionSource = typeof ingestionSources.$inferInsert;
+export type Event = typeof events.$inferSelect;
+export type NewEvent = typeof events.$inferInsert;
+export type EventSource = typeof eventSources.$inferSelect;
+export type NewEventSource = typeof eventSources.$inferInsert;
+export type IngestionCandidate = typeof ingestionCandidates.$inferSelect;
+export type NewIngestionCandidate = typeof ingestionCandidates.$inferInsert;
