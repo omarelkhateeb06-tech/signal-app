@@ -49,6 +49,7 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
 ]);
 export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
   "discovered",
+  "heuristic_passed",
   "heuristic_filtered",
   "llm_rejected",
   "enriching",
@@ -68,6 +69,7 @@ export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
 
 export const INGESTION_CANDIDATE_STATUSES = [
   "discovered",
+  "heuristic_passed",
   "heuristic_filtered",
   "llm_rejected",
   "enriching",
@@ -638,6 +640,7 @@ export const ingestionCandidates = pgTable(
     rawPublishedAt: timestamp("raw_published_at", { withTimezone: true }),
     rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
     contentHash: text("content_hash"),
+    bodyText: text("body_text"),
     status: ingestionCandidateStatusEnum("status").notNull().default("discovered"),
     statusReason: text("status_reason"),
     resolvedEventId: uuid("resolved_event_id").references(() => events.id, {
