@@ -14,7 +14,7 @@ import { hackerNewsAdapter } from "./hackerNews";
 import { redditAdapter } from "./reddit";
 
 const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
-  rss: null,
+  rss: rssAdapter,
   arxiv_atom: null,
   sec_edgar_json: null,
   hackernews_api: null,
@@ -22,9 +22,8 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
 };
 
 // Suppress "imported but not yet wired" noise — the per-adapter modules
-// are kept linked here so 12e.2/.5d/.5e only need to flip the registry
+// are kept linked here so 12e.5d/.5e only need to flip the registry
 // entry rather than hunt down both an import and a map slot.
-void rssAdapter;
 void arxivAtomAdapter;
 void secEdgarJsonAdapter;
 void hackerNewsAdapter;

@@ -637,6 +637,7 @@ export const ingestionCandidates = pgTable(
     rawSummary: text("raw_summary"),
     rawPublishedAt: timestamp("raw_published_at", { withTimezone: true }),
     rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull().default({}),
+    contentHash: text("content_hash"),
     status: ingestionCandidateStatusEnum("status").notNull().default("discovered"),
     statusReason: text("status_reason"),
     resolvedEventId: uuid("resolved_event_id").references(() => events.id, {

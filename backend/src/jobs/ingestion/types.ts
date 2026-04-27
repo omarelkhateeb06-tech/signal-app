@@ -19,6 +19,10 @@ export interface Candidate {
   title: string | null;
   summary: string | null;
   publishedAt: Date | null;
+  // SHA-256 hex of (canonicalized_url + raw_title + raw_summary), truncated
+  // to 32 chars. Persisted to ingestion_candidates.content_hash for the
+  // event-clustering layer (12e.6) to use as a cross-source dedup signal.
+  contentHash: string;
   // Adapter-specific raw payload preserved for replay / debugging.
   // Persisted to ingestion_candidates.raw_payload as JSONB.
   rawPayload: Record<string, unknown>;
