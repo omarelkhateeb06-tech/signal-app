@@ -5,6 +5,7 @@ interface MockDbState {
   insertResults: any[][];
   updatedRows: any[];
   deletes: unknown[];
+  executes: unknown[];
 }
 
 export interface MockDb {
@@ -87,6 +88,7 @@ export function createMockDb(): MockDb {
     insertResults: [],
     updatedRows: [],
     deletes: [],
+    executes: [],
   };
 
   const pullSelect = (): any[] => state.selectResults.shift() ?? [];
@@ -103,6 +105,10 @@ export function createMockDb(): MockDb {
     insert: () => makeInsertChain(pullInsert),
     update: () => makeUpdateChain(trackUpdate, pullInsert),
     delete: () => makeDeleteChain(trackDelete),
+    execute: async (stmt: unknown) => {
+      state.executes.push(stmt);
+      return { rows: [], rowCount: 1 };
+    },
     transaction: async (cb: (tx: any) => Promise<any>) => cb(db),
   };
 
@@ -120,6 +126,7 @@ export function createMockDb(): MockDb {
       state.insertResults.length = 0;
       state.updatedRows.length = 0;
       state.deletes.length = 0;
+      state.executes.length = 0;
     },
   };
 }

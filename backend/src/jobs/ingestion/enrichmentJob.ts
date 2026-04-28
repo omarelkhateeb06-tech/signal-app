@@ -3,21 +3,20 @@
 // stage pipeline:
 //
 //   1. heuristic gate (12e.3)
-//   2. relevance gate (12e.4) ← THIS SUB-SESSION ADDS THIS
+//   2. relevance gate (12e.4)
 //   3. fact extraction (12e.5a)
 //   4. tier generation × 3 — accessible / briefed / technical (12e.5b)
+//      ← 12e.5b ADDS the seam definitions; 12e.5c owns wiring into
+//        the orchestration body alongside dead-letter handling.
 //   5. write to events + event_sources OR cluster onto an existing
 //      event (12e.6b)
 //
-// 12e.3 wired the heuristic seam fully. 12e.4 wires the LLM relevance
-// gate: on heuristic pass, if `runRelevanceGate` is provided in seams,
-// the orchestration body calls it and writes status to either
-// `llm_relevant` (sector populated, llm_judgment_raw populated) or
-// `llm_rejected` (status_reason = rejection class, llm_judgment_raw
-// populated when at least one Haiku call succeeded). When
-// runRelevanceGate is NOT provided (existing CLI-without-LLM tests),
-// the orchestration body terminates at heuristic_passed — the prior
-// 12e.3 behavior is preserved as the no-relevance fallback.
+// 12e.3 wired the heuristic seam fully. 12e.4 wired the LLM relevance
+// gate. 12e.5a wired the fact-extraction seam. 12e.5b adds the tier-
+// generation seams (one seam per tier, parameterized) but does NOT
+// wire them into the orchestration body — that lands in 12e.5c, which
+// also owns the cluster + write-event chain and the dead-letter
+// handling for stage failures across all four enrichment stages.
 
 import { eq } from "drizzle-orm";
 
@@ -25,7 +24,8 @@ import { db as defaultDb } from "../../db";
 import { ingestionCandidates } from "../../db/schema";
 import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
 import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
-import type { ExtractedFacts, FactsSeamResult } from "./factsSeam";
+import type { FactsSeamResult } from "./factsSeam";
+import type { TierSeamResult } from "./tierGenerationSeam";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -75,11 +75,16 @@ export interface EnrichmentSeams {
     raw?: RelevanceSeamRaw;
   }>;
   extractFacts?: (candidateId: string) => Promise<FactsSeamResult>;
+  // 12e.5b: seam loads candidate (facts + body + title + sector)
+  // internally per the 12e.5b stage 1 audit §8 recommendation. The
+  // orchestration owns per-tier presence checks against
+  // `tier_outputs->>'<tier>'` before invoking — the seam itself does
+  // not short-circuit on already-completed tiers. Wiring into
+  // `enrichmentWorker.handle()` is 12e.5c's responsibility.
   generateTier?: (
     candidateId: string,
     tier: "accessible" | "briefed" | "technical",
-    facts: ExtractedFacts,
-  ) => Promise<{ thesis: string; support: string }>;
+  ) => Promise<TierSeamResult>;
   resolveCluster?: (
     candidateId: string,
   ) => Promise<{ eventId: string | null; similarity: number }>;
