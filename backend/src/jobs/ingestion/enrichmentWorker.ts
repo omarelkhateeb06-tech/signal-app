@@ -11,6 +11,13 @@ import { processEnrichmentJob, type EnrichmentJobInput } from "./enrichmentJob";
 let cachedWorker: Worker<EnrichmentJobInput> | null = null;
 
 async function handle(job: Job<EnrichmentJobInput>): Promise<void> {
+  // 12e.5c: wire seams here (runHeuristic, runRelevanceGate, etc.).
+  // Until then, this worker returns terminalStatus: "failed" for any
+  // drained job because seams are not injected. The CLI
+  // (runIngestionEnrich.ts) is the documented dev surface for 12e.3
+  // and 12e.4 — it injects the heuristic + relevance seams directly.
+  // No DB corruption: the orchestration body's missing-seam guard
+  // returns the structured result without writing to the DB.
   const result = await processEnrichmentJob(job.data);
   // eslint-disable-next-line no-console
   console.log(

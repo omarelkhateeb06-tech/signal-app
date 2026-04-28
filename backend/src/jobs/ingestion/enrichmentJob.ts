@@ -2,25 +2,29 @@
 // Consumes one ingestion_candidates row and runs it through the four-
 // stage pipeline:
 //
-//   1. heuristic gate (12e.3) ← THIS SUB-SESSION FILLS THIS IN
-//   2. relevance gate (12e.4)
+//   1. heuristic gate (12e.3)
+//   2. relevance gate (12e.4) ← THIS SUB-SESSION ADDS THIS
 //   3. fact extraction (12e.5a)
 //   4. tier generation × 3 — accessible / briefed / technical (12e.5b)
 //   5. write to events + event_sources OR cluster onto an existing
 //      event (12e.6b)
 //
-// 12e.3 wires the heuristic seam fully — pre-fetch checks + body fetch
-// + post-fetch length floor — and writes status / status_reason /
-// body_text back to the DB. Status terminal possibilities at this
-// stage are `heuristic_filtered` (rejected, with reason) or
-// `heuristic_passed` (cleared, body persisted, awaiting 12e.4 LLM
-// relevance gate). All other stages remain seams.
+// 12e.3 wired the heuristic seam fully. 12e.4 wires the LLM relevance
+// gate: on heuristic pass, if `runRelevanceGate` is provided in seams,
+// the orchestration body calls it and writes status to either
+// `llm_relevant` (sector populated, llm_judgment_raw populated) or
+// `llm_rejected` (status_reason = rejection class, llm_judgment_raw
+// populated when at least one Haiku call succeeded). When
+// runRelevanceGate is NOT provided (existing CLI-without-LLM tests),
+// the orchestration body terminates at heuristic_passed — the prior
+// 12e.3 behavior is preserved as the no-relevance fallback.
 
 import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "../../db";
 import { ingestionCandidates } from "../../db/schema";
 import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
+import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -40,6 +44,7 @@ export interface EnrichmentJobResult {
     | "heuristic_filtered"
     | "heuristic_passed"
     | "llm_rejected"
+    | "llm_relevant"
     | "published"
     | "duplicate"
     | "failed";
@@ -60,7 +65,13 @@ export interface EnrichmentSeams {
   }>;
   runRelevanceGate?: (
     candidateId: string,
-  ) => Promise<{ relevant: boolean; sector?: string; reason?: string }>;
+  ) => Promise<{
+    relevant: boolean;
+    sector?: Sector;
+    reason?: string;
+    rejectionReason?: RelevanceReason;
+    raw?: RelevanceSeamRaw;
+  }>;
   extractFacts?: (candidateId: string) => Promise<Record<string, unknown>>;
   generateTier?: (
     candidateId: string,
@@ -135,12 +146,76 @@ export async function processEnrichmentJob(
     .set(updates)
     .where(eq(ingestionCandidates.id, input.candidateId));
 
-  // FUTURE (12e.4): if seams.runRelevanceGate is provided, continue
-  // with the relevance gate here rather than terminating.
+  // ---- Relevance gate (12e.4) ----
+  // If runRelevanceGate is wired, continue past heuristic_passed.
+  // If not, terminate at heuristic_passed (preserves the 12e.3
+  // CLI-without-LLM behavior; opt-in for tests + future workers).
+  if (!seams.runRelevanceGate) {
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "heuristic_passed",
+      failureReason: null,
+    };
+  }
+
+  const relevance = await seams.runRelevanceGate(input.candidateId);
+
+  // Always persist llm_judgment_raw when a successful Haiku call
+  // produced one (raw is set when at least one attempt returned text;
+  // unset on hard client-level failures like no_api_key / timeout).
+  // processedAt advances on every relevance-gate completion regardless
+  // of verdict.
+  const relevanceUpdates: {
+    processedAt: Date;
+    status?: "llm_relevant" | "llm_rejected";
+    statusReason?: string;
+    sector?: string | null;
+    llmJudgmentRaw?: Record<string, unknown> | null;
+  } = {
+    processedAt: new Date(),
+  };
+  if (relevance.raw) {
+    // Cast: the seam's RelevanceSeamRaw is structurally a JSON-safe
+    // record. The schema column is jsonb<Record<string, unknown>>.
+    relevanceUpdates.llmJudgmentRaw = relevance.raw as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+
+  if (!relevance.relevant) {
+    relevanceUpdates.status = "llm_rejected";
+    relevanceUpdates.statusReason =
+      relevance.rejectionReason ?? "llm_rejected";
+    // sector stays NULL on rejection (G5 — even if the LLM offered
+    // one, it's not actionable for a rejected candidate).
+    await db
+      .update(ingestionCandidates)
+      .set(relevanceUpdates)
+      .where(eq(ingestionCandidates.id, input.candidateId));
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "llm_rejected",
+      failureReason: relevance.rejectionReason ?? "llm_rejected",
+    };
+  }
+
+  // Pass — sector populated, status advances to llm_relevant.
+  relevanceUpdates.status = "llm_relevant";
+  relevanceUpdates.sector = relevance.sector ?? null;
+  await db
+    .update(ingestionCandidates)
+    .set(relevanceUpdates)
+    .where(eq(ingestionCandidates.id, input.candidateId));
+
+  // FUTURE (12e.5a): if seams.extractFacts is provided, continue
+  // with fact extraction here rather than terminating.
   return {
     candidateId: input.candidateId,
     resolvedEventId: null,
-    terminalStatus: "heuristic_passed",
+    terminalStatus: "llm_relevant",
     failureReason: null,
   };
 }
