@@ -626,6 +626,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 `runStartupEnvCheck()` in `backend/src/lib/envCheck.ts` is the source of truth for which vars are required vs optional. Update it when you add a new required env var, and update the example file in the same commit.
 
+**Shell-env shadowing trap.** `dotenv.config()` does not override vars already set in the process environment. An empty exported `ANTHROPIC_API_KEY=""` in your shell — from a stale `.env.example` source, a PowerShell `$PROFILE`, or Windows Credential Manager — silently shadows the real key in `backend/.env` with no error and no startup-check failure (length checks see the var as present, since both empty-string and real-string register as "present"). Symptom: scripts fail with auth errors despite a valid `.env`. Workaround until #53 lands (`dotenv.config({override: true})` in CLI scripts): prefix npm commands with `unset ANTHROPIC_API_KEY &&` (Bash) or `Remove-Item Env:\ANTHROPIC_API_KEY;` (PowerShell). Cost the 12e.5b smoke ~8 rounds of debugging.
+
 ---
 
 ## 13. TESTING
