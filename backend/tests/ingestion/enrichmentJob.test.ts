@@ -327,4 +327,193 @@ describe("processEnrichmentJob", () => {
       expect(relevanceUpdate.sector).toBeNull();
     });
   });
+
+  describe("fact extraction (12e.5a)", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body content for the test", truncated: false },
+    };
+    const passingRelevance = {
+      relevant: true,
+      sector: "semiconductors" as const,
+      reason: "TSMC earnings",
+      raw: {
+        model: "claude-haiku-4-5-20251001",
+        promptText: "p",
+        responseText: '{"relevant":true,"sector":"semiconductors","reason":"x"}',
+        latencyMs: 500,
+        attempts: 1,
+      },
+    };
+
+    function chainSeams(extractFacts: jest.Mock | undefined): EnrichmentSeams {
+      return {
+        runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+        runRelevanceGate: jest.fn().mockResolvedValue(passingRelevance),
+        ...(extractFacts ? { extractFacts } : {}),
+      };
+    }
+
+    it("preserves llm_relevant terminal when extractFacts is NOT provided", async () => {
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(undefined) },
+      );
+      expect(result.terminalStatus).toBe("llm_relevant");
+      // Two updates: heuristic + relevance. No facts update.
+      expect(mock.state.updatedRows.length).toBe(2);
+    });
+
+    it("facts pass writes status=facts_extracted + facts + facts_extracted_at + raw", async () => {
+      const factsBlob = {
+        facts: [
+          { text: "TSMC reported $24.6B Q1 revenue.", category: "metric" },
+          { text: "Revenue grew 58% year-over-year.", category: "metric" },
+          { text: "CEO C.C. Wei attributed the beat to HPC demand.", category: "actor" },
+          { text: "Gross margin expanded to 53.1%.", category: "metric" },
+          { text: "Q2 guidance was $26.5B.", category: "timeframe" },
+        ],
+      };
+      const raw = {
+        model: "claude-haiku-4-5-20251001",
+        promptText: "facts prompt",
+        responseText: JSON.stringify(factsBlob),
+        latencyMs: 800,
+        attempts: 1,
+      };
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: true,
+        facts: factsBlob,
+        raw,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(extractFacts) },
+      );
+      expect(result.terminalStatus).toBe("facts_extracted");
+      expect(result.failureReason).toBeNull();
+      // Three updates: heuristic + relevance + facts.
+      expect(mock.state.updatedRows.length).toBe(3);
+      const factsUpdate = mock.state.updatedRows[2];
+      expect(factsUpdate.status).toBe("facts_extracted");
+      expect(factsUpdate.facts).toEqual(factsBlob);
+      expect(factsUpdate.factsExtractedAt).toBeInstanceOf(Date);
+      expect(factsUpdate.factsExtractionRaw).toEqual(raw);
+      expect(factsUpdate.processedAt).toBeInstanceOf(Date);
+    });
+
+    it("facts reject writes status=failed, status_reason=rejectionReason, facts unset", async () => {
+      const raw = {
+        model: "claude-haiku-4-5-20251001",
+        promptText: "p",
+        responseText: 'not json',
+        latencyMs: 1200,
+        attempts: 2,
+      };
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "facts_parse_error",
+        raw,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(extractFacts) },
+      );
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe("facts_parse_error");
+      const factsUpdate = mock.state.updatedRows[2];
+      expect(factsUpdate.status).toBe("failed");
+      expect(factsUpdate.statusReason).toBe("facts_parse_error");
+      expect(factsUpdate.facts).toBeUndefined();
+      expect(factsUpdate.factsExtractedAt).toBeUndefined();
+      // Raw is persisted even on rejection (audit surface).
+      expect(factsUpdate.factsExtractionRaw).toEqual(raw);
+    });
+
+    it.each([
+      ["facts_parse_error"],
+      ["facts_timeout"],
+      ["facts_no_api_key"],
+      ["facts_api_error"],
+      ["facts_rate_limited"],
+      ["facts_empty"],
+    ])("propagates rejectionReason=%s into status_reason", async (reason) => {
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: reason,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(extractFacts) },
+      );
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe(reason);
+      const factsUpdate = mock.state.updatedRows[2];
+      expect(factsUpdate.statusReason).toBe(reason);
+    });
+
+    it("does NOT persist raw when seam never got a successful Haiku call", async () => {
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "facts_timeout",
+      });
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(extractFacts) },
+      );
+      const factsUpdate = mock.state.updatedRows[2];
+      expect(factsUpdate.factsExtractionRaw).toBeUndefined();
+    });
+
+    it("falls back to 'facts_parse_error' status_reason when rejectionReason omitted", async () => {
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: false,
+        // rejectionReason intentionally omitted
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams: chainSeams(extractFacts) },
+      );
+      expect(result.failureReason).toBe("facts_parse_error");
+      expect(mock.state.updatedRows[2].statusReason).toBe("facts_parse_error");
+    });
+
+    it("does NOT call extractFacts when relevance rejects", async () => {
+      const extractFacts = jest.fn();
+      const seams: EnrichmentSeams = {
+        runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+        runRelevanceGate: jest.fn().mockResolvedValue({
+          relevant: false,
+          rejectionReason: "llm_rejected",
+        }),
+        extractFacts,
+      };
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams },
+      );
+      expect(result.terminalStatus).toBe("llm_rejected");
+      expect(extractFacts).not.toHaveBeenCalled();
+      // Two updates: heuristic + relevance-rejection.
+      expect(mock.state.updatedRows.length).toBe(2);
+    });
+
+    it("does NOT call extractFacts when heuristic rejects", async () => {
+      const extractFacts = jest.fn();
+      const seams: EnrichmentSeams = {
+        runHeuristic: jest.fn().mockResolvedValue({
+          pass: false,
+          reason: HEURISTIC_REASONS.RECENCY_TOO_OLD,
+        }),
+        runRelevanceGate: jest.fn(),
+        extractFacts,
+      };
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        { db: mock.db, seams },
+      );
+      expect(result.terminalStatus).toBe("heuristic_filtered");
+      expect(extractFacts).not.toHaveBeenCalled();
+    });
+  });
 });
