@@ -17,6 +17,13 @@ jest.mock("../../src/jobs/ingestion/adapters", () => ({
   getAdapter: () => currentAdapter,
 }));
 
+// Mock the enrichment queue so the post-persist enqueue bridge is observable
+// without bringing up Redis. Each test resets the spy / behavior in beforeEach.
+let enqueueMock: jest.Mock = jest.fn().mockResolvedValue({ queued: true, jobId: "job-1" });
+jest.mock("../../src/jobs/ingestion/enrichmentQueue", () => ({
+  enqueueEnrichment: (...args: unknown[]) => enqueueMock(...args),
+}));
+
 // Import after mocks so the module bindings resolve to the mocked db/registry.
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const { processSourcePollJob } = require("../../src/jobs/ingestion/sourcePollJob");
@@ -46,6 +53,7 @@ function makeCandidate(externalId: string): Candidate {
 beforeEach(() => {
   mock = createMockDb();
   currentAdapter = null;
+  enqueueMock = jest.fn().mockResolvedValue({ queued: true, jobId: "job-1" });
 });
 
 describe("processSourcePollJob", () => {
@@ -161,6 +169,80 @@ describe("processSourcePollJob", () => {
       };
       const result = await processSourcePollJob({ sourceId: SOURCE_ROW.id });
       expect(result.failureReason).toBe("network");
+    });
+  });
+
+  describe("post-persist enrichment-queue bridge (12e.3)", () => {
+    it("enqueues one job per newly-inserted candidate", async () => {
+      const candidates = [makeCandidate("a"), makeCandidate("b"), makeCandidate("c")];
+      mock.queueSelect([SOURCE_ROW]);
+      mock.queueInsert([{ id: "row-a" }, { id: "row-b" }, { id: "row-c" }]);
+      currentAdapter = async (): Promise<AdapterResult> => ({ candidates });
+
+      await processSourcePollJob({ sourceId: SOURCE_ROW.id });
+
+      expect(enqueueMock).toHaveBeenCalledTimes(3);
+      expect(enqueueMock.mock.calls.map((c) => c[0].candidateId)).toEqual([
+        "row-a",
+        "row-b",
+        "row-c",
+      ]);
+      // triggeredBy: "poll" tags the origin so 12e.4+ can route differently if needed.
+      for (const call of enqueueMock.mock.calls) {
+        expect(call[0].triggeredBy).toBe("poll");
+      }
+    });
+
+    it("enqueues zero jobs when no new candidates were inserted (all duplicates)", async () => {
+      const candidates = [makeCandidate("a"), makeCandidate("b")];
+      mock.queueSelect([SOURCE_ROW]);
+      // Insert returns empty array — both items conflicted on the unique key.
+      mock.queueInsert([]);
+      currentAdapter = async (): Promise<AdapterResult> => ({ candidates });
+
+      await processSourcePollJob({ sourceId: SOURCE_ROW.id });
+
+      expect(enqueueMock).not.toHaveBeenCalled();
+    });
+
+    it("enqueue throw is logged but does NOT fail the persist", async () => {
+      const candidates = [makeCandidate("a")];
+      mock.queueSelect([SOURCE_ROW]);
+      mock.queueInsert([{ id: "row-a" }]);
+      currentAdapter = async (): Promise<AdapterResult> => ({ candidates });
+      enqueueMock = jest.fn().mockRejectedValue(new Error("redis down"));
+
+      // Capture console.error to assert on the log without polluting test output.
+      const errSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        const result = await processSourcePollJob({ sourceId: SOURCE_ROW.id });
+
+        // Persist still succeeded.
+        expect(result.candidatesDiscovered).toBe(1);
+        expect(result.candidatesPersisted).toBe(1);
+        expect(result.failureReason).toBeNull();
+        // markSuccess still ran (counter reset, last_polled_at advanced).
+        expect(mock.state.updatedRows.length).toBe(1);
+        // Error was logged.
+        expect(errSpy).toHaveBeenCalled();
+        const logCall = errSpy.mock.calls.find((c) =>
+          String(c[0]).includes("[ingestion-poll] enqueue failed for candidate"),
+        );
+        expect(logCall).toBeDefined();
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
+    it("does not enqueue on adapter throw (failure path)", async () => {
+      mock.queueSelect([SOURCE_ROW]);
+      currentAdapter = async () => {
+        throw new Error("timeout");
+      };
+
+      await processSourcePollJob({ sourceId: SOURCE_ROW.id });
+
+      expect(enqueueMock).not.toHaveBeenCalled();
     });
   });
 });

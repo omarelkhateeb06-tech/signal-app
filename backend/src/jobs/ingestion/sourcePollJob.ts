@@ -25,6 +25,7 @@ import { ingestionCandidates, ingestionSources } from "../../db/schema";
 import type { Candidate } from "./types";
 import type { AdapterContext } from "./types";
 import { getAdapter } from "./adapters";
+import { enqueueEnrichment } from "./enrichmentQueue";
 
 export interface SourcePollJobInput {
   sourceId: string;
@@ -54,8 +55,8 @@ async function loadSource(sourceId: string) {
 async function persistCandidates(
   sourceId: string,
   candidates: readonly Candidate[],
-): Promise<number> {
-  if (candidates.length === 0) return 0;
+): Promise<string[]> {
+  if (candidates.length === 0) return [];
 
   const rows = candidates.map((c) => ({
     ingestionSourceId: sourceId,
@@ -69,7 +70,8 @@ async function persistCandidates(
   }));
 
   // onConflictDoNothing on the (ingestion_source_id, external_id) unique
-  // constraint. Returning the inserted ids lets us count only new rows.
+  // constraint. Returning the inserted ids lets us count only new rows
+  // and feed them into the enrichment-queue bridge below.
   const inserted = await db
     .insert(ingestionCandidates)
     .values(rows)
@@ -78,7 +80,7 @@ async function persistCandidates(
     })
     .returning({ id: ingestionCandidates.id });
 
-  return inserted.length;
+  return inserted.map((r) => r.id);
 }
 
 async function markSuccess(sourceId: string): Promise<void> {
@@ -148,13 +150,29 @@ export async function processSourcePollJob(
     };
   }
 
-  const persisted = await persistCandidates(source.id, candidates);
+  const insertedIds = await persistCandidates(source.id, candidates);
   await markSuccess(source.id);
+
+  // Best-effort tail: enqueue an enrichment job per newly-inserted
+  // candidate. Persist already succeeded; if enqueue throws (Redis
+  // hiccup, transient queue error), log and continue — a future
+  // scanner / 12e.5c orchestration sweeps any missed candidates.
+  for (const candidateId of insertedIds) {
+    try {
+      await enqueueEnrichment({ candidateId, triggeredBy: "poll" });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[ingestion-poll] enqueue failed for candidate ${candidateId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 
   return {
     sourceId: source.id,
     candidatesDiscovered: candidates.length,
-    candidatesPersisted: persisted,
+    candidatesPersisted: insertedIds.length,
     failureReason: null,
   };
 }
