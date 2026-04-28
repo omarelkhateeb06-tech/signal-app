@@ -626,6 +626,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 `runStartupEnvCheck()` in `backend/src/lib/envCheck.ts` is the source of truth for which vars are required vs optional. Update it when you add a new required env var, and update the example file in the same commit.
 
+**Shell-env shadowing trap.** `dotenv.config()` does not override vars already set in the process environment. An empty exported `ANTHROPIC_API_KEY=""` in your shell — from a stale `.env.example` source, a PowerShell `$PROFILE`, or Windows Credential Manager — silently shadows the real key in `backend/.env` with no error and no startup-check failure (length checks see the var as present, since both empty-string and real-string register as "present"). Symptom: scripts fail with auth errors despite a valid `.env`. Workaround until #53 lands (`dotenv.config({override: true})` in CLI scripts): prefix npm commands with `unset ANTHROPIC_API_KEY &&` (Bash) or `Remove-Item Env:\ANTHROPIC_API_KEY;` (PowerShell). Cost the 12e.5b smoke ~8 rounds of debugging.
+
 ---
 
 ## 13. TESTING
@@ -692,6 +694,8 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 ## 15. PHASE STATUS
 
 **Numbering convention.** "Phase 12e.1" is a **roadmap title-number** — a sub-session slug inside the 12e ingestion-pipeline cluster. It has nothing to do with GitHub issue or PR numbers (`#35`, `#41`, `#42`). Title-numbers identify scope; GH numbers identify artifacts. A single sub-session usually closes one PR, but the numbers do not align — `#41` was the tier-rename PR (no roadmap title-number); `Phase 12e.1` will close one or more PRs whose `#` is decided by GitHub at PR-create time. When in doubt: title-number is what the planning chat calls a session; GH number is what `gh pr view` returns.
+
+**Numbering hygiene.** Before writing any `Closes #N` line in a PR body, referencing `#N` in chat, or running `gh issue close N`, run `gh issue view N` (or `gh pr view N`) to confirm the artifact at that number is the one you mean. A wrong-issue closure shipped on a merged PR in 12c when a session-internal title-number ("GH #25") was treated as a real GH reference — caught and corrected post-merge. Title-numbers and GH numbers do not converge; only `gh`-confirmed numbers go in commit messages, PR bodies, or close actions.
 
 ### Shipped (0 through 12c)
 
