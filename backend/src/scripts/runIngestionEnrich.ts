@@ -1,14 +1,23 @@
-// Manual trigger for the heuristic stage (Phase 12e.3). Bypasses BullMQ
-// and calls processEnrichmentJob directly so a developer can exercise
-// the heuristic seam end-to-end without Redis.
+// Manual trigger for the heuristic + LLM relevance stages
+// (Phase 12e.3 + 12e.4). Bypasses BullMQ and calls processEnrichmentJob
+// directly so a developer can exercise both seams end-to-end without
+// Redis. Requires ANTHROPIC_API_KEY in the env for the relevance seam
+// to call Haiku (the seam returns LLM_NO_API_KEY otherwise — graceful
+// degradation, not a crash).
 //
 // Usage:
 //   npm run run-ingestion-enrich --workspace=backend -- --candidate-id=<uuid>
 //   npm run run-ingestion-enrich --workspace=backend -- --source=<slug>
 //
-// `--source=<slug>` walks all candidates with status='discovered' for
-// that source in `discovered_at` ASC order and processes each in
-// sequence. Useful for processing a freshly-polled batch in one shot.
+// `--source=<slug>` walks all candidates at status IN ('discovered',
+// 'heuristic_passed') for that source in `discovered_at` ASC order:
+//   - 'discovered' rows run heuristic + relevance in one job.
+//   - 'heuristic_passed' rows skip heuristic (no-op via processed_at
+//     guard at seam level — this CLI does not currently filter by
+//     status mid-job, so heuristic_passed candidates re-run heuristic
+//     idempotently. The DB state ends up correct either way.)
+// Useful for processing a freshly-polled batch (or replaying a stuck
+// batch) in one shot.
 //
 // Shutdown: clean teardown via try/finally. No process.exit(0) — see
 // followup #47 (Node-on-Windows libuv shutdown crash on
@@ -16,15 +25,17 @@
 // the event loop drain naturally.
 
 import "dotenv/config";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { ingestionCandidates, ingestionSources } from "../db/schema";
 import {
   processEnrichmentJob,
   type EnrichmentJobResult,
+  type EnrichmentSeams,
 } from "../jobs/ingestion/enrichmentJob";
 import { runHeuristicSeam } from "../jobs/ingestion/heuristicSeam";
+import { runRelevanceSeam } from "../jobs/ingestion/relevanceSeam";
 
 interface ParsedArgs {
   candidateId?: string;
@@ -71,7 +82,15 @@ async function resolveCandidateIds(args: ParsedArgs): Promise<string[]> {
     .where(
       and(
         eq(ingestionCandidates.ingestionSourceId, source.id),
-        eq(ingestionCandidates.status, "discovered"),
+        // 12e.4: pick up both fresh and partially-processed candidates
+        // so re-runs after a stuck batch are picked up. Re-running
+        // heuristic on a heuristic_passed row is idempotent in the
+        // seam: same recency / noise / body decisions reach the same
+        // verdict against the same row.
+        inArray(ingestionCandidates.status, [
+          "discovered",
+          "heuristic_passed",
+        ]),
       ),
     )
     .orderBy(asc(ingestionCandidates.discoveredAt));
@@ -90,11 +109,16 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[run-ingestion-enrich] processing ${ids.length} candidate(s)`);
 
+    const seams: EnrichmentSeams = {
+      runHeuristic: (id) => runHeuristicSeam(id),
+      runRelevanceGate: (id) => runRelevanceSeam(id),
+    };
+
     const results: EnrichmentJobResult[] = [];
     for (const candidateId of ids) {
       const r = await processEnrichmentJob(
         { candidateId, triggeredBy: "cli" },
-        { seams: { runHeuristic: (id) => runHeuristicSeam(id) } },
+        { seams },
       );
       results.push(r);
       // eslint-disable-next-line no-console
