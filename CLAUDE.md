@@ -318,6 +318,8 @@ A few tables from an abandoned earlier phase still exist in `schema.ts`. They ha
 
 Migrations are hand-written `.sql` files applied by `backend/src/db/migrate.ts` — a homegrown runner that replaced `drizzle-kit migrate`. Drizzle ORM still owns runtime queries; only the schema-migration path swapped.
 
+**Path:** migrations live at `backend/src/db/migrations/`, **not** `backend/drizzle/`. The drizzle-kit convention default is `backend/drizzle/` and AI-assistant prompts have repeatedly defaulted to the wrong path; the homegrown runner reads from `src/db/migrations/` exclusively.
+
 **Workflow**
 1. Create `backend/src/db/migrations/NNNN_phaseXY_slug.sql` by hand. Plain SQL, one up-only file. No down migrations.
 2. Update `schema.ts` so types stay in sync with the DB.
