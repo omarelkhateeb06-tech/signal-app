@@ -219,6 +219,8 @@ One Haiku call per relevant candidate. Structured-JSON output extracting 5–8 k
 
 Three Haiku calls per candidate, one per tier. Tier-specific prompts under `backend/src/llm/prompts/ingestion/` (`tierAccessible.ts`, `tierBriefed.ts`, `tierTechnical.ts`). Each consumes the persisted facts plus the article body and produces `{thesis, support}` for that tier. Output written to event row's `why_it_matters_template` text-as-JSON column matching the existing `stories` shape: `{accessible: {thesis, support}, briefed: {thesis, support}, technical: {thesis, support}}`.
 
+Tier outputs stage on ingestion_candidates.tier_outputs (JSONB, keyed by tier name); 12e.5c casts and copies into events.why_it_matters_template when the event row is created.
+
 #### 12e.5c — Story write orchestration, dead-letter, Sentry tags (~1 session)
 
 End-to-end chain: `ingestion-cron → fetch-source → evaluate-candidate (heuristic + relevance) → extract-facts → generate-tiers × 3 → write-event`. Hourly RSS cadence enabled. Dead-letter handling for stage failures. Sentry tags wired through all stages. **No clustering yet** — at this point each candidate creates a new event.
