@@ -1,21 +1,28 @@
-// Manual trigger for the heuristic + LLM relevance stages
-// (Phase 12e.3 + 12e.4). Bypasses BullMQ and calls processEnrichmentJob
-// directly so a developer can exercise both seams end-to-end without
-// Redis. Requires ANTHROPIC_API_KEY in the env for the relevance seam
-// to call Haiku (the seam returns LLM_NO_API_KEY otherwise — graceful
-// degradation, not a crash).
+// Manual trigger for the heuristic + LLM relevance + fact-extraction
+// stages (Phase 12e.3 + 12e.4 + 12e.5a). Bypasses BullMQ and calls
+// processEnrichmentJob directly so a developer can exercise all three
+// seams end-to-end without Redis. Requires ANTHROPIC_API_KEY in the env
+// for the relevance + facts seams to call Haiku (the seams return
+// {LLM,FACTS}_NO_API_KEY otherwise — graceful degradation, not a crash).
 //
 // Usage:
 //   npm run run-ingestion-enrich --workspace=backend -- --candidate-id=<uuid>
 //   npm run run-ingestion-enrich --workspace=backend -- --source=<slug>
 //
 // `--source=<slug>` walks all candidates at status IN ('discovered',
-// 'heuristic_passed') for that source in `discovered_at` ASC order:
-//   - 'discovered' rows run heuristic + relevance in one job.
-//   - 'heuristic_passed' rows skip heuristic (no-op via processed_at
-//     guard at seam level — this CLI does not currently filter by
-//     status mid-job, so heuristic_passed candidates re-run heuristic
-//     idempotently. The DB state ends up correct either way.)
+// 'heuristic_passed', 'llm_relevant') for that source in `discovered_at`
+// ASC order, with `llm_relevant` rows additionally gated on
+// `facts_extracted_at IS NULL` so already-extracted candidates are
+// skipped (idempotency lives at the row-selection layer per the 12e.5a
+// locked decision; the seam itself does not short-circuit):
+//   - 'discovered' rows run heuristic + relevance + facts in one job.
+//   - 'heuristic_passed' rows re-run heuristic idempotently and continue
+//     through relevance + facts.
+//   - 'llm_relevant' rows re-run heuristic + relevance (paying an extra
+//     Haiku call for the relevance re-classification) and then run facts.
+//     Wasteful but functionally correct; acceptable for a dev CLI. Cron
+//     path goes end-to-end in one orchestration run and never re-enters
+//     this branch.
 // Useful for processing a freshly-polled batch (or replaying a stuck
 // batch) in one shot.
 //
@@ -25,7 +32,7 @@
 // the event loop drain naturally.
 
 import "dotenv/config";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { ingestionCandidates, ingestionSources } from "../db/schema";
@@ -36,6 +43,7 @@ import {
 } from "../jobs/ingestion/enrichmentJob";
 import { runHeuristicSeam } from "../jobs/ingestion/heuristicSeam";
 import { runRelevanceSeam } from "../jobs/ingestion/relevanceSeam";
+import { runFactsSeam } from "../jobs/ingestion/factsSeam";
 
 interface ParsedArgs {
   candidateId?: string;
@@ -87,10 +95,19 @@ async function resolveCandidateIds(args: ParsedArgs): Promise<string[]> {
         // heuristic on a heuristic_passed row is idempotent in the
         // seam: same recency / noise / body decisions reach the same
         // verdict against the same row.
-        inArray(ingestionCandidates.status, [
-          "discovered",
-          "heuristic_passed",
-        ]),
+        // 12e.5a: also pick up llm_relevant rows that haven't been
+        // fact-extracted yet. Idempotency lives at the query level —
+        // facts_extracted_at IS NULL gates the cohort.
+        or(
+          inArray(ingestionCandidates.status, [
+            "discovered",
+            "heuristic_passed",
+          ]),
+          and(
+            eq(ingestionCandidates.status, "llm_relevant"),
+            isNull(ingestionCandidates.factsExtractedAt),
+          ),
+        ),
       ),
     )
     .orderBy(asc(ingestionCandidates.discoveredAt));
@@ -112,6 +129,7 @@ async function main(): Promise<void> {
     const seams: EnrichmentSeams = {
       runHeuristic: (id) => runHeuristicSeam(id),
       runRelevanceGate: (id) => runRelevanceSeam(id),
+      extractFacts: (id) => runFactsSeam(id),
     };
 
     const results: EnrichmentJobResult[] = [];

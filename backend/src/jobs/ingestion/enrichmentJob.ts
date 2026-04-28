@@ -25,6 +25,7 @@ import { db as defaultDb } from "../../db";
 import { ingestionCandidates } from "../../db/schema";
 import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
 import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
+import type { ExtractedFacts, FactsSeamResult } from "./factsSeam";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -45,6 +46,7 @@ export interface EnrichmentJobResult {
     | "heuristic_passed"
     | "llm_rejected"
     | "llm_relevant"
+    | "facts_extracted"
     | "published"
     | "duplicate"
     | "failed";
@@ -72,11 +74,11 @@ export interface EnrichmentSeams {
     rejectionReason?: RelevanceReason;
     raw?: RelevanceSeamRaw;
   }>;
-  extractFacts?: (candidateId: string) => Promise<Record<string, unknown>>;
+  extractFacts?: (candidateId: string) => Promise<FactsSeamResult>;
   generateTier?: (
     candidateId: string,
     tier: "accessible" | "briefed" | "technical",
-    facts: Record<string, unknown>,
+    facts: ExtractedFacts,
   ) => Promise<{ thesis: string; support: string }>;
   resolveCluster?: (
     candidateId: string,
@@ -210,12 +212,73 @@ export async function processEnrichmentJob(
     .set(relevanceUpdates)
     .where(eq(ingestionCandidates.id, input.candidateId));
 
-  // FUTURE (12e.5a): if seams.extractFacts is provided, continue
-  // with fact extraction here rather than terminating.
+  // ---- Fact extraction (12e.5a) ----
+  // If extractFacts is wired, continue past llm_relevant. If not,
+  // terminate at llm_relevant (preserves the 12e.4 behavior; opt-in
+  // for tests + future workers via seam injection).
+  if (!seams.extractFacts) {
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "llm_relevant",
+      failureReason: null,
+    };
+  }
+
+  const facts = await seams.extractFacts(input.candidateId);
+
+  // Persist facts_extraction_raw whenever a successful Haiku call
+  // produced one (raw is set when at least one attempt returned text;
+  // unset on hard client-level failures like no_api_key / timeout).
+  // processedAt advances on every facts-stage completion regardless of
+  // verdict.
+  const factsUpdates: {
+    processedAt: Date;
+    status?: "facts_extracted" | "failed";
+    statusReason?: string;
+    facts?: Record<string, unknown> | null;
+    factsExtractedAt?: Date | null;
+    factsExtractionRaw?: Record<string, unknown> | null;
+  } = {
+    processedAt: new Date(),
+  };
+  if (facts.raw) {
+    factsUpdates.factsExtractionRaw = facts.raw as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+
+  if (!facts.ok) {
+    factsUpdates.status = "failed";
+    factsUpdates.statusReason =
+      facts.rejectionReason ?? "facts_parse_error";
+    await db
+      .update(ingestionCandidates)
+      .set(factsUpdates)
+      .where(eq(ingestionCandidates.id, input.candidateId));
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "failed",
+      failureReason: facts.rejectionReason ?? "facts_parse_error",
+    };
+  }
+
+  // Pass — facts populated, status advances to facts_extracted,
+  // facts_extracted_at stamped now.
+  factsUpdates.status = "facts_extracted";
+  factsUpdates.facts = facts.facts as unknown as Record<string, unknown>;
+  factsUpdates.factsExtractedAt = new Date();
+  await db
+    .update(ingestionCandidates)
+    .set(factsUpdates)
+    .where(eq(ingestionCandidates.id, input.candidateId));
+
   return {
     candidateId: input.candidateId,
     resolvedEventId: null,
-    terminalStatus: "llm_relevant",
+    terminalStatus: "facts_extracted",
     failureReason: null,
   };
 }
