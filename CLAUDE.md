@@ -689,6 +689,8 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 - During a cluster session: the spawning agent (CC) owns the worktree. Cleanup is part of the merge-PR's verification checklist alongside `npm test` and the linting gates.
 - Outside a session: periodic audit via `git worktree list`. Run when `git pull` starts misbehaving or every few weeks, whichever comes first.
 
+**Canonical-invocation discipline.** Always launch Claude Desktop from `C:\dev\signal-app\` (canonical clone root), not from any path under `C:\dev\signal-app\OneDrive\`. Claude Desktop pins each session's bash CWD via `~\.claude\sessions\<pid>.json` derived from the invocation CWD; there is no settings-file key that overrides this. A session launched from an OneDrive-nested path will spawn worktrees under that path, persisting OneDrive-rooted artifacts that complicate later cleanup. If a running session has CWD under `\OneDrive\` (check `pwd` in any bash call), end it and relaunch from canonical. The April 28 OneDrive cleanup mini-session removed five empty wrapper directories that accumulated from invocation-CWD drift across pre-flatten and post-flatten sessions.
+
 ---
 
 ## 15. PHASE STATUS
