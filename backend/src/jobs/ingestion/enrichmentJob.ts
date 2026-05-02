@@ -157,6 +157,27 @@ const PAST_HEURISTIC_PASSED: ReadonlySet<string> = new Set([
   "published",
 ]);
 
+// Statuses that imply the heuristic stage has already produced a verdict
+// (passed, since heuristic_filtered is caught upstream by TERMINAL_STATES).
+// Used by the per-stage short-circuit before `runHeuristic` to skip the
+// re-run that would otherwise transiently overwrite a downstream status
+// (e.g., reverting 'facts_extracted' to 'heuristic_passed'), which the
+// tier seam's precondition would observe as a stage-mismatch and reject.
+// `duplicate` is included for consistency — a duplicate candidate has by
+// definition cleared the heuristic stage. `heuristic_filtered` and
+// `failed` are absent because TERMINAL_STATES catches them; `discovered`
+// is absent because first-run candidates must execute the heuristic.
+const HEURISTIC_ALREADY_RAN: ReadonlySet<string> = new Set([
+  "heuristic_passed",
+  "llm_rejected",
+  "llm_relevant",
+  "facts_extracted",
+  "tier_generated",
+  "enriching",
+  "published",
+  "duplicate",
+]);
+
 interface CandidateSnapshot {
   status: string;
   statusReason: string | null;
@@ -247,47 +268,59 @@ export async function processEnrichmentJob(
     };
   }
 
-  const result = await seams.runHeuristic(input.candidateId);
+  // Per-stage short-circuit (fix #65): skip the heuristic re-run when the
+  // snapshot shows the candidate has already cleared the heuristic stage
+  // on a prior invocation. Mirrors the relevance + facts pattern below.
+  // Without this guard, the heuristic would re-run on a re-enqueued
+  // facts_extracted candidate and transiently overwrite status to
+  // 'heuristic_passed', which the tier seam's precondition reads from
+  // current DB state and rejects as a stage mismatch.
+  const heuristicAlreadyRan =
+    snapshot !== null && HEURISTIC_ALREADY_RAN.has(snapshot.status);
 
-  if (!result.pass) {
+  if (!heuristicAlreadyRan) {
+    const result = await seams.runHeuristic(input.candidateId);
+
+    if (!result.pass) {
+      await db
+        .update(ingestionCandidates)
+        .set({
+          status: "heuristic_filtered",
+          statusReason: result.reason ?? "unknown",
+          processedAt: new Date(),
+        })
+        .where(eq(ingestionCandidates.id, input.candidateId));
+      return {
+        candidateId: input.candidateId,
+        resolvedEventId: null,
+        terminalStatus: "heuristic_filtered",
+        failureReason: result.reason ?? "unknown",
+      };
+    }
+
+    // Pass — persist body if present, advance status. Truncation is
+    // recorded informationally in status_reason but the candidate still
+    // moves forward (status='heuristic_passed').
+    const updates: {
+      status: "heuristic_passed";
+      processedAt: Date;
+      bodyText?: string;
+      statusReason?: string;
+    } = {
+      status: "heuristic_passed",
+      processedAt: new Date(),
+    };
+    if (result.body) {
+      updates.bodyText = result.body.text;
+      if (result.body.truncated) {
+        updates.statusReason = HEURISTIC_REASONS.BODY_TRUNCATED;
+      }
+    }
     await db
       .update(ingestionCandidates)
-      .set({
-        status: "heuristic_filtered",
-        statusReason: result.reason ?? "unknown",
-        processedAt: new Date(),
-      })
+      .set(updates)
       .where(eq(ingestionCandidates.id, input.candidateId));
-    return {
-      candidateId: input.candidateId,
-      resolvedEventId: null,
-      terminalStatus: "heuristic_filtered",
-      failureReason: result.reason ?? "unknown",
-    };
   }
-
-  // Pass — persist body if present, advance status. Truncation is
-  // recorded informationally in status_reason but the candidate still
-  // moves forward (status='heuristic_passed').
-  const updates: {
-    status: "heuristic_passed";
-    processedAt: Date;
-    bodyText?: string;
-    statusReason?: string;
-  } = {
-    status: "heuristic_passed",
-    processedAt: new Date(),
-  };
-  if (result.body) {
-    updates.bodyText = result.body.text;
-    if (result.body.truncated) {
-      updates.statusReason = HEURISTIC_REASONS.BODY_TRUNCATED;
-    }
-  }
-  await db
-    .update(ingestionCandidates)
-    .set(updates)
-    .where(eq(ingestionCandidates.id, input.candidateId));
 
   // ---- Relevance gate (12e.4) ----
   // Per-stage short-circuit (12e.5c sub-step 1): skip if a prior job
