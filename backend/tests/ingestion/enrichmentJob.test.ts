@@ -802,7 +802,14 @@ describe("processEnrichmentJob", () => {
       return { runHeuristic, runRelevanceGate, extractFacts };
     }
 
-    it("full chain on a fresh candidate produces terminalStatus=tier_generated", async () => {
+    it("full chain on a fresh candidate produces terminalStatus=published (post-sub-step-3 wiring)", async () => {
+      // Sub-step 2 originally asserted terminalStatus=tier_generated as
+      // the chain's terminal, but sub-step 3 extends the chain through
+      // writeEvent. With both wired, full happy-path lands at
+      // 'published'. We still verify the upstream seams + tier
+      // orchestration ran exactly once (sub-step 2's intent), and
+      // additionally that writeEvent is invoked on tier completion
+      // (sub-step 3's intent).
       const { runHeuristic, runRelevanceGate, extractFacts } = fullSeamSet();
       const processTier = jest.fn().mockResolvedValue({
         candidateId: CANDIDATE_ID,
@@ -811,17 +818,23 @@ describe("processEnrichmentJob", () => {
         failedTier: null,
         completed: true,
       });
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "55555555-5555-5555-5555-555555555555" });
       const result = await processEnrichmentJob(
         { candidateId: CANDIDATE_ID },
         {
           db: mock.db,
           seams: { runHeuristic, runRelevanceGate, extractFacts },
           processTier,
+          writeEvent: writeEventMock,
         },
       );
-      expect(result.terminalStatus).toBe("tier_generated");
+      expect(result.terminalStatus).toBe("published");
       expect(result.failureReason).toBeNull();
-      expect(result.resolvedEventId).toBeNull();
+      expect(result.resolvedEventId).toBe(
+        "55555555-5555-5555-5555-555555555555",
+      );
       // All upstream seams ran exactly once.
       expect(runHeuristic).toHaveBeenCalledTimes(1);
       expect(runRelevanceGate).toHaveBeenCalledTimes(1);
@@ -829,6 +842,8 @@ describe("processEnrichmentJob", () => {
       // Tier orchestrator invoked with the candidate id + db dep.
       expect(processTier).toHaveBeenCalledTimes(1);
       expect(processTier).toHaveBeenCalledWith(CANDIDATE_ID, { db: mock.db });
+      // writeEvent invoked after tier completion.
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
     });
 
     it("tier-stage failure propagates as terminalStatus=failed with failed-tier reason", async () => {
@@ -899,19 +914,157 @@ describe("processEnrichmentJob", () => {
         failedTier: null,
         completed: true,
       });
+      // Without writeEvent injection, sub-step 3's wiring would call
+      // the real writeEvent which fails on the empty mock. Inject a
+      // succeeding mock so we can isolate the tier-orchestration cross-
+      // cut from the writeEvent path.
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "EVENT_ID" });
       const result = await processEnrichmentJob(
         { candidateId: CANDIDATE_ID },
         {
           db: mock.db,
           seams: { runHeuristic, runRelevanceGate, extractFacts },
           processTier,
+          writeEvent: writeEventMock,
         },
       );
       expect(runHeuristic).toHaveBeenCalledTimes(1);
       expect(runRelevanceGate).not.toHaveBeenCalled();
       expect(extractFacts).not.toHaveBeenCalled();
       expect(processTier).toHaveBeenCalledTimes(1);
-      expect(result.terminalStatus).toBe("tier_generated");
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      // Now with sub-step 3 wired, the chain continues past tier_generated
+      // through writeEvent and lands at terminalStatus='published'.
+      expect(result.terminalStatus).toBe("published");
+    });
+  });
+
+  describe("12e.5c sub-step 3: writeEvent wiring", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    function fullSeams() {
+      return {
+        runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+        runRelevanceGate: jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        }),
+        extractFacts: jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [{ text: "fact text >=10 chars", category: "actor" }] },
+        }),
+      };
+    }
+
+    it("tier success → writeEvent called → terminalStatus=published with eventId", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "44444444-4444-4444-4444-444444444444" });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(writeEventMock).toHaveBeenCalledWith(CANDIDATE_ID, { db: mock.db });
+      expect(result.terminalStatus).toBe("published");
+      expect(result.failureReason).toBeNull();
+      expect(result.resolvedEventId).toBe(
+        "44444444-4444-4444-4444-444444444444",
+      );
+    });
+
+    it("writeEvent throw → caught and surfaced as terminalStatus=failed with write_event_error prefix", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockRejectedValue(new Error("simulated DB error"));
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toMatch(/^write_event_error: /);
+      expect(result.failureReason).toContain("simulated DB error");
+      expect(result.resolvedEventId).toBeNull();
+    });
+
+    it("writeEvent NOT called when tier orchestration fails", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible"],
+        skippedTiers: [],
+        failedTier: { tier: "briefed", reason: "TIER_TIMEOUT" },
+        completed: false,
+      });
+      const writeEventMock = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe("TIER_TIMEOUT");
+    });
+
+    it("writeEvent NOT called when tier orchestration neither completed nor failed", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: [],
+        skippedTiers: [],
+        failedTier: null,
+        completed: false,
+      });
+      const writeEventMock = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("facts_extracted");
     });
   });
 });

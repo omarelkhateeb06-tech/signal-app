@@ -3,6 +3,11 @@
 interface MockDbState {
   selectResults: any[][];
   insertResults: any[][];
+  // Tracks the values payload passed to each `db.insert(table).values(...)`
+  // call, in invocation order. Lets tests assert on the precise insert
+  // shape (table-row contents) without re-deriving them from the
+  // returning() result.
+  insertedValues: any[];
   updatedRows: any[];
   deletes: unknown[];
   executes: unknown[];
@@ -35,7 +40,10 @@ function makeSelectChain(pullResult: () => any[]): any {
   return chain;
 }
 
-function makeInsertChain(pullResult: () => any[]): any {
+function makeInsertChain(
+  pullResult: () => any[],
+  trackInsert: (values: any) => void,
+): any {
   const valuesChain: any = {};
   valuesChain.returning = () => Promise.resolve(pullResult());
   valuesChain.onConflictDoNothing = () => valuesChain;
@@ -45,7 +53,10 @@ function makeInsertChain(pullResult: () => any[]): any {
   valuesChain.catch = (onRejected: any) => Promise.resolve(pullResult()).catch(onRejected);
 
   const chain: any = {};
-  chain.values = () => valuesChain;
+  chain.values = (values: any) => {
+    trackInsert(values);
+    return valuesChain;
+  };
   return chain;
 }
 
@@ -86,6 +97,7 @@ export function createMockDb(): MockDb {
   const state: MockDbState = {
     selectResults: [],
     insertResults: [],
+    insertedValues: [],
     updatedRows: [],
     deletes: [],
     executes: [],
@@ -93,6 +105,9 @@ export function createMockDb(): MockDb {
 
   const pullSelect = (): any[] => state.selectResults.shift() ?? [];
   const pullInsert = (): any[] => state.insertResults.shift() ?? [];
+  const trackInsert = (values: any): void => {
+    state.insertedValues.push(values);
+  };
   const trackUpdate = (row: any): void => {
     state.updatedRows.push(row);
   };
@@ -102,7 +117,7 @@ export function createMockDb(): MockDb {
 
   const db: any = {
     select: () => makeSelectChain(pullSelect),
-    insert: () => makeInsertChain(pullInsert),
+    insert: () => makeInsertChain(pullInsert, trackInsert),
     update: () => makeUpdateChain(trackUpdate, pullInsert),
     delete: () => makeDeleteChain(trackDelete),
     execute: async (stmt: unknown) => {
@@ -124,6 +139,7 @@ export function createMockDb(): MockDb {
     reset: () => {
       state.selectResults.length = 0;
       state.insertResults.length = 0;
+      state.insertedValues.length = 0;
       state.updatedRows.length = 0;
       state.deletes.length = 0;
       state.executes.length = 0;

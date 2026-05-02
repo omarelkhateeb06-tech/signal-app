@@ -27,6 +27,7 @@ import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam"
 import type { FactsSeamResult } from "./factsSeam";
 import type { TierSeamResult } from "./tierGenerationSeam";
 import { processTierGeneration } from "./tierOrchestration";
+import { writeEvent as defaultWriteEvent } from "./writeEvent";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -101,6 +102,11 @@ export interface EnrichmentJobDeps {
   // full per-tier mockDb queue setup that the orchestrator's internal
   // loadTierState + jsonb_set executes would otherwise require.
   processTier?: typeof processTierGeneration;
+  // Optional override for the events row writer (12e.5c sub-step 3).
+  // Defaults to `writeEvent` from writeEvent.ts. Tests inject a mock
+  // to assert the call shape without exercising the full transactional
+  // events + event_sources + candidate-status update chain.
+  writeEvent?: typeof defaultWriteEvent;
 }
 
 // Statuses at which the chain has terminated and re-processing would
@@ -438,14 +444,47 @@ export async function processEnrichmentJob(
 
   if (tierSummary.completed) {
     // markTierGeneratedComplete has written status='tier_generated' +
-    // tier_generated_at. Sub-step 3 will continue the chain into
-    // writeEvent; for sub-step 2 in isolation, this is the terminal.
-    return {
-      candidateId: input.candidateId,
-      resolvedEventId: null,
-      terminalStatus: "tier_generated",
-      failureReason: null,
-    };
+    // tier_generated_at. Sub-step 3 wires the chain through to
+    // writeEvent: insert events + event_sources, advance candidate to
+    // 'published', set resolved_event_id.
+    const runWriteEvent = deps.writeEvent ?? defaultWriteEvent;
+    try {
+      const { eventId } = await runWriteEvent(input.candidateId, { db });
+      return {
+        candidateId: input.candidateId,
+        resolvedEventId: eventId,
+        terminalStatus: "published",
+        failureReason: null,
+      };
+    } catch (err) {
+      // writeEvent throws on validation failures (assertTierTemplate)
+      // or DB-level constraint/connection errors. Surface as terminal
+      // 'failed' in the result envelope so the worker's done log
+      // captures it; sub-step 6/7 will add Sentry capture inside this
+      // catch block.
+      //
+      // KNOWN LIMITATION: writeEvent failures leave the candidate at
+      // status='tier_generated' (markTierGeneratedComplete committed
+      // before writeEvent's transaction attempted; writeEvent's
+      // transaction rolls back atomically but the upstream tier-status
+      // commit stands). Per the planner-locked decision 4 ("Partial
+      // state lives on ingestion_candidates, never events"), this is
+      // the intended partial-state semantics: tier_generated WITH
+      // resolved_event_id=null means "tier work done, event-write
+      // pending or failed." A subsequent BullMQ retry on this job
+      // hits the whole-job short-circuit (tier_generated ∈
+      // TERMINAL_STATES) and returns terminalStatus='tier_generated'
+      // — does NOT auto-re-attempt writeEvent. Manual retry requires
+      // a separate mechanism (CLI sweep or out-of-band re-enqueue);
+      // tracked as a follow-up issue.
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        candidateId: input.candidateId,
+        resolvedEventId: null,
+        terminalStatus: "failed",
+        failureReason: `write_event_error: ${detail}`,
+      };
+    }
   }
 
   // Defensive fall-through: tier orchestration neither completed nor
