@@ -26,6 +26,7 @@ import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
 import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
 import type { FactsSeamResult } from "./factsSeam";
 import type { TierSeamResult } from "./tierGenerationSeam";
+import { processTierGeneration } from "./tierOrchestration";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -94,6 +95,12 @@ export interface EnrichmentSeams {
 export interface EnrichmentJobDeps {
   db?: typeof defaultDb;
   seams?: EnrichmentSeams;
+  // Optional override for the tier-generation orchestration call (12e.5c
+  // sub-step 2). Defaults to `processTierGeneration` from
+  // tierOrchestration.ts. Tests inject a mock to avoid threading the
+  // full per-tier mockDb queue setup that the orchestrator's internal
+  // loadTierState + jsonb_set executes would otherwise require.
+  processTier?: typeof processTierGeneration;
 }
 
 // Statuses at which the chain has terminated and re-processing would
@@ -403,8 +410,47 @@ export async function processEnrichmentJob(
       .where(eq(ingestionCandidates.id, input.candidateId));
   }
 
-  // Fall-through terminal: facts complete (either just-written by this
-  // invocation or short-circuited from the snapshot).
+  // ---- Tier generation (12e.5b orchestration; wired into the chain
+  // by 12e.5c sub-step 2) ----
+  // Per-tier idempotency lives inside processTierGeneration (see
+  // tierOrchestration.ts:181-198 — checks `tier_outputs->>'<tier>'`
+  // against the persisted JSONB column before invoking each tier).
+  // The whole-job short-circuit upstream already returned for any
+  // candidate at status='tier_generated', so by this point the
+  // candidate is at facts_extracted (or transient earlier states this
+  // invocation just walked through). The orchestrator owns its own DB
+  // writes (jsonb_set + status advance to 'tier_generated' on full-trio
+  // completion).
+  const runTier = deps.processTier ?? processTierGeneration;
+  const tierSummary = await runTier(input.candidateId, { db });
+
+  if (tierSummary.failedTier) {
+    // markTierFailed has already written status='facts_extracted' with
+    // status_reason set to the failed tier's class. Surface the failure
+    // class in the result envelope.
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "failed",
+      failureReason: tierSummary.failedTier.reason,
+    };
+  }
+
+  if (tierSummary.completed) {
+    // markTierGeneratedComplete has written status='tier_generated' +
+    // tier_generated_at. Sub-step 3 will continue the chain into
+    // writeEvent; for sub-step 2 in isolation, this is the terminal.
+    return {
+      candidateId: input.candidateId,
+      resolvedEventId: null,
+      terminalStatus: "tier_generated",
+      failureReason: null,
+    };
+  }
+
+  // Defensive fall-through: tier orchestration neither completed nor
+  // failed (e.g., its own loadTierState couldn't load the candidate row).
+  // Treat as terminal facts_extracted — preserves the prior behavior.
   return {
     candidateId: input.candidateId,
     resolvedEventId: null,
