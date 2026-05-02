@@ -120,4 +120,41 @@ describe("captureIngestionStageFailure", () => {
     expect(withScopeMock).toHaveBeenCalledTimes(2);
     expect(captureExceptionMock).toHaveBeenCalledTimes(2);
   });
+
+  it("appends extraTags after the canonical tag set (sub-step 7)", () => {
+    captureIngestionStageFailure({
+      stage: "worker_failed",
+      candidateId: "cand-7",
+      sourceSlug: "cnbc-markets",
+      rejectionReason: "Connection refused",
+      extraTags: {
+        "bullmq.attempt": "2",
+        "bullmq.queue": "signal-ingestion-enrich",
+      },
+    });
+    const tagCalls = setTagMock.mock.calls;
+    // 4 canonical tags + 2 extra = 6 setTag calls.
+    expect(tagCalls.length).toBe(6);
+    expect(tagCalls).toEqual(
+      expect.arrayContaining([
+        ["ingestion.stage", "worker_failed"],
+        ["ingestion.candidate_id", "cand-7"],
+        ["ingestion.source_slug", "cnbc-markets"],
+        ["ingestion.rejection_reason", "Connection refused"],
+        ["bullmq.attempt", "2"],
+        ["bullmq.queue", "signal-ingestion-enrich"],
+      ]),
+    );
+  });
+
+  it("works with empty extraTags object (no extra setTag calls)", () => {
+    captureIngestionStageFailure({
+      stage: "facts",
+      candidateId: "cand-8",
+      sourceSlug: "src",
+      rejectionReason: "facts_timeout",
+      extraTags: {},
+    });
+    expect(setTagMock.mock.calls.length).toBe(4);
+  });
 });

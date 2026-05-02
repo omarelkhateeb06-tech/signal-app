@@ -16,6 +16,7 @@ import {
 import { runHeuristicSeam } from "./heuristicSeam";
 import { runRelevanceSeam } from "./relevanceSeam";
 import { runFactsSeam } from "./factsSeam";
+import { handleWorkerFailure } from "./enrichmentWorkerFailure";
 
 let cachedWorker: Worker<EnrichmentJobInput> | null = null;
 
@@ -70,10 +71,7 @@ export function startEnrichmentWorker(): Worker<EnrichmentJobInput> | null {
     concurrency: Number(process.env.INGESTION_ENRICH_CONCURRENCY ?? 2),
   });
   cachedWorker.on("failed", (job, err) => {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[signal-backend] [ingestion-enrich:failed] candidate=${job?.data.candidateId ?? "unknown"}: ${err.message}`,
-    );
+    void handleWorkerFailure(job, err);
   });
   // eslint-disable-next-line no-console
   console.log("[signal-backend] enrichment worker started");

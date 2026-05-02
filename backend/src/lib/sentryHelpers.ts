@@ -28,7 +28,15 @@ export type IngestionStage =
   | "relevance"
   | "facts"
   | "tiers"
-  | "write_event";
+  | "write_event"
+  // 12e.5c sub-step 7 — BullMQ-level failure, distinct from the
+  // orchestration-stage failures above. Fires from
+  // enrichmentWorker.ts's `failed` handler when a job throws past
+  // processEnrichmentJob's structured-envelope returns. Typically:
+  // unhandled exception in a seam, transient PG/Redis error during
+  // status writes, or any other error not caught and surfaced as a
+  // failed envelope upstream.
+  | "worker_failed";
 
 export interface IngestionStageFailureContext {
   stage: IngestionStage;
@@ -47,6 +55,12 @@ export interface IngestionStageFailureContext {
   // by writeEvent's assertTierTemplate). When omitted, the helper
   // synthesizes an Error from the rejection reason for capture.
   err?: unknown;
+  // Optional additional tags appended after the canonical four. Used by
+  // the worker's failed handler to surface BullMQ context (attempt
+  // count, queue name, etc.). Keys are forwarded verbatim — caller
+  // controls namespacing (recommend prefixing with the subsystem name,
+  // e.g., "bullmq.attempt").
+  extraTags?: Record<string, string>;
 }
 
 /**
@@ -64,6 +78,11 @@ export function captureIngestionStageFailure(
       scope.setTag("ingestion.source_slug", ctx.sourceSlug);
     }
     scope.setTag("ingestion.rejection_reason", ctx.rejectionReason);
+    if (ctx.extraTags) {
+      for (const [key, value] of Object.entries(ctx.extraTags)) {
+        scope.setTag(key, value);
+      }
+    }
     const err =
       ctx.err instanceof Error
         ? ctx.err
