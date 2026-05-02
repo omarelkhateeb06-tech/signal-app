@@ -680,9 +680,10 @@ describe("processEnrichmentJob", () => {
             seams: { runHeuristic, runRelevanceGate, extractFacts },
           },
         );
-        // Heuristic re-ran (idempotent re-pass), facts ran. Relevance was
-        // skipped because the snapshot showed it already produced a verdict.
-        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        // Heuristic skipped (snapshot status='llm_relevant' is in
+        // HEURISTIC_ALREADY_RAN — fix #65), relevance skipped (verdict
+        // already persisted), facts ran.
+        expect(runHeuristic).not.toHaveBeenCalled();
         expect(runRelevanceGate).not.toHaveBeenCalled();
         expect(extractFacts).toHaveBeenCalledTimes(1);
         expect(result.terminalStatus).toBe("facts_extracted");
@@ -709,9 +710,10 @@ describe("processEnrichmentJob", () => {
             seams: { runHeuristic, runRelevanceGate, extractFacts },
           },
         );
-        // Heuristic re-ran. Both relevance + facts skipped (snapshot showed
-        // them done). Result envelope echoes the fall-through facts_extracted.
-        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        // All three stages skipped (snapshot status='facts_extracted' is in
+        // HEURISTIC_ALREADY_RAN — fix #65; relevance + facts already done).
+        // Result envelope echoes the fall-through facts_extracted.
+        expect(runHeuristic).not.toHaveBeenCalled();
         expect(runRelevanceGate).not.toHaveBeenCalled();
         expect(extractFacts).not.toHaveBeenCalled();
         expect(result.terminalStatus).toBe("facts_extracted");
@@ -746,9 +748,11 @@ describe("processEnrichmentJob", () => {
             seams: { runHeuristic, runRelevanceGate, extractFacts },
           },
         );
-        // All three stages ran — no short-circuit fires for a fresh
-        // 'heuristic_passed' candidate that hasn't seen relevance.
-        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        // Heuristic skipped (snapshot status='heuristic_passed' is in
+        // HEURISTIC_ALREADY_RAN — fix #65). Relevance + facts still run
+        // because their per-stage short-circuit predicates require
+        // llmJudgmentRaw / factsExtractedAt to be persisted.
+        expect(runHeuristic).not.toHaveBeenCalled();
         expect(runRelevanceGate).toHaveBeenCalledTimes(1);
         expect(extractFacts).toHaveBeenCalledTimes(1);
       });
@@ -778,6 +782,93 @@ describe("processEnrichmentJob", () => {
         expect(runHeuristic).toHaveBeenCalledTimes(1);
         expect(runRelevanceGate).toHaveBeenCalledTimes(1);
         expect(extractFacts).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("heuristic short-circuit (fix #65)", () => {
+      const passingHeuristic = {
+        pass: true,
+        body: { text: "article body for the test", truncated: false },
+      };
+
+      it("re-enqueue of facts_extracted candidate: heuristic skips, tier orchestration runs, reaches published", async () => {
+        // Reproducer for #65 — sub-step 8 smoke caught a re-enqueued
+        // facts_extracted candidate stuck at tier_parse_error because the
+        // unconditional heuristic re-run transiently overwrote status to
+        // 'heuristic_passed', which the tier seam's precondition rejected
+        // as a stage mismatch. Post-fix, heuristic skips on this snapshot
+        // and the chain proceeds straight to tier orchestration.
+        queueSnapshot([
+          {
+            status: "facts_extracted",
+            statusReason: null,
+            llmJudgmentRaw: { fake: true },
+            factsExtractedAt: new Date("2026-04-28T00:00:00Z"),
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const runHeuristic = jest.fn();
+        const runRelevanceGate = jest.fn();
+        const extractFacts = jest.fn();
+        const processTier = jest.fn().mockResolvedValue({
+          candidateId: CANDIDATE_ID,
+          ranTiers: ["accessible", "briefed", "technical"],
+          skippedTiers: [],
+          failedTier: null,
+          completed: true,
+        });
+        const writeEventMock = jest
+          .fn()
+          .mockResolvedValue({ eventId: "EVENT_ID" });
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+            processTier,
+            writeEvent: writeEventMock,
+          },
+        );
+        expect(runHeuristic).not.toHaveBeenCalled();
+        expect(runRelevanceGate).not.toHaveBeenCalled();
+        expect(extractFacts).not.toHaveBeenCalled();
+        expect(processTier).toHaveBeenCalledTimes(1);
+        expect(result.terminalStatus).toBe("published");
+      });
+
+      it("first-run candidate at discovered: heuristic runs normally", async () => {
+        // Regression guard — the short-circuit must NOT fire for a fresh
+        // candidate at status='discovered'. Anchors the negative side of
+        // HEURISTIC_ALREADY_RAN's membership.
+        queueSnapshot([
+          {
+            status: "discovered",
+            statusReason: null,
+            llmJudgmentRaw: null,
+            factsExtractedAt: null,
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+        const runRelevanceGate = jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        });
+        const extractFacts = jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [] },
+        });
+        await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+          },
+        );
+        expect(runHeuristic).toHaveBeenCalledTimes(1);
       });
     });
   });
@@ -930,7 +1021,10 @@ describe("processEnrichmentJob", () => {
           writeEvent: writeEventMock,
         },
       );
-      expect(runHeuristic).toHaveBeenCalledTimes(1);
+      // Heuristic also skipped (fix #65 — snapshot status='facts_extracted'
+      // is in HEURISTIC_ALREADY_RAN). Tier orchestration is the only
+      // LLM-bearing stage that runs.
+      expect(runHeuristic).not.toHaveBeenCalled();
       expect(runRelevanceGate).not.toHaveBeenCalled();
       expect(extractFacts).not.toHaveBeenCalled();
       expect(processTier).toHaveBeenCalledTimes(1);
