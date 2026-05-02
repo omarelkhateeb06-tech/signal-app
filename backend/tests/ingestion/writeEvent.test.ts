@@ -209,42 +209,47 @@ describe("computeWhyItMattersTemplate", () => {
     );
   });
 
-  it("returns null on validation failure (missing tier key)", () => {
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-    const result = computeWhyItMattersTemplate(
-      fullCandidate({
-        tierOutputs: {
-          accessible: { thesis: "A", support: "AS" },
-          briefed: { thesis: "B", support: "BS" },
-          // technical omitted — schema strict requires it
-        },
-      }),
-    );
-    expect(result).toBeNull();
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
+  it("throws on validation failure (missing tier key)", () => {
+    // Strict-at-write per locked sub-step-3 spec correction: missing
+    // required key throws ZodError instead of silently returning null.
+    expect(() =>
+      computeWhyItMattersTemplate(
+        fullCandidate({
+          tierOutputs: {
+            accessible: { thesis: "A", support: "AS" },
+            briefed: { thesis: "B", support: "BS" },
+            // technical omitted — schema strict requires it
+          },
+        }),
+      ),
+    ).toThrow();
   });
 
-  it("returns null when tier_outputs is null", () => {
-    const result = computeWhyItMattersTemplate(
-      fullCandidate({ tierOutputs: null }),
-    );
-    expect(result).toBeNull();
+  it("throws when tier_outputs is null (no silent skip)", () => {
+    // Strict-at-write: a null tier_outputs at writeEvent time means
+    // upstream tier orchestration fired markTierGeneratedComplete
+    // without populating the JSONB column — a real bug worth surfacing
+    // loudly. assertTierTemplate(null) throws ZodError.
+    expect(() =>
+      computeWhyItMattersTemplate(fullCandidate({ tierOutputs: null })),
+    ).toThrow();
   });
 
-  it("returns null on shape mismatch (legacy 12a per-tier-string shape)", () => {
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-    const result = computeWhyItMattersTemplate(
-      fullCandidate({
-        tierOutputs: {
-          accessible: "string instead of object",
-          briefed: "string",
-          technical: "string",
-        } as unknown as Record<string, unknown>,
-      }),
-    );
-    expect(result).toBeNull();
-    warn.mockRestore();
+  it("throws on shape mismatch (legacy 12a per-tier-string shape)", () => {
+    // Legacy {accessible: string, briefed: string, technical: string}
+    // shape is rejected by TierTemplateSchema (which requires the new
+    // per-tier {thesis, support} shape). Strict-at-write throws.
+    expect(() =>
+      computeWhyItMattersTemplate(
+        fullCandidate({
+          tierOutputs: {
+            accessible: "string instead of object",
+            briefed: "string",
+            technical: "string",
+          } as unknown as Record<string, unknown>,
+        }),
+      ),
+    ).toThrow();
   });
 });
 
@@ -324,8 +329,13 @@ describe("writeEvent integration", () => {
     expect(mock.state.insertedValues[0].headline.length).toBe(255);
   });
 
-  it("writes whyItMattersTemplate=null when tier_outputs fails assertTierTemplate", async () => {
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("throws (does NOT write null) when tier_outputs fails assertTierTemplate", async () => {
+    // Strict-at-write per locked sub-step-3 correction: tier_outputs
+    // missing a required key causes computeWhyItMattersTemplate to
+    // throw ZodError BEFORE the db.transaction starts, so no events
+    // row is inserted. processEnrichmentJob's wiring catches the throw
+    // and surfaces as terminalStatus='failed' with 'write_event_error:'
+    // prefix (covered separately in enrichmentJob.test.ts).
     queueLoadCandidate({
       tierOutputs: {
         accessible: { thesis: "A", support: "AS" },
@@ -333,12 +343,12 @@ describe("writeEvent integration", () => {
         // technical omitted
       },
     });
-    mock.queueInsert([{ id: EVENT_ID }]);
-    await writeEvent(CANDIDATE_ID, { db: mock.db });
-    expect(mock.state.insertedValues[0].whyItMattersTemplate).toBeNull();
-    // why_it_matters still uses the fallback chain (briefed wins).
-    expect(mock.state.insertedValues[0].whyItMatters).toBe("B");
-    warn.mockRestore();
+    await expect(
+      writeEvent(CANDIDATE_ID, { db: mock.db }),
+    ).rejects.toThrow();
+    // No events insert was attempted (throw fires before db.transaction).
+    expect(mock.state.insertedValues.length).toBe(0);
+    expect(mock.state.updatedRows.length).toBe(0);
   });
 
   it("throws when candidate row not found", async () => {

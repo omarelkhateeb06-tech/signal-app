@@ -177,35 +177,40 @@ export function computeContext(candidate: CandidateRowForWrite): string {
 }
 
 // Validate tier_outputs against TierTemplateSchema and stringify for
-// persistence. Returns null on validation failure (lenient at the
-// template field — events.why_it_matters covers the user-visible read
-// path via the always-non-null fallback chain). Logs a warning so
-// soak observability picks up the rare case. Exported for unit-testing
-// the validate-then-stringify pipeline in isolation.
+// persistence. STRICT-AT-WRITE: throws ZodError on null tier_outputs,
+// missing required keys, or any per-tier value failing TierOutputSchema.
+// Exported for unit-testing the validate-then-stringify pipeline in
+// isolation.
+//
+// The thrown error propagates out of writeEvent (computeWhyItMattersTemplate
+// is called before the db.transaction block, so no rollback is needed —
+// the transaction simply never starts) and into processEnrichmentJob's
+// try/catch around its writeEvent call, which surfaces it as
+// terminalStatus='failed' with 'write_event_error: <ZodError detail>'
+// in the result envelope. Sub-step 7 wires the BullMQ failed-handler
+// to capture the ZodError to Sentry for operator attention.
+//
+// Strict-at-write is the locked design (sub-step 3 correction): lenient-
+// at-write would silently land null templates for genuinely corrupted
+// tier_outputs, hiding data-quality failures from 12e.8 metrics until
+// the 12e.7 frontend integration surfaced them. The retry-stuck
+// disposition (per locked decision 4) is the right behavior for
+// genuinely corrupted state — forces operator attention rather than
+// silent data degradation.
+//
+// NOTE: events.why_it_matters_template uses the 12e.5b per-tier
+// {thesis, support} shape, asserted via assertTierTemplate. Existing
+// readers (v2/storiesController.ts, personalizationService.ts) parse
+// via parseWhyItMattersTemplate, which validates the legacy 12a
+// per-tier-string shape and returns null for this shape — so readers
+// currently fall back to events.why_it_matters. Reader-side migration
+// to parseTierTemplate is tracked separately (12e.7 frontend
+// event-rendering or earlier cleanup).
 export function computeWhyItMattersTemplate(
   candidate: CandidateRowForWrite,
-): string | null {
-  if (!candidate.tierOutputs) return null;
-  try {
-    const validated = assertTierTemplate(candidate.tierOutputs);
-    // NOTE: events.why_it_matters_template uses the 12e.5b per-tier
-    // {thesis, support} shape, asserted via assertTierTemplate above.
-    // Existing readers (v2/storiesController.ts, personalizationService.ts)
-    // parse via parseWhyItMattersTemplate, which validates the legacy
-    // 12a per-tier-string shape and returns null for this shape — so
-    // readers currently fall back to events.why_it_matters. Reader-side
-    // migration to parseTierTemplate is tracked separately (12e.7
-    // frontend event-rendering or earlier cleanup).
-    return JSON.stringify(validated);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[ingestion-write-event] candidate=${candidate.id} tier_template_validation_failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return null;
-  }
+): string {
+  const validated = assertTierTemplate(candidate.tierOutputs);
+  return JSON.stringify(validated);
 }
 
 export async function writeEvent(
