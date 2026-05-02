@@ -1441,4 +1441,195 @@ describe("processEnrichmentJob", () => {
       );
     });
   });
+
+  describe("12e.6a embedding + cluster check", () => {
+    function fakeEmbedding(): number[] {
+      return Array(1536).fill(0.5);
+    }
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    it("embedding success + cluster match → clusterResult.matched=true on result envelope", async () => {
+      mock.queueSelect([]); // snapshot (none — fresh candidate)
+      const computeEmbedding = jest.fn().mockResolvedValue({
+        ok: true,
+        embedding: fakeEmbedding(),
+      });
+      const checkCluster = jest.fn().mockResolvedValue({
+        matched: true,
+        matchedEventId: "evt-99",
+        similarity: 0.91,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+            }),
+            extractFacts: undefined,
+            computeEmbedding,
+            checkCluster,
+          },
+        },
+      );
+      expect(computeEmbedding).toHaveBeenCalledTimes(1);
+      expect(checkCluster).toHaveBeenCalledTimes(1);
+      expect(result.clusterResult).toEqual({
+        matched: true,
+        matchedEventId: "evt-99",
+        similarity: 0.91,
+      });
+      // Chain terminates at llm_relevant because extractFacts not wired —
+      // confirms the stage ran post-relevance, pre-facts.
+      expect(result.terminalStatus).toBe("llm_relevant");
+    });
+
+    it("embedding success + no cluster match → clusterResult.matched=false on result envelope", async () => {
+      mock.queueSelect([]);
+      const computeEmbedding = jest.fn().mockResolvedValue({
+        ok: true,
+        embedding: fakeEmbedding(),
+      });
+      const checkCluster = jest.fn().mockResolvedValue({ matched: false });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+            }),
+            extractFacts: undefined,
+            computeEmbedding,
+            checkCluster,
+          },
+        },
+      );
+      expect(checkCluster).toHaveBeenCalledTimes(1);
+      expect(result.clusterResult).toEqual({ matched: false });
+    });
+
+    it("embedding seam soft-failure → captureFailure fired with stage='embedding'; clusterResult absent; chain continues to facts", async () => {
+      mock.queueSelect([]);
+      const captureFailure = jest.fn();
+      const computeEmbedding = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "embedding_api_error",
+      });
+      const checkCluster = jest.fn();
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: true,
+        facts: { facts: [] },
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+            }),
+            extractFacts,
+            computeEmbedding,
+            checkCluster,
+          },
+          captureFailure,
+        },
+      );
+      expect(computeEmbedding).toHaveBeenCalledTimes(1);
+      expect(checkCluster).not.toHaveBeenCalled();
+      expect(extractFacts).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: "embedding",
+          rejectionReason: "embedding_api_error",
+        }),
+      );
+      expect(result.clusterResult).toBeUndefined();
+      expect(result.terminalStatus).toBe("facts_extracted");
+    });
+
+    it("re-enqueue at facts_extracted snapshot → embedding stage skipped (no embedding seam call)", async () => {
+      // Mirrors the heuristic short-circuit pattern from fix #65: a
+      // re-enqueued candidate that already has facts persisted should not
+      // re-fire the embedding stage. The whole-job snapshot vintage check
+      // gates this.
+      mock.queueSelect([
+        {
+          status: "facts_extracted",
+          statusReason: null,
+          llmJudgmentRaw: { fake: true },
+          factsExtractedAt: new Date("2026-04-28T00:00:00Z"),
+          tierOutputs: null,
+          resolvedEventId: null,
+        },
+      ]);
+      const computeEmbedding = jest.fn();
+      const checkCluster = jest.fn();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "EVENT_ID" });
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn(),
+            runRelevanceGate: jest.fn(),
+            extractFacts: jest.fn(),
+            computeEmbedding,
+            checkCluster,
+          },
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(computeEmbedding).not.toHaveBeenCalled();
+      expect(checkCluster).not.toHaveBeenCalled();
+    });
+
+    it("opt-out: no openai + no computeEmbedding seam → embedding stage silently skipped (no captureFailure)", async () => {
+      mock.queueSelect([]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+            }),
+            // extractFacts not wired → terminate at llm_relevant
+          },
+          openai: null,
+          captureFailure,
+        },
+      );
+      // captureFailure should NOT include any stage='embedding' call.
+      const embeddingCalls = captureFailure.mock.calls.filter(
+        (args: unknown[]) =>
+          (args[0] as { stage?: string } | undefined)?.stage === "embedding",
+      );
+      expect(embeddingCalls).toHaveLength(0);
+    });
+  });
 });

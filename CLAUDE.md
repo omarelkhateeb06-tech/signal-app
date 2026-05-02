@@ -427,6 +427,8 @@ Manual triggers for ops:
 - `npm run run-aggregation --workspace=backend [-- --period=2026-W17]` — one-off rollup
 - `npm run regenerate-depth-variants --workspace=backend` — Phase 12a one-time batch (see §8)
 
+**⚠️ pgvector deployment gate (Phase 12e.6a).** Migration `0021_phase12e6a_embeddings.sql` requires the `vector` extension (`CREATE EXTENSION IF NOT EXISTS vector;`). Railway's standard PostgreSQL service does NOT include pgvector; the next prod deploy after 12e.6a lands will fail at the migration step unless the database is provisioned from a pgvector-enabled service (Railway pgvector template or equivalent) before deploy. Dev / smoke environments use the `pgvector/pgvector:pg16` image (replaces `postgres:16-alpine` from prior smoke writeups). This gate is intentional — the 12e.6a branch can ship without prod risk because Railway prod migration is deferred until the pgvector-enabled service is in place.
+
 ---
 
 ## 8. DEPTH-VARIANT COMMENTARY (Phase 12a)
