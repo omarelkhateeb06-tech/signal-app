@@ -429,6 +429,11 @@ Manual triggers for ops:
 
 **⚠️ pgvector deployment gate (Phase 12e.6a).** Migration `0021_phase12e6a_embeddings.sql` requires the `vector` extension (`CREATE EXTENSION IF NOT EXISTS vector;`). Railway's standard PostgreSQL service does NOT include pgvector; the next prod deploy after 12e.6a lands will fail at the migration step unless the database is provisioned from a pgvector-enabled service (Railway pgvector template or equivalent) before deploy. Dev / smoke environments use the `pgvector/pgvector:pg16` image (replaces `postgres:16-alpine` from prior smoke writeups). This gate is intentional — the 12e.6a branch can ship without prod risk because Railway prod migration is deferred until the pgvector-enabled service is in place.
 
+**12e.6b dispatch.** After tier orchestration completes, the chain dispatches on `clusterResult` from 12e.6a's embedding stage:
+- `clusterResult.matched=true` → `attachEventSource`: insert into `event_sources` with `role='alternate'`, or promote to `'primary'` (and demote the existing primary in the same transaction) when the incoming source's `priority` outranks the matched event's current primary. Lower `ingestion_sources.priority` value = higher rank (1=lab/SEC, 2=analyst, 3=news, 4=community).
+- `clusterResult.matched=false` (or `clusterResult` absent — embedding soft-failed) → existing `writeEvent`: new `events` row + primary `event_sources` row.
+- Re-enrichment when a higher-quality alternate later joins is **12e.6c scope**; the seam is marked with a `TODO(12e.6c)` in `attachEventSource.ts`.
+
 ---
 
 ## 8. DEPTH-VARIANT COMMENTARY (Phase 12a)
