@@ -516,4 +516,835 @@ describe("processEnrichmentJob", () => {
       expect(extractFacts).not.toHaveBeenCalled();
     });
   });
+
+  describe("12e.5c short-circuits (whole-job + per-stage)", () => {
+    // Helper: queue the snapshot-row select with the given persisted state.
+    // The snapshot read is the FIRST select in `processEnrichmentJob`; later
+    // selects (if any) are not used by the orchestration body itself.
+    function queueSnapshot(rows: Record<string, unknown>[]): void {
+      mock.queueSelect(rows);
+    }
+
+    function fullSeams(): {
+      seams: EnrichmentSeams;
+      runHeuristic: jest.Mock;
+      runRelevanceGate: jest.Mock;
+      extractFacts: jest.Mock;
+    } {
+      const runHeuristic = jest.fn();
+      const runRelevanceGate = jest.fn();
+      const extractFacts = jest.fn();
+      return {
+        seams: { runHeuristic, runRelevanceGate, extractFacts },
+        runHeuristic,
+        runRelevanceGate,
+        extractFacts,
+      };
+    }
+
+    describe("whole-job short-circuit on terminal-state snapshot", () => {
+      it.each([
+        ["heuristic_filtered", "recency_too_old"],
+        ["llm_rejected", "llm_rejected"],
+        ["failed", "facts_parse_error"],
+      ])(
+        "terminal-rejection %s — zero seam invocations, envelope echoes status_reason",
+        async (status, statusReason) => {
+          queueSnapshot([
+            {
+              status,
+              statusReason,
+              llmJudgmentRaw: null,
+              factsExtractedAt: null,
+              tierOutputs: null,
+              resolvedEventId: null,
+            },
+          ]);
+          const { seams, runHeuristic, runRelevanceGate, extractFacts } =
+            fullSeams();
+          const result = await processEnrichmentJob(
+            { candidateId: CANDIDATE_ID },
+            { db: mock.db, seams },
+          );
+          expect(result.terminalStatus).toBe(status);
+          expect(result.failureReason).toBe(statusReason);
+          expect(result.resolvedEventId).toBeNull();
+          // No seam ran.
+          expect(runHeuristic).not.toHaveBeenCalled();
+          expect(runRelevanceGate).not.toHaveBeenCalled();
+          expect(extractFacts).not.toHaveBeenCalled();
+          // No DB writes.
+          expect(mock.state.updatedRows.length).toBe(0);
+        },
+      );
+
+      it("terminal-success tier_generated — zero seam invocations, failureReason null", async () => {
+        queueSnapshot([
+          {
+            status: "tier_generated",
+            statusReason: null,
+            llmJudgmentRaw: { fake: true },
+            factsExtractedAt: new Date("2026-04-28T00:00:00Z"),
+            tierOutputs: { accessible: {}, briefed: {}, technical: {} },
+            resolvedEventId: null,
+          },
+        ]);
+        const { seams, runHeuristic, runRelevanceGate, extractFacts } =
+          fullSeams();
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          { db: mock.db, seams },
+        );
+        expect(result.terminalStatus).toBe("tier_generated");
+        expect(result.failureReason).toBeNull();
+        expect(runHeuristic).not.toHaveBeenCalled();
+        expect(runRelevanceGate).not.toHaveBeenCalled();
+        expect(extractFacts).not.toHaveBeenCalled();
+        expect(mock.state.updatedRows.length).toBe(0);
+      });
+
+      it("terminal-success published — envelope carries resolvedEventId from snapshot", async () => {
+        const eventId = "11111111-1111-1111-1111-111111111111";
+        queueSnapshot([
+          {
+            status: "published",
+            statusReason: null,
+            llmJudgmentRaw: { fake: true },
+            factsExtractedAt: new Date(),
+            tierOutputs: { accessible: {}, briefed: {}, technical: {} },
+            resolvedEventId: eventId,
+          },
+        ]);
+        const { seams, runHeuristic, runRelevanceGate, extractFacts } =
+          fullSeams();
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          { db: mock.db, seams },
+        );
+        expect(result.terminalStatus).toBe("published");
+        expect(result.failureReason).toBeNull();
+        expect(result.resolvedEventId).toBe(eventId);
+        expect(runHeuristic).not.toHaveBeenCalled();
+        expect(runRelevanceGate).not.toHaveBeenCalled();
+        expect(extractFacts).not.toHaveBeenCalled();
+      });
+
+      it("terminal-rejection with NULL status_reason falls back to 'unknown'", async () => {
+        queueSnapshot([
+          {
+            status: "failed",
+            statusReason: null,
+            llmJudgmentRaw: null,
+            factsExtractedAt: null,
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const { seams } = fullSeams();
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          { db: mock.db, seams },
+        );
+        expect(result.terminalStatus).toBe("failed");
+        expect(result.failureReason).toBe("unknown");
+      });
+    });
+
+    describe("per-stage short-circuit (relevance / facts already ran)", () => {
+      const passingHeuristic = {
+        pass: true,
+        body: { text: "article body for the test", truncated: false },
+      };
+
+      it("skips runRelevanceGate when llm_judgment_raw set + status past heuristic_passed", async () => {
+        queueSnapshot([
+          {
+            status: "llm_relevant",
+            statusReason: null,
+            llmJudgmentRaw: { fake: true },
+            factsExtractedAt: null,
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+        const runRelevanceGate = jest.fn();
+        const extractFacts = jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [] },
+        });
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+          },
+        );
+        // Heuristic re-ran (idempotent re-pass), facts ran. Relevance was
+        // skipped because the snapshot showed it already produced a verdict.
+        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        expect(runRelevanceGate).not.toHaveBeenCalled();
+        expect(extractFacts).toHaveBeenCalledTimes(1);
+        expect(result.terminalStatus).toBe("facts_extracted");
+      });
+
+      it("skips extractFacts when facts_extracted_at set", async () => {
+        queueSnapshot([
+          {
+            status: "facts_extracted",
+            statusReason: null,
+            llmJudgmentRaw: { fake: true },
+            factsExtractedAt: new Date("2026-04-28T00:00:00Z"),
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+        const runRelevanceGate = jest.fn();
+        const extractFacts = jest.fn();
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+          },
+        );
+        // Heuristic re-ran. Both relevance + facts skipped (snapshot showed
+        // them done). Result envelope echoes the fall-through facts_extracted.
+        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        expect(runRelevanceGate).not.toHaveBeenCalled();
+        expect(extractFacts).not.toHaveBeenCalled();
+        expect(result.terminalStatus).toBe("facts_extracted");
+        expect(result.failureReason).toBeNull();
+      });
+
+      it("does NOT short-circuit relevance on heuristic_passed snapshot (no llm_judgment_raw yet)", async () => {
+        queueSnapshot([
+          {
+            status: "heuristic_passed",
+            statusReason: null,
+            llmJudgmentRaw: null,
+            factsExtractedAt: null,
+            tierOutputs: null,
+            resolvedEventId: null,
+          },
+        ]);
+        const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+        const runRelevanceGate = jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        });
+        const extractFacts = jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [] },
+        });
+        await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+          },
+        );
+        // All three stages ran — no short-circuit fires for a fresh
+        // 'heuristic_passed' candidate that hasn't seen relevance.
+        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        expect(runRelevanceGate).toHaveBeenCalledTimes(1);
+        expect(extractFacts).toHaveBeenCalledTimes(1);
+      });
+
+      it("does NOT short-circuit when snapshot is null (e.g., row not found)", async () => {
+        // Empty select result → snapshot is null → all stages run as
+        // before (preserves backward compatibility with existing tests
+        // that never queued a snapshot).
+        queueSnapshot([]);
+        const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+        const runRelevanceGate = jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        });
+        const extractFacts = jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [] },
+        });
+        await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          {
+            db: mock.db,
+            seams: { runHeuristic, runRelevanceGate, extractFacts },
+          },
+        );
+        expect(runHeuristic).toHaveBeenCalledTimes(1);
+        expect(runRelevanceGate).toHaveBeenCalledTimes(1);
+        expect(extractFacts).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
+
+  describe("12e.5c sub-step 2: tier-orchestration wiring", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    function fullSeamSet() {
+      const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+      const runRelevanceGate = jest.fn().mockResolvedValue({
+        relevant: true,
+        sector: "ai",
+        reason: "x",
+      });
+      const extractFacts = jest.fn().mockResolvedValue({
+        ok: true,
+        facts: { facts: [{ text: "fact text >=10 chars", category: "actor" }] },
+      });
+      return { runHeuristic, runRelevanceGate, extractFacts };
+    }
+
+    it("full chain on a fresh candidate produces terminalStatus=published (post-sub-step-3 wiring)", async () => {
+      // Sub-step 2 originally asserted terminalStatus=tier_generated as
+      // the chain's terminal, but sub-step 3 extends the chain through
+      // writeEvent. With both wired, full happy-path lands at
+      // 'published'. We still verify the upstream seams + tier
+      // orchestration ran exactly once (sub-step 2's intent), and
+      // additionally that writeEvent is invoked on tier completion
+      // (sub-step 3's intent).
+      const { runHeuristic, runRelevanceGate, extractFacts } = fullSeamSet();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "55555555-5555-5555-5555-555555555555" });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { runHeuristic, runRelevanceGate, extractFacts },
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(result.terminalStatus).toBe("published");
+      expect(result.failureReason).toBeNull();
+      expect(result.resolvedEventId).toBe(
+        "55555555-5555-5555-5555-555555555555",
+      );
+      // All upstream seams ran exactly once.
+      expect(runHeuristic).toHaveBeenCalledTimes(1);
+      expect(runRelevanceGate).toHaveBeenCalledTimes(1);
+      expect(extractFacts).toHaveBeenCalledTimes(1);
+      // Tier orchestrator invoked with the candidate id + db dep.
+      expect(processTier).toHaveBeenCalledTimes(1);
+      expect(processTier).toHaveBeenCalledWith(CANDIDATE_ID, { db: mock.db });
+      // writeEvent invoked after tier completion.
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("tier-stage failure propagates as terminalStatus=failed with failed-tier reason", async () => {
+      const { runHeuristic, runRelevanceGate, extractFacts } = fullSeamSet();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed"],
+        skippedTiers: [],
+        failedTier: { tier: "technical", reason: "TIER_PARSE_ERROR" },
+        completed: false,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { runHeuristic, runRelevanceGate, extractFacts },
+          processTier,
+        },
+      );
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe("TIER_PARSE_ERROR");
+      // The orchestrator owns the DB write that sets status_reason; this
+      // mock-injected version doesn't write, so we only assert the
+      // envelope here.
+    });
+
+    it("tier orchestration neither completed nor failed → fall-through terminal facts_extracted", async () => {
+      const { runHeuristic, runRelevanceGate, extractFacts } = fullSeamSet();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: [],
+        skippedTiers: [],
+        failedTier: null,
+        completed: false,
+      });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { runHeuristic, runRelevanceGate, extractFacts },
+          processTier,
+        },
+      );
+      expect(result.terminalStatus).toBe("facts_extracted");
+      expect(result.failureReason).toBeNull();
+    });
+
+    it("tier-stage runs even when relevance + facts short-circuit from snapshot", async () => {
+      // Snapshot at facts_extracted: relevance + facts skip; tier
+      // orchestration is the only LLM-bearing stage that runs.
+      mock.queueSelect([
+        {
+          status: "facts_extracted",
+          statusReason: null,
+          llmJudgmentRaw: { fake: true },
+          factsExtractedAt: new Date("2026-04-28T00:00:00Z"),
+          tierOutputs: null,
+          resolvedEventId: null,
+        },
+      ]);
+      const runHeuristic = jest.fn().mockResolvedValue(passingHeuristic);
+      const runRelevanceGate = jest.fn();
+      const extractFacts = jest.fn();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      // Without writeEvent injection, sub-step 3's wiring would call
+      // the real writeEvent which fails on the empty mock. Inject a
+      // succeeding mock so we can isolate the tier-orchestration cross-
+      // cut from the writeEvent path.
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "EVENT_ID" });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { runHeuristic, runRelevanceGate, extractFacts },
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(runHeuristic).toHaveBeenCalledTimes(1);
+      expect(runRelevanceGate).not.toHaveBeenCalled();
+      expect(extractFacts).not.toHaveBeenCalled();
+      expect(processTier).toHaveBeenCalledTimes(1);
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      // Now with sub-step 3 wired, the chain continues past tier_generated
+      // through writeEvent and lands at terminalStatus='published'.
+      expect(result.terminalStatus).toBe("published");
+    });
+  });
+
+  describe("12e.5c sub-step 3: writeEvent wiring", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    function fullSeams() {
+      return {
+        runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+        runRelevanceGate: jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        }),
+        extractFacts: jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [{ text: "fact text >=10 chars", category: "actor" }] },
+        }),
+      };
+    }
+
+    it("tier success → writeEvent called → terminalStatus=published with eventId", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "44444444-4444-4444-4444-444444444444" });
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(writeEventMock).toHaveBeenCalledWith(CANDIDATE_ID, { db: mock.db });
+      expect(result.terminalStatus).toBe("published");
+      expect(result.failureReason).toBeNull();
+      expect(result.resolvedEventId).toBe(
+        "44444444-4444-4444-4444-444444444444",
+      );
+    });
+
+    it("writeEvent throw → caught and surfaced as terminalStatus=failed with write_event_error prefix", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible", "briefed", "technical"],
+        skippedTiers: [],
+        failedTier: null,
+        completed: true,
+      });
+      const writeEventMock = jest
+        .fn()
+        .mockRejectedValue(new Error("simulated DB error"));
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toMatch(/^write_event_error: /);
+      expect(result.failureReason).toContain("simulated DB error");
+      expect(result.resolvedEventId).toBeNull();
+    });
+
+    it("writeEvent NOT called when tier orchestration fails", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: ["accessible"],
+        skippedTiers: [],
+        failedTier: { tier: "briefed", reason: "TIER_TIMEOUT" },
+        completed: false,
+      });
+      const writeEventMock = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe("TIER_TIMEOUT");
+    });
+
+    it("writeEvent NOT called when tier orchestration neither completed nor failed", async () => {
+      const seams = fullSeams();
+      const processTier = jest.fn().mockResolvedValue({
+        candidateId: CANDIDATE_ID,
+        ranTiers: [],
+        skippedTiers: [],
+        failedTier: null,
+        completed: false,
+      });
+      const writeEventMock = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams,
+          processTier,
+          writeEvent: writeEventMock,
+        },
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("facts_extracted");
+    });
+  });
+
+  describe("12e.5c sub-step 6: per-stage Sentry capture", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    function snapshotWithSlug(slug: string | null): Record<string, unknown> {
+      return {
+        status: "discovered",
+        statusReason: null,
+        llmJudgmentRaw: null,
+        factsExtractedAt: null,
+        tierOutputs: null,
+        resolvedEventId: null,
+        sourceSlug: slug,
+      };
+    }
+
+    it("relevance rejection → captureFailure called with stage='relevance' + sourceSlug", async () => {
+      mock.queueSelect([snapshotWithSlug("cnbc-markets")]);
+      const captureFailure = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: false,
+              rejectionReason: "llm_rejected",
+              reason: "sports content",
+            }),
+          },
+          captureFailure,
+        },
+      );
+      expect(result.terminalStatus).toBe("llm_rejected");
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith({
+        stage: "relevance",
+        candidateId: CANDIDATE_ID,
+        sourceSlug: "cnbc-markets",
+        rejectionReason: "llm_rejected",
+      });
+    });
+
+    it("facts rejection → captureFailure called with stage='facts'", async () => {
+      mock.queueSelect([snapshotWithSlug("import-ai")]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+              reason: "x",
+            }),
+            extractFacts: jest.fn().mockResolvedValue({
+              ok: false,
+              rejectionReason: "facts_timeout",
+            }),
+          },
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith({
+        stage: "facts",
+        candidateId: CANDIDATE_ID,
+        sourceSlug: "import-ai",
+        rejectionReason: "facts_timeout",
+      });
+    });
+
+    it("tier rejection → captureFailure called with stage='tiers' + tier:reason composite", async () => {
+      mock.queueSelect([snapshotWithSlug("bloomberg-markets")]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "finance",
+              reason: "x",
+            }),
+            extractFacts: jest.fn().mockResolvedValue({
+              ok: true,
+              facts: { facts: [] },
+            }),
+          },
+          processTier: jest.fn().mockResolvedValue({
+            candidateId: CANDIDATE_ID,
+            ranTiers: ["accessible"],
+            skippedTiers: [],
+            failedTier: { tier: "briefed", reason: "TIER_RATE_LIMITED" },
+            completed: false,
+          }),
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith({
+        stage: "tiers",
+        candidateId: CANDIDATE_ID,
+        sourceSlug: "bloomberg-markets",
+        rejectionReason: "briefed:TIER_RATE_LIMITED",
+      });
+    });
+
+    it("writeEvent throw → captureFailure called with stage='write_event' and original Error", async () => {
+      mock.queueSelect([snapshotWithSlug("arstechnica-ai")]);
+      const captureFailure = jest.fn();
+      const originalError = new Error("PG constraint violation");
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "ai",
+              reason: "x",
+            }),
+            extractFacts: jest.fn().mockResolvedValue({
+              ok: true,
+              facts: { facts: [] },
+            }),
+          },
+          processTier: jest.fn().mockResolvedValue({
+            candidateId: CANDIDATE_ID,
+            ranTiers: ["accessible", "briefed", "technical"],
+            skippedTiers: [],
+            failedTier: null,
+            completed: true,
+          }),
+          writeEvent: jest.fn().mockRejectedValue(originalError),
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      const call = captureFailure.mock.calls[0][0];
+      expect(call.stage).toBe("write_event");
+      expect(call.candidateId).toBe(CANDIDATE_ID);
+      expect(call.sourceSlug).toBe("arstechnica-ai");
+      expect(call.rejectionReason).toMatch(/^write_event_error: PG constraint/);
+      expect(call.err).toBe(originalError);
+    });
+
+    it("tier indeterminate (defensive) → captureFailure called with tier_orchestration_indeterminate", async () => {
+      mock.queueSelect([snapshotWithSlug("semianalysis")]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "semiconductors",
+              reason: "x",
+            }),
+            extractFacts: jest.fn().mockResolvedValue({
+              ok: true,
+              facts: { facts: [] },
+            }),
+          },
+          processTier: jest.fn().mockResolvedValue({
+            candidateId: CANDIDATE_ID,
+            ranTiers: [],
+            skippedTiers: [],
+            failedTier: null,
+            completed: false,
+          }),
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith({
+        stage: "tiers",
+        candidateId: CANDIDATE_ID,
+        sourceSlug: "semianalysis",
+        rejectionReason: "tier_orchestration_indeterminate",
+      });
+    });
+
+    it("happy-path success → captureFailure NOT called", async () => {
+      mock.queueSelect([snapshotWithSlug("cnbc-markets")]);
+      const captureFailure = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: true,
+              sector: "finance",
+              reason: "x",
+            }),
+            extractFacts: jest.fn().mockResolvedValue({
+              ok: true,
+              facts: { facts: [] },
+            }),
+          },
+          processTier: jest.fn().mockResolvedValue({
+            candidateId: CANDIDATE_ID,
+            ranTiers: ["accessible", "briefed", "technical"],
+            skippedTiers: [],
+            failedTier: null,
+            completed: true,
+          }),
+          writeEvent: jest.fn().mockResolvedValue({ eventId: "EVENT_ID" }),
+          captureFailure,
+        },
+      );
+      expect(result.terminalStatus).toBe("published");
+      expect(captureFailure).not.toHaveBeenCalled();
+    });
+
+    it("sourceSlug=null (snapshot join couldn't resolve) → captureFailure called with sourceSlug=null", async () => {
+      mock.queueSelect([snapshotWithSlug(null)]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: false,
+              rejectionReason: "llm_rejected",
+            }),
+          },
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceSlug: null }),
+      );
+    });
+
+    it("snapshot=null (row missing) → captureFailure still fires with sourceSlug=null", async () => {
+      // No snapshot queued → mockDb returns [] → snapshot=null. The
+      // captureFailure call must still fire for any stage rejection
+      // and gracefully omit/null the slug.
+      mock.queueSelect([]);
+      const captureFailure = jest.fn();
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: {
+            runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+            runRelevanceGate: jest.fn().mockResolvedValue({
+              relevant: false,
+              rejectionReason: "llm_timeout",
+            }),
+          },
+          captureFailure,
+        },
+      );
+      expect(captureFailure).toHaveBeenCalledTimes(1);
+      expect(captureFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: "relevance",
+          sourceSlug: null,
+          rejectionReason: "llm_timeout",
+        }),
+      );
+    });
+  });
 });

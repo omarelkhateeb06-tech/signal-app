@@ -408,12 +408,14 @@ Both are benign quirks of drizzle-kit's old hash function, not file-integrity or
 
 ## 7. JOBS & SCHEDULERS
 
-Two BullMQ queues, both backed by the shared Redis connection:
+Four BullMQ queues, all backed by the shared Redis connection:
 
-| queue                | producer                          | worker                  | cadence                  |
-|----------------------|-----------------------------------|-------------------------|--------------------------|
-| `signal-email`       | `emailQueue.enqueue()`            | `emailWorker`           | on-demand + weekly trigger |
-| `signal-aggregation` | `scheduleAggregationRepeatable()` | `aggregationWorker`     | `0 2 * * *` UTC, configurable via `AGGREGATION_CRON` |
+| queue                     | producer                              | worker                  | cadence                  |
+|---------------------------|---------------------------------------|-------------------------|--------------------------|
+| `signal-email`            | `emailQueue.enqueue()`                | `emailWorker`           | on-demand + weekly trigger |
+| `signal-aggregation`      | `scheduleAggregationRepeatable()`     | `aggregationWorker`     | `0 2 * * *` UTC, configurable via `AGGREGATION_CRON` |
+| `signal-ingestion-poll`   | `scheduleSourcePollRepeatable()` + `enqueueSourcePoll()` (ad-hoc) | `sourcePollWorker`      | per-source `every: fetch_interval_seconds * 1000`, scheduled at boot from `ingestion_sources` rows (12e.5c) |
+| `signal-ingestion-enrich` | `enqueueEnrichment()` from poll-job tail + manual `runIngestionEnrich.ts` CLI | `enrichmentWorker`      | on-demand (one job per surviving candidate) |
 
 Plus one **in-process** scheduler:
 
