@@ -21,13 +21,14 @@
 import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "../../db";
-import { ingestionCandidates } from "../../db/schema";
+import { ingestionCandidates, ingestionSources } from "../../db/schema";
 import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
 import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
 import type { FactsSeamResult } from "./factsSeam";
 import type { TierSeamResult } from "./tierGenerationSeam";
 import { processTierGeneration } from "./tierOrchestration";
 import { writeEvent as defaultWriteEvent } from "./writeEvent";
+import { captureIngestionStageFailure } from "../../lib/sentryHelpers";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -107,6 +108,12 @@ export interface EnrichmentJobDeps {
   // to assert the call shape without exercising the full transactional
   // events + event_sources + candidate-status update chain.
   writeEvent?: typeof defaultWriteEvent;
+  // Optional override for the per-stage Sentry capture helper (12e.5c
+  // sub-step 6). Defaults to `captureIngestionStageFailure` from
+  // lib/sentryHelpers.ts. Tests inject a mock to assert per-stage tag
+  // payloads without booting Sentry; production calls flow into the
+  // real helper which is a no-op when SENTRY_DSN is unset.
+  captureFailure?: typeof captureIngestionStageFailure;
 }
 
 // Statuses at which the chain has terminated and re-processing would
@@ -157,16 +164,26 @@ interface CandidateSnapshot {
   factsExtractedAt: Date | null;
   tierOutputs: Record<string, unknown> | null;
   resolvedEventId: string | null;
+  // Joined from ingestion_sources for Sentry per-stage tagging
+  // (12e.5c sub-step 6). Null if the join couldn't resolve (e.g.,
+  // source row deleted with FK ON DELETE CASCADE — the candidate row
+  // would also be gone, so this should be unreachable, but the
+  // candidate existing without a source would defensively skip the
+  // source_slug tag in Sentry capture).
+  sourceSlug: string | null;
 }
 
 // Read persisted candidate state once at the top of `processEnrichmentJob`.
-// Used by both the whole-job short-circuit (terminal-state guard) and
-// the per-stage short-circuits (skip relevance/facts seam calls when
-// their outputs are already persisted). Snapshot reflects state BEFORE
-// any seam in this invocation runs — this is load-bearing for the
-// per-stage short-circuits to read llm_judgment_raw / facts_extracted_at
-// from the correct vintage even after `runHeuristic` transiently
-// overwrites `status` to 'heuristic_passed'.
+// Used by:
+//   - the whole-job short-circuit (terminal-state guard)
+//   - per-stage short-circuits (skip relevance/facts seam calls when
+//     their outputs are already persisted)
+//   - per-stage Sentry tagging (sub-step 6 — sourceSlug for the
+//     ingestion.source_slug tag)
+// Snapshot reflects state BEFORE any seam in this invocation runs —
+// load-bearing for the per-stage short-circuits to read llm_judgment_raw
+// / facts_extracted_at from the correct vintage even after `runHeuristic`
+// transiently overwrites `status` to 'heuristic_passed'.
 async function loadCandidateSnapshot(
   db: typeof defaultDb,
   candidateId: string,
@@ -179,8 +196,13 @@ async function loadCandidateSnapshot(
       factsExtractedAt: ingestionCandidates.factsExtractedAt,
       tierOutputs: ingestionCandidates.tierOutputs,
       resolvedEventId: ingestionCandidates.resolvedEventId,
+      sourceSlug: ingestionSources.slug,
     })
     .from(ingestionCandidates)
+    .leftJoin(
+      ingestionSources,
+      eq(ingestionSources.id, ingestionCandidates.ingestionSourceId),
+    )
     .where(eq(ingestionCandidates.id, candidateId))
     .limit(1);
   return (rows[0] as CandidateSnapshot | undefined) ?? null;
@@ -192,6 +214,7 @@ export async function processEnrichmentJob(
 ): Promise<EnrichmentJobResult> {
   const db = deps.db ?? defaultDb;
   const seams = deps.seams ?? {};
+  const captureFailure = deps.captureFailure ?? captureIngestionStageFailure;
 
   if (!seams.runHeuristic) {
     return {
@@ -327,6 +350,15 @@ export async function processEnrichmentJob(
         .update(ingestionCandidates)
         .set(relevanceUpdates)
         .where(eq(ingestionCandidates.id, input.candidateId));
+      // 12e.5c sub-step 6: per-stage Sentry tagging. Synchronous
+      // captureException with stage tags after the await above
+      // resolves — keeps withScope isolated under BullMQ concurrency=2.
+      captureFailure({
+        stage: "relevance",
+        candidateId: input.candidateId,
+        sourceSlug: snapshot?.sourceSlug ?? null,
+        rejectionReason: relevance.rejectionReason ?? "llm_rejected",
+      });
       return {
         candidateId: input.candidateId,
         resolvedEventId: null,
@@ -397,6 +429,13 @@ export async function processEnrichmentJob(
         .update(ingestionCandidates)
         .set(factsUpdates)
         .where(eq(ingestionCandidates.id, input.candidateId));
+      // 12e.5c sub-step 6: per-stage Sentry tagging.
+      captureFailure({
+        stage: "facts",
+        candidateId: input.candidateId,
+        sourceSlug: snapshot?.sourceSlug ?? null,
+        rejectionReason: facts.rejectionReason ?? "facts_parse_error",
+      });
       return {
         candidateId: input.candidateId,
         resolvedEventId: null,
@@ -434,6 +473,15 @@ export async function processEnrichmentJob(
     // markTierFailed has already written status='facts_extracted' with
     // status_reason set to the failed tier's class. Surface the failure
     // class in the result envelope.
+    // 12e.5c sub-step 6: per-stage Sentry tagging. The tier-call
+    // rejection class is the failed tier's reason; include the tier
+    // name as a secondary signal in the rejection_reason payload.
+    captureFailure({
+      stage: "tiers",
+      candidateId: input.candidateId,
+      sourceSlug: snapshot?.sourceSlug ?? null,
+      rejectionReason: `${tierSummary.failedTier.tier}:${tierSummary.failedTier.reason}`,
+    });
     return {
       candidateId: input.candidateId,
       resolvedEventId: null,
@@ -478,6 +526,17 @@ export async function processEnrichmentJob(
       // a separate mechanism (CLI sweep or out-of-band re-enqueue);
       // tracked as a follow-up issue.
       const detail = err instanceof Error ? err.message : String(err);
+      // 12e.5c sub-step 6: per-stage Sentry tagging. Pass the original
+      // error object through so its stack trace is preserved (writeEvent
+      // throws ZodError on assertTierTemplate failure or PG errors on
+      // constraint/connection issues — both have useful stacks).
+      captureFailure({
+        stage: "write_event",
+        candidateId: input.candidateId,
+        sourceSlug: snapshot?.sourceSlug ?? null,
+        rejectionReason: `write_event_error: ${detail}`,
+        err,
+      });
       return {
         candidateId: input.candidateId,
         resolvedEventId: null,
@@ -490,6 +549,14 @@ export async function processEnrichmentJob(
   // Defensive fall-through: tier orchestration neither completed nor
   // failed (e.g., its own loadTierState couldn't load the candidate row).
   // Treat as terminal facts_extracted — preserves the prior behavior.
+  // 12e.5c sub-step 6: capture as an anomalous tier-stage outcome so
+  // the soak surface picks up the rare degenerate state.
+  captureFailure({
+    stage: "tiers",
+    candidateId: input.candidateId,
+    sourceSlug: snapshot?.sourceSlug ?? null,
+    rejectionReason: "tier_orchestration_indeterminate",
+  });
   return {
     candidateId: input.candidateId,
     resolvedEventId: null,
