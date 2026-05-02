@@ -19,6 +19,7 @@
 // handling for stage failures across all four enrichment stages.
 
 import { eq } from "drizzle-orm";
+import type OpenAI from "openai";
 
 import { db as defaultDb } from "../../db";
 import { ingestionCandidates, ingestionSources } from "../../db/schema";
@@ -29,6 +30,12 @@ import type { TierSeamResult } from "./tierGenerationSeam";
 import { processTierGeneration } from "./tierOrchestration";
 import { writeEvent as defaultWriteEvent } from "./writeEvent";
 import { captureIngestionStageFailure } from "../../lib/sentryHelpers";
+import { computeEmbedding as defaultComputeEmbedding } from "./embeddingSeam";
+import {
+  checkCluster as defaultCheckCluster,
+  type ClusterCheckResult,
+} from "./clusterCheckSeam";
+import { getOpenAIClient } from "../../lib/openaiClient";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -55,6 +62,11 @@ export interface EnrichmentJobResult {
     | "duplicate"
     | "failed";
   failureReason: string | null;
+  // 12e.6a: cluster-check outcome from the embedding stage. Present when
+  // the embedding seam succeeded; absent otherwise (soft-fail). 12e.6b
+  // reads this to dispatch new-event vs. attach-as-alternate without a
+  // second DB roundtrip.
+  clusterResult?: ClusterCheckResult;
 }
 
 // Seam interface — each method is filled in by a downstream sub-session.
@@ -89,6 +101,11 @@ export interface EnrichmentSeams {
     candidateId: string,
     tier: "accessible" | "briefed" | "technical",
   ) => Promise<TierSeamResult>;
+  // 12e.6a: per-candidate embedding + cluster check. Both run after the
+  // relevance pass-write and before the facts stage. Failures in the
+  // embedding seam are soft (chain continues; clusterResult is absent).
+  computeEmbedding?: typeof defaultComputeEmbedding;
+  checkCluster?: typeof defaultCheckCluster;
   resolveCluster?: (
     candidateId: string,
   ) => Promise<{ eventId: string | null; similarity: number }>;
@@ -114,6 +131,10 @@ export interface EnrichmentJobDeps {
   // payloads without booting Sentry; production calls flow into the
   // real helper which is a no-op when SENTRY_DSN is unset.
   captureFailure?: typeof captureIngestionStageFailure;
+  // 12e.6a — OpenAI client injected at the worker boundary. When unset,
+  // the embedding seam degrades to {ok: false, embedding_api_error};
+  // tests inject a mock to bypass openai SDK initialization entirely.
+  openai?: OpenAI | null;
 }
 
 // Statuses at which the chain has terminated and re-processing would
@@ -409,6 +430,69 @@ export async function processEnrichmentJob(
       .where(eq(ingestionCandidates.id, input.candidateId));
   }
 
+  // ---- Embedding + cluster check (12e.6a) ----
+  // Soft-fail philosophy: any failure here logs to Sentry with stage tag
+  // 'embedding' and the chain continues to facts extraction. clusterResult
+  // stays absent on the result envelope when embedding fails — 12e.6b's
+  // dispatch will treat absent as "no match, create new event."
+  //
+  // Re-enqueue safety: skip the embedding seam call when the snapshot
+  // already shows the candidate past llm_relevant (i.e., facts already
+  // ran or downstream stages already advanced). Mirrors the
+  // facts/relevance short-circuit pattern. The snapshot vintage check
+  // also guards against an unnecessary OpenAI charge on a re-enqueued
+  // candidate that already has its embedding persisted.
+  let clusterResult: ClusterCheckResult | undefined = undefined;
+  const embeddingAlreadyDone =
+    snapshot !== null &&
+    (snapshot.factsExtractedAt !== null ||
+      snapshot.tierOutputs !== null ||
+      ["facts_extracted", "tier_generated", "enriching", "published", "duplicate"].includes(
+        snapshot.status,
+      ));
+
+  if (!embeddingAlreadyDone) {
+    const computeEmbedding = seams.computeEmbedding ?? defaultComputeEmbedding;
+    const checkCluster = seams.checkCluster ?? defaultCheckCluster;
+    const openai = deps.openai ?? getOpenAIClient();
+
+    // Opt-in stage: skip cleanly when no openai client is available AND
+    // no seam override was injected. Mirrors the relevance/facts opt-in
+    // pattern (12e.4 / 12e.5a) — production passes the lazy singleton so
+    // the stage always runs there; tests that don't care about embedding
+    // behavior can omit both `seams.computeEmbedding` and `deps.openai`
+    // to bypass the stage entirely without firing a soft-fail capture.
+    const embeddingStageWired =
+      openai !== null || seams.computeEmbedding !== undefined;
+
+    if (embeddingStageWired) {
+      const embeddingResult = await computeEmbedding(input.candidateId, {
+        db,
+        openai,
+      });
+
+      if (!embeddingResult.ok) {
+        captureFailure({
+          stage: "embedding",
+          candidateId: input.candidateId,
+          sourceSlug: snapshot?.sourceSlug ?? null,
+          rejectionReason: embeddingResult.rejectionReason,
+          err: embeddingResult.error,
+        });
+        // Soft-fail: clusterResult stays undefined, chain continues.
+      } else {
+        // Persist embedding to the candidate row so 12e.6b's new-event
+        // write path can copy it to events without a recompute.
+        await db
+          .update(ingestionCandidates)
+          .set({ embedding: embeddingResult.embedding })
+          .where(eq(ingestionCandidates.id, input.candidateId));
+
+        clusterResult = await checkCluster(embeddingResult.embedding, { db });
+      }
+    }
+  }
+
   // ---- Fact extraction (12e.5a) ----
   // Per-stage short-circuit (12e.5c sub-step 1): skip if a prior job
   // already stamped facts_extracted_at. Snapshot's facts_extracted_at
@@ -427,6 +511,7 @@ export async function processEnrichmentJob(
         resolvedEventId: null,
         terminalStatus: "llm_relevant",
         failureReason: null,
+        clusterResult,
       };
     }
 
@@ -474,6 +559,7 @@ export async function processEnrichmentJob(
         resolvedEventId: null,
         terminalStatus: "failed",
         failureReason: facts.rejectionReason ?? "facts_parse_error",
+        clusterResult,
       };
     }
 
@@ -520,6 +606,7 @@ export async function processEnrichmentJob(
       resolvedEventId: null,
       terminalStatus: "failed",
       failureReason: tierSummary.failedTier.reason,
+      clusterResult,
     };
   }
 
@@ -536,6 +623,7 @@ export async function processEnrichmentJob(
         resolvedEventId: eventId,
         terminalStatus: "published",
         failureReason: null,
+        clusterResult,
       };
     } catch (err) {
       // writeEvent throws on validation failures (assertTierTemplate)
@@ -575,6 +663,7 @@ export async function processEnrichmentJob(
         resolvedEventId: null,
         terminalStatus: "failed",
         failureReason: `write_event_error: ${detail}`,
+        clusterResult,
       };
     }
   }
@@ -594,6 +683,7 @@ export async function processEnrichmentJob(
     candidateId: input.candidateId,
     resolvedEventId: null,
     terminalStatus: "facts_extracted",
+    clusterResult,
     failureReason: null,
   };
 }

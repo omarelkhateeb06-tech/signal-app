@@ -29,6 +29,9 @@ export type IngestionStage =
   | "facts"
   | "tiers"
   | "write_event"
+  // 12e.6a — embedding seam soft-failure. The chain continues past an
+  // embedding failure; clusterResult stays absent on the result envelope.
+  | "embedding"
   // 12e.5c sub-step 7 — BullMQ-level failure, distinct from the
   // orchestration-stage failures above. Fires from
   // enrichmentWorker.ts's `failed` handler when a job throws past

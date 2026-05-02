@@ -31,6 +31,11 @@ export const PROD_REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     description:
       "HMAC secret for API key hashing — without it, generation throws and existing keys can't verify",
   },
+  {
+    name: "OPENAI_API_KEY",
+    description:
+      "OpenAI text-embedding-3-small for the 12e.6a embedding seam — without it, ingestion candidates skip embedding and clustering, every event becomes a new event",
+  },
 ];
 
 function envIsPresent(env: NodeJS.ProcessEnv, name: string): boolean {

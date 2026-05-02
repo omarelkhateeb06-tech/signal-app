@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
-  customType,
   index,
   integer,
   jsonb,
@@ -15,20 +14,16 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  vector,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ---------- Custom column types ----------
 
-// Phase 12e.1 — `events.embedding` is a placeholder bytea column. The
-// drizzle-orm/pg-core barrel doesn't export a `bytea` helper, so we
-// declare it here with customType. Converted to vector(N) in 12e.6a
-// once the embedding model is picked.
-const bytea = customType<{ data: Buffer; notNull: false }>({
-  dataType() {
-    return "bytea";
-  },
-});
+// Phase 12e.6a — `events.embedding` is now `vector(1536)` (OpenAI
+// text-embedding-3-small). The bytea placeholder shipped in 12e.1 was
+// replaced by migration 0021; no remaining columns use bytea, so the
+// customType helper was removed in this session.
 
 // ---------- Enums ----------
 
@@ -574,7 +569,9 @@ export const ingestionSources = pgTable(
 // TEXT-as-JSON of `WhyItMattersTemplate` consumed via the same parser
 // at backend/src/utils/depthVariants.ts.
 //
-// `embedding` is a bytea placeholder; converted to vector(N) in 12e.6a.
+// `embedding` is `vector(1536)` (OpenAI text-embedding-3-small). Populated
+// by the 12e.6a embedding seam on the new-event write path; consumed by
+// the trailing-72h cluster-match check via cosine similarity (`<=>`).
 // `facts` is JSONB; populated by the 12e.5a fact-extraction worker.
 export const events = pgTable(
   "events",
@@ -589,7 +586,7 @@ export const events = pgTable(
     primarySourceName: varchar("primary_source_name", { length: 255 }),
     authorId: uuid("author_id").references(() => writers.id, { onDelete: "set null" }),
     facts: jsonb("facts").$type<Record<string, unknown>>().notNull().default({}),
-    embedding: bytea("embedding"),
+    embedding: vector("embedding", { dimensions: 1536 }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -655,6 +652,7 @@ export const ingestionCandidates = pgTable(
     tierOutputs: jsonb("tier_outputs").$type<Record<string, unknown>>(),
     tierGeneratedAt: timestamp("tier_generated_at", { withTimezone: true }),
     tierOutputsRaw: jsonb("tier_outputs_raw").$type<Record<string, unknown>>(),
+    embedding: vector("embedding", { dimensions: 1536 }),
     status: ingestionCandidateStatusEnum("status").notNull().default("discovered"),
     statusReason: text("status_reason"),
     resolvedEventId: uuid("resolved_event_id").references(() => events.id, {
