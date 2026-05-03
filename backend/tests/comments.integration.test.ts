@@ -32,6 +32,7 @@ function commentRow(overrides: Record<string, unknown> = {}): Record<string, unk
   return {
     id: commentId,
     storyId,
+    eventId: null,
     userId,
     parentCommentId: null,
     content: "Great story.",
@@ -78,14 +79,46 @@ describe("comments endpoints", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 404 when the story does not exist", async () => {
-      mock.queueSelect([]);
+    it("returns 404 when neither a story nor an event exists for the id", async () => {
+      // Phase 12e.7b — ensureTargetExists tries stories first, then
+      // events. Both empty → 404.
+      mock.queueSelect([]); // story miss
+      mock.queueSelect([]); // event miss
       const res = await request(app)
         .post(`/api/v1/stories/${storyId}/comments`)
         .set(...auth(token))
         .send({ content: "Nice." });
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    // Phase 12e.7b — event-path dispatch. When the id misses in stories
+    // but hits in events, the comment INSERT lands with eventId set
+    // (and storyId null), satisfying the comments_exactly_one_target
+    // CHECK constraint.
+    it("creates an event-targeted comment when the id resolves to an event", async () => {
+      const eventId = "44444444-4444-4444-4444-444444444444";
+      mock.queueSelect([]); // story miss → fall through
+      mock.queueSelect([{ id: eventId }]); // event hit
+      mock.queueInsert([{ id: commentId }]);
+      mock.queueSelect([
+        commentRow({ storyId: null, eventId, id: commentId }),
+      ]);
+
+      const res = await request(app)
+        .post(`/api/v1/stories/${eventId}/comments`)
+        .set(...auth(token))
+        .send({ content: "Event-targeted comment." });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.comment.story_id).toBeNull();
+      expect(res.body.data.comment.event_id).toBe(eventId);
+      // The inserted row carries eventId, not storyId.
+      const insert = mock.state.insertedValues.find(
+        (v) => v.eventId === eventId,
+      );
+      expect(insert).toBeDefined();
+      expect(insert?.storyId).toBeNull();
     });
 
     it("creates a top-level comment and returns it with author info", async () => {
@@ -172,6 +205,32 @@ describe("comments endpoints", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.comments[0].is_deleted).toBe(true);
       expect(res.body.data.comments[0].content).toBe("[deleted]");
+    });
+
+    // Phase 12e.7b — listStoryComments uses an OR(storyId, eventId)
+    // filter so a request against an event id returns event-targeted
+    // comments. Wire shape exposes both fields (one always null) for
+    // each row.
+    it("returns event-targeted comments when the id resolves to an event", async () => {
+      const eventId = "55555555-5555-5555-5555-555555555555";
+      mock.queueSelect([]); // story miss in ensureTargetExists
+      mock.queueSelect([{ id: eventId }]); // event hit
+      mock.queueSelect([
+        commentRow({ storyId: null, eventId, content: "Take on the event." }),
+      ]);
+      mock.queueSelect([{ count: 1 }]);
+      mock.queueSelect([{ count: 0 }]); // reply_count
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${eventId}/comments`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.comments).toHaveLength(1);
+      expect(res.body.data.comments[0].story_id).toBeNull();
+      expect(res.body.data.comments[0].event_id).toBe(eventId);
+      expect(res.body.data.comments[0].content).toBe("Take on the event.");
+      expect(res.body.data.total).toBe(1);
     });
   });
 

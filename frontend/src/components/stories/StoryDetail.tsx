@@ -62,6 +62,39 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         />
       )}
 
+      {/*
+        Phase 12e.7b — discrete coverage list for multi-source events.
+        Single-source stories keep the existing footer attribution; only
+        multi-source items render this section. Primary source carries a
+        small badge so the relationship to the footer link is explicit.
+      */}
+      {story.sources.length > 1 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+            Coverage
+          </h2>
+          <ul className="space-y-1">
+            {story.sources.map((s) => (
+              <li key={s.url} className="flex items-center gap-2 text-sm">
+                {s.role === "primary" && (
+                  <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700">
+                    Primary
+                  </span>
+                )}
+                <a
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-600 hover:text-violet-700 hover:underline"
+                >
+                  {s.name ?? s.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="space-y-4">
         <div>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
