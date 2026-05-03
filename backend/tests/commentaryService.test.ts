@@ -382,9 +382,12 @@ describe("commentaryService — getOrGenerateCommentary", () => {
     });
   });
 
-  it("throws STORY_NOT_FOUND-shaped error when the story is missing", async () => {
+  it("throws STORY_NOT_FOUND-shaped error when neither stories nor events has the id", async () => {
     mock.queueSelect([]); // cache miss
     mock.queueSelect([]); // story missing
+    // Phase 12e.7b — service falls through to events on story miss.
+    // Both empty → throws.
+    mock.queueSelect([]); // event missing
 
     const create = jest.fn();
     await expect(
@@ -394,5 +397,56 @@ describe("commentaryService — getOrGenerateCommentary", () => {
       }),
     ).rejects.toThrow(/story not found/);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  // Phase 12e.7b — events fallback in the content-row lookup. When the
+  // id misses in stories, the service queries events and proceeds with
+  // commentary generation as if it were a story (same {sector, headline,
+  // context, whyItMatters} shape).
+  it("falls through to events on story miss and generates commentary", async () => {
+    mock.queueSelect([]); // cache miss
+    mock.queueSelect([]); // story missing — fall through
+    mock.queueSelect([
+      {
+        id: baseInput.storyId,
+        sector: "semiconductors",
+        headline: "TSMC pulls in 2nm",
+        context: "context from event row",
+        whyItMatters: "Costs fall.",
+      },
+    ]);
+    mock.queueSelect([
+      {
+        role: "engineer",
+        domain: "semiconductors_design",
+        seniority: "senior",
+        sectors: ["semiconductors"],
+        goals: ["stay_current"],
+      },
+    ]);
+    mock.queueSelect([{ sector: "semiconductors", topic: "process_nodes" }]);
+    mock.queueInsert([
+      {
+        id: "cache-new",
+        userId: baseInput.userId,
+        storyId: baseInput.storyId,
+        depth: baseInput.depth,
+        profileVersion: baseInput.profileVersion,
+        commentary: goodCommentary,
+      },
+    ]);
+
+    const create = jest.fn().mockResolvedValue({
+      content: [{ type: "text", text: haikuJsonText(goodCommentary) }],
+    });
+
+    const result = await getOrGenerateCommentary(baseInput, {
+      db: mock.db,
+      haiku: { client: { create } },
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(result.source).toBe("haiku");
+    expect(result.commentary).toEqual(goodCommentary);
   });
 });

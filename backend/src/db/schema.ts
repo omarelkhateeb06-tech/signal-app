@@ -499,6 +499,13 @@ export const apiKeys = pgTable(
 // tiered template and are deliberately NOT cached; only successful
 // model output lands here. GC of orphaned rows is a stub in 12c and
 // gets scheduled in 12c.1.
+//
+// Phase 12e.7b. The story_id FK was dropped (migration 0024) so the
+// column can carry either a stories.id or an events.id (single UUID
+// namespace). The column stays NOT NULL and uuid; only the FK
+// constraint was removed. Cascade-delete from stories no longer fires
+// for cache rows; orphaned rows from deleted events are handled by the
+// 12c.1 GC stub when it ships.
 
 export const commentaryCache = pgTable(
   "commentary_cache",
@@ -507,9 +514,7 @@ export const commentaryCache = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    storyId: uuid("story_id")
-      .notNull()
-      .references(() => stories.id, { onDelete: "cascade" }),
+    storyId: uuid("story_id").notNull(),
     depth: text("depth").$type<DepthLevel>().notNull(),
     profileVersion: integer("profile_version").notNull(),
     commentary: jsonb("commentary")

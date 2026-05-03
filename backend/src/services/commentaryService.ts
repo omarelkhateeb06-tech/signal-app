@@ -31,6 +31,7 @@ import { and, eq } from "drizzle-orm";
 import type { db as DbType } from "../db";
 import {
   commentaryCache,
+  events,
   stories,
   userProfiles,
   userTopicInterests,
@@ -187,6 +188,10 @@ export async function getOrGenerateCommentary(
   }
 
   // ---- 2. Gather story + profile context for the prompt ----
+  // 12e.7b — look up the content row by id in stories first, then events.
+  // Both tables expose the same four fields the prompt builder needs;
+  // the cache layer uses a single story_id column to hold either id
+  // (FK dropped in migration 0024 so the column can carry either).
   const [story] = await deps.db
     .select({
       id: stories.id,
@@ -198,7 +203,33 @@ export async function getOrGenerateCommentary(
     .from(stories)
     .where(eq(stories.id, input.storyId))
     .limit(1);
-  if (!story) {
+
+  let contentRow:
+    | {
+        id: string;
+        sector: string;
+        headline: string;
+        context: string;
+        whyItMatters: string;
+      }
+    | undefined = story;
+
+  if (!contentRow) {
+    const [eventRow] = await deps.db
+      .select({
+        id: events.id,
+        sector: events.sector,
+        headline: events.headline,
+        context: events.context,
+        whyItMatters: events.whyItMatters,
+      })
+      .from(events)
+      .where(eq(events.id, input.storyId))
+      .limit(1);
+    contentRow = eventRow;
+  }
+
+  if (!contentRow) {
     throw new Error(`story not found: ${input.storyId}`);
   }
 
@@ -220,7 +251,7 @@ export async function getOrGenerateCommentary(
     .where(eq(userTopicInterests.userId, input.userId));
 
   const matched = computeMatchedInterests({
-    storySector: story.sector,
+    storySector: contentRow.sector,
     userSectors: profile?.sectors ?? null,
     userTopicsForSector: topicRows,
   });
@@ -238,7 +269,7 @@ export async function getOrGenerateCommentary(
     depth: input.depth,
     profile: profileShape,
     matchedTopics: matched.matchedTopics,
-    story,
+    story: contentRow,
   });
 
   // ---- 4 & 5. Call + parse, with one parse-failure retry ----
@@ -254,7 +285,7 @@ export async function getOrGenerateCommentary(
   if (!haiku.ok) {
     return buildAndLogFallback(
       input,
-      story,
+      contentRow,
       profileShape,
       matched,
       haikuReasonToTier3(haiku.reason),
@@ -279,7 +310,7 @@ export async function getOrGenerateCommentary(
     if (!haiku.ok) {
       return buildAndLogFallback(
         input,
-        story,
+        contentRow,
         profileShape,
         matched,
         haikuReasonToTier3(haiku.reason),
@@ -298,7 +329,7 @@ export async function getOrGenerateCommentary(
   if (!parsed.ok) {
     return buildAndLogFallback(
       input,
-      story,
+      contentRow,
       profileShape,
       matched,
       parseFailureToTier3(parsed.reason),
@@ -318,7 +349,7 @@ export async function getOrGenerateCommentary(
   if (!banCheck.clean) {
     return buildAndLogFallback(
       input,
-      story,
+      contentRow,
       profileShape,
       matched,
       "haiku_banned_phrase",
@@ -332,7 +363,7 @@ export async function getOrGenerateCommentary(
   if (!openerCheck.clean) {
     return buildAndLogFallback(
       input,
-      story,
+      contentRow,
       profileShape,
       matched,
       "haiku_banned_opener",
@@ -395,7 +426,7 @@ export async function getOrGenerateCommentary(
   // Truly unexpected — neither insert nor re-read produced a row.
   return buildAndLogFallback(
     input,
-    story,
+    contentRow,
     profileShape,
     matched,
     "cache_race_unexpected",

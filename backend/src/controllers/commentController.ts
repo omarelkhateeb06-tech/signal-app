@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { comments, stories, users } from "../db/schema";
+import { comments, events, stories, users } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 
 const MAX_CONTENT = 2000;
@@ -35,7 +35,11 @@ function requireUserId(req: Request): string {
 
 interface CommentRow {
   id: string;
-  storyId: string;
+  // Phase 12e.7b — exactly one of storyId / eventId is non-null per
+  // row (DB-level CHECK in migration 0023). Type reflects reality so
+  // downstream code branches explicitly rather than coercing.
+  storyId: string | null;
+  eventId: string | null;
   userId: string;
   parentCommentId: string | null;
   content: string;
@@ -54,7 +58,11 @@ function shapeComment(
   const isDeleted = Boolean(row.deletedAt);
   return {
     id: row.id,
+    // Phase 12e.7b — both fields surface on the wire, one always null.
+    // Clients can tell story-targeted from event-targeted comments by
+    // checking which is set without a separate type discriminator.
     story_id: row.storyId,
+    event_id: row.eventId,
     parent_comment_id: row.parentCommentId,
     content: isDeleted ? "[deleted]" : row.content,
     is_deleted: isDeleted,
@@ -73,6 +81,7 @@ function shapeComment(
 const baseCommentColumns = {
   id: comments.id,
   storyId: comments.storyId,
+  eventId: comments.eventId,
   userId: comments.userId,
   parentCommentId: comments.parentCommentId,
   content: comments.content,
@@ -84,15 +93,25 @@ const baseCommentColumns = {
   authorProfilePictureUrl: users.profilePictureUrl,
 };
 
-async function ensureStoryExists(storyId: string): Promise<void> {
-  const [row] = await db
+// Phase 12e.7b — resolve a target id to either a story or an event row,
+// returning the discriminator so callers can dispatch the comment write
+// to the matching FK column. 404 if neither table has the id.
+async function ensureTargetExists(targetId: string): Promise<"story" | "event"> {
+  const [storyRow] = await db
     .select({ id: stories.id })
     .from(stories)
-    .where(eq(stories.id, storyId))
+    .where(eq(stories.id, targetId))
     .limit(1);
-  if (!row) {
-    throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
-  }
+  if (storyRow) return "story";
+
+  const [eventRow] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(eq(events.id, targetId))
+    .limit(1);
+  if (eventRow) return "event";
+
+  throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
 }
 
 async function replyCountExpr(parentId: string): Promise<number> {
@@ -116,18 +135,25 @@ export async function createComment(
     const { content, parent_comment_id: parentCommentId } =
       createCommentSchema.parse(req.body);
 
-    await ensureStoryExists(storyId);
+    const targetType = await ensureTargetExists(storyId);
 
     if (parentCommentId) {
       const [parent] = await db
-        .select({ id: comments.id, storyId: comments.storyId })
+        .select({
+          id: comments.id,
+          storyId: comments.storyId,
+          eventId: comments.eventId,
+        })
         .from(comments)
         .where(eq(comments.id, parentCommentId))
         .limit(1);
       if (!parent) {
         throw new AppError("PARENT_NOT_FOUND", "Parent comment not found", 404);
       }
-      if (parent.storyId !== storyId) {
+      // Whichever FK the parent carries must match the requested target.
+      // The CHECK constraint guarantees exactly one is non-null per row.
+      const parentTarget = parent.storyId ?? parent.eventId;
+      if (parentTarget !== storyId) {
         throw new AppError(
           "PARENT_MISMATCH",
           "Parent comment belongs to a different story",
@@ -139,7 +165,8 @@ export async function createComment(
     const [inserted] = await db
       .insert(comments)
       .values({
-        storyId,
+        storyId: targetType === "story" ? storyId : null,
+        eventId: targetType === "event" ? storyId : null,
         userId,
         content,
         parentCommentId: parentCommentId ?? null,
@@ -169,15 +196,21 @@ export async function listStoryComments(
     const { story_id: storyId } = storyIdParamSchema.parse(req.params);
     const { limit, offset } = listQuerySchema.parse(req.query);
 
-    await ensureStoryExists(storyId);
+    await ensureTargetExists(storyId);
+
+    // Phase 12e.7b — match either FK column. The CHECK constraint
+    // guarantees exactly one is non-null per row, so the OR doesn't
+    // double-count.
+    const targetFilter = or(
+      eq(comments.storyId, storyId),
+      eq(comments.eventId, storyId),
+    )!;
 
     const rows = (await db
       .select(baseCommentColumns)
       .from(comments)
       .innerJoin(users, eq(users.id, comments.userId))
-      .where(
-        and(eq(comments.storyId, storyId), isNull(comments.parentCommentId)),
-      )
+      .where(and(targetFilter, isNull(comments.parentCommentId)))
       .orderBy(desc(comments.createdAt))
       .limit(limit)
       .offset(offset)) as CommentRow[];
@@ -185,9 +218,7 @@ export async function listStoryComments(
     const [countRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(comments)
-      .where(
-        and(eq(comments.storyId, storyId), isNull(comments.parentCommentId)),
-      );
+      .where(and(targetFilter, isNull(comments.parentCommentId)));
     const total = Number(countRow?.count ?? 0);
 
     const shaped = await Promise.all(
