@@ -205,6 +205,7 @@ async function waitForDrain(label: string, timeoutMs = 25 * 60 * 1000): Promise<
   if (!queue) throw new Error("queue unavailable");
   const start = Date.now();
   let lastLog = 0;
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const counts = await queue.getJobCounts("active", "waiting", "delayed");
     const remaining = counts.active + counts.waiting + counts.delayed;

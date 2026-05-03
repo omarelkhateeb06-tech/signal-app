@@ -188,6 +188,7 @@ export async function reenrichEvent(
     sector: null,
     facts: refreshed.facts,
     tierOutputs: refreshed.tierOutputs,
+    embedding: null,
     sourceDisplayName: "",
     sourcePairedWriterId: null,
   };

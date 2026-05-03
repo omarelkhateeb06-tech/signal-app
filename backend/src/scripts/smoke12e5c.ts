@@ -232,6 +232,7 @@ async function waitForDrain(
   if (!queue) throw new Error("queue unavailable");
   const start = Date.now();
   let lastLog = 0;
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const counts = await queue.getJobCounts(
       "active",

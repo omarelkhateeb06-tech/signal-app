@@ -46,6 +46,7 @@ function fullCandidate(
         support: "Technical support text passing TierOutputSchema bounds.",
       },
     },
+    embedding: [0.1, 0.2, 0.3],
     sourceDisplayName: "Example Source",
     sourcePairedWriterId: WRITER_ID,
     ...overrides,
@@ -364,6 +365,22 @@ describe("writeEvent integration", () => {
     await expect(writeEvent(CANDIDATE_ID, { db: mock.db })).rejects.toThrow(
       /null sector/,
     );
+  });
+
+  it("copies candidate.embedding into events.embedding (cluster-match prerequisite, fixes #73)", async () => {
+    const sampleEmbedding = [0.41, -0.02, 0.31, 0.21, 0.28];
+    queueLoadCandidate({ embedding: sampleEmbedding });
+    mock.queueInsert([{ id: EVENT_ID }]);
+    await writeEvent(CANDIDATE_ID, { db: mock.db });
+    expect(mock.state.insertedValues[0].embedding).toEqual(sampleEmbedding);
+  });
+
+  it("passes null embedding through (soft-fail path) without crashing", async () => {
+    queueLoadCandidate({ embedding: null });
+    mock.queueInsert([{ id: EVENT_ID }]);
+    const result = await writeEvent(CANDIDATE_ID, { db: mock.db });
+    expect(result).toEqual({ eventId: EVENT_ID });
+    expect(mock.state.insertedValues[0].embedding).toBeNull();
   });
 
   it("transaction rollback: event_sources insert failure propagates and skips candidate update", async () => {
