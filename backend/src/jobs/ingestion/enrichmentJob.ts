@@ -37,6 +37,7 @@ import {
 } from "./clusterCheckSeam";
 import { attachEventSource as defaultAttachEventSource } from "./attachEventSource";
 import { getOpenAIClient } from "../../lib/openaiClient";
+import { getRedis } from "../../lib/redis";
 
 export interface EnrichmentJobInput {
   candidateId: string;
@@ -645,7 +646,11 @@ export async function processEnrichmentJob(
           matchedEventId: clusterResult.matchedEventId,
           similarity: clusterResult.similarity,
         },
-        { db },
+        // 12e.6c: redis passed through for the post-attach re-enrichment
+        // rate limiter. Resolved lazily via getRedis() so the worker
+        // doesn't need to pre-thread it through deps; null when REDIS_URL
+        // is unset (rate limiter treats null as skip).
+        { db, redis: getRedis() },
       );
       if (!attachResult.ok) {
         captureFailure({

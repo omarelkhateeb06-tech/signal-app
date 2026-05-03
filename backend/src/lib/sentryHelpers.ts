@@ -37,6 +37,11 @@ export type IngestionStage =
   // to an existing event fails with a DB-level error or when the
   // candidate's ingestion_source_id is null.
   | "attach_event_source"
+  // 12e.6c — re-enrichment soft-failure. Fires when post-attach
+  // re-enrichment fails at the facts, tier, or write stage. Soft —
+  // the attach is already committed; this signal is observability-only.
+  // Rate-limited (skipped) re-enrichments do NOT fire this.
+  | "reenrich"
   // 12e.5c sub-step 7 — BullMQ-level failure, distinct from the
   // orchestration-stage failures above. Fires from
   // enrichmentWorker.ts's `failed` handler when a job throws past

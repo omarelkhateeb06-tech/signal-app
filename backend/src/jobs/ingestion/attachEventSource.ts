@@ -17,11 +17,13 @@
 // or promotion's demote landed but new primary insert violates the
 // partial unique index — is impossible.
 //
-// Re-enrichment (12e.6c) is NOT triggered here — see the TODO inside
-// loadCandidateForAttach where bodyText is loaded so the seam will be
-// 12e.6c-ready without a second DB query at that time.
+// Re-enrichment (12e.6c) fires AFTER the attach transaction commits.
+// Soft-fail: any re-enrichment failure is Sentry-captured but does NOT
+// roll back the attach. Rate-limited to one re-enrich per event per 1
+// hour via Redis SET NX (see lib/reenrichRateLimiter.ts).
 
 import { and, eq } from "drizzle-orm";
+import type { Redis } from "ioredis";
 
 import { db as defaultDb } from "../../db";
 import {
@@ -29,6 +31,7 @@ import {
   ingestionCandidates,
   ingestionSources,
 } from "../../db/schema";
+import { reenrichEvent as defaultReenrichEvent } from "./reenrichEvent";
 
 export interface AttachEventSourceInput {
   candidateId: string;
@@ -47,6 +50,14 @@ export type AttachEventSourceResult =
 export interface AttachEventSourceDeps {
   db?: typeof defaultDb;
   now?: () => Date;
+  // 12e.6c — passed through to the post-attach re-enrichment trigger.
+  // Null when REDIS_URL is unset; the rate limiter treats null as
+  // "skip re-enrich" (fail-open on cost side).
+  redis?: Redis | null;
+  // Test injection point for the re-enrichment trigger. Defaults to
+  // the real reenrichEvent — tests inject a mock so the attach test
+  // suite doesn't need to stub the full facts/tier seam chain.
+  reenrichEvent?: typeof defaultReenrichEvent;
 }
 
 interface CandidateRowForAttach {
@@ -67,9 +78,9 @@ async function loadCandidateForAttach(
       ingestionSourceId: ingestionCandidates.ingestionSourceId,
       url: ingestionCandidates.url,
       rawTitle: ingestionCandidates.rawTitle,
-      // TODO(12e.6c): bodyText loaded here for re-enrichment trigger check.
-      // When 12e.6c lands, add: if (wordCount(bodyText) > wordCount(primary.bodyText))
-      // → trigger re-enrich pipeline against the matched event.
+      // bodyText loaded for the post-attach re-enrichment path (12e.6c).
+      // The re-enrichment seam re-loads the candidate row itself, so this
+      // column is not strictly required here, but kept for shape stability.
       bodyText: ingestionCandidates.bodyText,
       sourcePriority: ingestionSources.priority,
       sourceDisplayName: ingestionSources.displayName,
@@ -142,8 +153,9 @@ export async function attachEventSource(
     currentPrimary.priority !== null &&
     incomingPriority < currentPrimary.priority;
 
+  let attachOutcome: AttachEventSourceResult;
   try {
-    return await db.transaction(async (tx) => {
+    attachOutcome = await db.transaction(async (tx) => {
       if (promote && currentPrimary) {
         // Demote first to free the partial unique index
         // (event_sources_one_primary_per_event ON event_sources (event_id)
@@ -191,4 +203,23 @@ export async function attachEventSource(
   } catch (error) {
     return { ok: false, rejectionReason: "attach_db_error", error };
   }
+
+  // Post-transaction re-enrichment trigger (12e.6c). Fire-and-observe:
+  // the attach is already committed; any failure here is Sentry-captured
+  // inside reenrichEvent and surfaced via console.warn at this layer.
+  // skipped=true (rate-limited) is the expected steady-state outcome
+  // and is logged at info-equivalent verbosity, not warn.
+  const runReenrich = deps.reenrichEvent ?? defaultReenrichEvent;
+  const reenrichResult = await runReenrich(
+    { eventId: input.matchedEventId, candidateId: input.candidateId },
+    { db, redis: deps.redis ?? null },
+  );
+  if (!reenrichResult.ok) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[ingestion-attach] re-enrichment soft-failed for event=${input.matchedEventId}: ${reenrichResult.rejectionReason}`,
+    );
+  }
+
+  return attachOutcome;
 }

@@ -160,4 +160,78 @@ describe("attachEventSource", () => {
     if (result.ok) expect(result.promoted).toBe(false);
     expect(mock.state.insertedValues[0]).toMatchObject({ role: "alternate" });
   });
+
+  describe("12e.6c re-enrichment trigger", () => {
+    let warnSpy: jest.SpyInstance;
+    let logSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+      logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it("successful attach calls reenrichEvent with eventId + candidateId", async () => {
+      queueAttachReads(
+        { ingestionSourceId: "src-incoming", sourcePriority: 3 },
+        { id: "es-existing", ingestionSourceId: "src-existing", priority: 3 },
+      );
+      const reenrichMock = jest
+        .fn()
+        .mockResolvedValue({ ok: true, skipped: false });
+      const result = await attachEventSource(
+        { candidateId: CANDIDATE_ID, matchedEventId: EVENT_ID, similarity: 0.9 },
+        { db: mock.db, reenrichEvent: reenrichMock },
+      );
+      expect(result.ok).toBe(true);
+      expect(reenrichMock).toHaveBeenCalledTimes(1);
+      expect(reenrichMock).toHaveBeenCalledWith(
+        { eventId: EVENT_ID, candidateId: CANDIDATE_ID },
+        expect.objectContaining({ db: mock.db }),
+      );
+    });
+
+    it("rate-limited re-enrichment → attach still ok, no warn", async () => {
+      queueAttachReads(
+        { ingestionSourceId: "src-incoming", sourcePriority: 3 },
+        { id: "es-existing", ingestionSourceId: "src-existing", priority: 3 },
+      );
+      const reenrichMock = jest
+        .fn()
+        .mockResolvedValue({ ok: true, skipped: true });
+      const result = await attachEventSource(
+        { candidateId: CANDIDATE_ID, matchedEventId: EVENT_ID, similarity: 0.9 },
+        { db: mock.db, reenrichEvent: reenrichMock },
+      );
+      expect(result.ok).toBe(true);
+      expect(reenrichMock).toHaveBeenCalledTimes(1);
+      // Skipped is steady-state — no warn emitted.
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("re-enrichment soft-fail → attach still ok, console.warn emitted", async () => {
+      queueAttachReads(
+        { ingestionSourceId: "src-incoming", sourcePriority: 3 },
+        { id: "es-existing", ingestionSourceId: "src-existing", priority: 3 },
+      );
+      const reenrichMock = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "reenrich_facts_failed",
+      });
+      const result = await attachEventSource(
+        { candidateId: CANDIDATE_ID, matchedEventId: EVENT_ID, similarity: 0.9 },
+        { db: mock.db, reenrichEvent: reenrichMock },
+      );
+      expect(result.ok).toBe(true);
+      expect(reenrichMock).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalled();
+      expect(warnSpy.mock.calls[0][0]).toContain(
+        "re-enrichment soft-failed",
+      );
+    });
+  });
 });
