@@ -1815,5 +1815,37 @@ describe("processEnrichmentJob", () => {
       expect(result.terminalStatus).toBe("published");
       expect(result.clusterResult).toBeUndefined();
     });
+
+    it("12e.6c — cluster match path passes redis through to attachEventSource deps", async () => {
+      mock.queueSelect([]);
+      const seams = fullSeams();
+      const computeEmbedding = jest
+        .fn()
+        .mockResolvedValue({ ok: true, embedding: fakeEmbedding() });
+      const checkCluster = jest.fn().mockResolvedValue({
+        matched: true,
+        matchedEventId: "evt-cluster-99",
+        similarity: 0.93,
+      });
+      const attachEventSourceMock = jest
+        .fn()
+        .mockResolvedValue({ ok: true, promoted: false });
+      const processTier = jest.fn().mockResolvedValue(completedTier);
+      await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { ...seams, computeEmbedding, checkCluster },
+          processTier,
+          attachEventSource: attachEventSourceMock,
+        },
+      );
+      // Second arg to attachEventSource must be a deps object that
+      // includes a `redis` field — production threads getRedis() (Redis
+      // or null) so attachEventSource can hand it to reenrichEvent.
+      const attachDeps = attachEventSourceMock.mock.calls[0][1];
+      expect(attachDeps).toHaveProperty("db");
+      expect(attachDeps).toHaveProperty("redis");
+    });
   });
 });

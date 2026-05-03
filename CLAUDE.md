@@ -432,7 +432,8 @@ Manual triggers for ops:
 **12e.6b dispatch.** After tier orchestration completes, the chain dispatches on `clusterResult` from 12e.6a's embedding stage:
 - `clusterResult.matched=true` → `attachEventSource`: insert into `event_sources` with `role='alternate'`, or promote to `'primary'` (and demote the existing primary in the same transaction) when the incoming source's `priority` outranks the matched event's current primary. Lower `ingestion_sources.priority` value = higher rank (1=lab/SEC, 2=analyst, 3=news, 4=community).
 - `clusterResult.matched=false` (or `clusterResult` absent — embedding soft-failed) → existing `writeEvent`: new `events` row + primary `event_sources` row.
-- Re-enrichment when a higher-quality alternate later joins is **12e.6c scope**; the seam is marked with a `TODO(12e.6c)` in `attachEventSource.ts`.
+
+**12e.6c re-enrichment.** On every cluster-match attach, `reenrichEvent` fires post-transaction (after `attachEventSource` commits). Flow: re-run `runFactsSeam(candidateId)` → re-run `processTierGeneration(candidateId)` (per-tier idempotent — typically a no-op since tiers are already complete) → UPDATE `events.facts`, `events.why_it_matters`, `events.why_it_matters_template`, `events.updated_at`. Rate limit: 1 re-enrich per event per 1 hour, enforced via Redis `SET reenrich:rate:<eventId> 1 EX 3600 NX`. Soft-fail: any failure is Sentry-captured with `stage='reenrich'`; the attach is never rolled back. When `REDIS_URL` is unset (or Redis is unreachable), re-enrichment is **skipped** entirely (fail-open on Haiku cost).
 
 ---
 
