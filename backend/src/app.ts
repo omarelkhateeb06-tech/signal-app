@@ -15,6 +15,7 @@ import { storiesRouter } from "./routes/stories";
 import { teamsRouter } from "./routes/teams";
 import { usersRouter } from "./routes/users";
 import { v2Router } from "./routes/v2";
+import adminRoutes from "./routes/adminRoutes";
 
 function parseAllowedOrigins(): string[] {
   const raw =
@@ -90,6 +91,11 @@ export function createApp(): Express {
   // Middleware chain (apiKeyAuth → apiKeyRateLimit) is applied inside
   // routes/v2/index.ts so it only affects v2 endpoints, not v1.
   app.use("/api/v2", v2Router);
+
+  // Phase 12e.8 — admin routes off the public /api/v* surface so they
+  // stay out of public-API documentation. Auth + ADMIN_USER_IDS
+  // allowlist applied inside routes/adminRoutes.ts.
+  app.use("/admin", adminRoutes);
 
   installSentryErrorHandler(app);
 

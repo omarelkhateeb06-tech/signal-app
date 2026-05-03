@@ -84,12 +84,17 @@ async function persistCandidates(
 }
 
 async function markSuccess(sourceId: string): Promise<void> {
+  // Phase 12e.8 — lastSuccessAt is written here only (not in markFailure)
+  // so the admin route can distinguish "polled but failed" from "never
+  // succeeded" without joining ingestion_candidates.
+  const now = new Date();
   await db
     .update(ingestionSources)
     .set({
       consecutiveFailureCount: 0,
-      lastPolledAt: new Date(),
-      updatedAt: new Date(),
+      lastPolledAt: now,
+      lastSuccessAt: now,
+      updatedAt: now,
     })
     .where(eq(ingestionSources.id, sourceId));
 }

@@ -105,6 +105,9 @@ describe("processSourcePollJob", () => {
       expect(mock.state.updatedRows.length).toBe(1);
       expect(mock.state.updatedRows[0]!.consecutiveFailureCount).toBe(0);
       expect(mock.state.updatedRows[0]!.lastPolledAt).toBeInstanceOf(Date);
+      // Phase 12e.8 — markSuccess writes lastSuccessAt alongside
+      // lastPolledAt; markFailure does not.
+      expect(mock.state.updatedRows[0]!.lastSuccessAt).toBeInstanceOf(Date);
     });
 
     it("counts conflict-skipped rows as not-persisted", async () => {
@@ -160,6 +163,9 @@ describe("processSourcePollJob", () => {
       // easily inspect its value here, but we can check the field is set.
       expect(update.consecutiveFailureCount).toBeDefined();
       expect(update.lastPolledAt).toBeInstanceOf(Date);
+      // Phase 12e.8 — markFailure does NOT touch lastSuccessAt; the
+      // column tracks the last successful poll exclusively.
+      expect(update.lastSuccessAt).toBeUndefined();
     });
 
     it("falls back to 'network' when error is not an Error instance", async () => {
