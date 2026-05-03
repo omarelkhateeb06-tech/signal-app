@@ -278,6 +278,13 @@ export const storyAggregates = pgTable(
 
 // ---------- User saves ----------
 
+// Phase 12e.7a — story_id is now nullable; rows target either a story or
+// an event (mutually exclusive, enforced at the DB level by the
+// `user_saves_exactly_one_target` CHECK in migration 0023). The partial
+// unique index `user_saves_user_event_unique` covers the event branch;
+// the existing `user_saves_user_story_unique` still covers the story
+// branch (Postgres NULLs are distinct, so event-save rows with story_id
+// NULL never collide on the story-side index).
 export const userSaves = pgTable(
   "user_saves",
   {
@@ -285,9 +292,8 @@ export const userSaves = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    storyId: uuid("story_id")
-      .notNull()
-      .references(() => stories.id, { onDelete: "cascade" }),
+    storyId: uuid("story_id").references(() => stories.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
     savedAt: timestamp("saved_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -367,13 +373,16 @@ export const teamInvites = pgTable(
 
 // ---------- Comments ----------
 
+// Phase 12e.7a — story_id is nullable as of migration 0023; comments
+// target either a story or an event (CHECK constraint
+// `comments_exactly_one_target` enforces exactly one). New event-side
+// queries use the partial `comments_event_idx` (event_id WHERE NOT NULL).
 export const comments = pgTable(
   "comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    storyId: uuid("story_id")
-      .notNull()
-      .references(() => stories.id, { onDelete: "cascade" }),
+    storyId: uuid("story_id").references(() => stories.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

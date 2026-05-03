@@ -127,15 +127,22 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
           </span>
         </div>
         {story.source_url && (
-          <a
-            href={story.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-slate-500 hover:text-violet-700"
-          >
-            {story.source_name ?? "Source"}
-            <ExternalLink className="h-3 w-3" />
-          </a>
+          <div className="inline-flex items-center gap-1">
+            <a
+              href={story.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-slate-500 hover:text-violet-700"
+            >
+              {story.source_name ?? "Source"}
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            {story.sources.length > 1 && (
+              <span className="text-slate-400">
+                +{story.sources.length - 1} more
+              </span>
+            )}
+          </div>
         )}
       </div>
     </article>

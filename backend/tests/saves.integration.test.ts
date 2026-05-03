@@ -39,13 +39,38 @@ describe("saves endpoints", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 404 when the story does not exist", async () => {
-      mock.queueSelect([]);
+    it("returns 404 when neither a story nor an event exists for the id", async () => {
+      // Phase 12e.7a — saveStory now dispatches: it tries `stories`
+      // first, then falls back to `events`. Both miss → 404.
+      mock.queueSelect([]); // story miss
+      mock.queueSelect([]); // event miss
       const res = await request(app)
         .post(`/api/v1/stories/${storyId}/save`)
         .set(...auth(token));
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    // Phase 12e.7a — event-save dispatch. When the id names an event
+    // rather than a story, the row is inserted with eventId set.
+    it("inserts a save targeting an event when story lookup misses", async () => {
+      const eventId = "55555555-5555-5555-5555-555555555555";
+      mock.queueSelect([]); // story miss
+      mock.queueSelect([{ id: eventId }]); // event hit
+      mock.queueInsert([]); // insert into user_saves with eventId
+      mock.queueSelect([{ count: 2 }]); // count via OR(story_id, event_id)
+
+      const res = await request(app)
+        .post(`/api/v1/stories/${eventId}/save`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ saved: true, save_count: 2 });
+      // The insert recorded an eventId, not a storyId.
+      const insert = mock.state.insertedValues.find(
+        (v) => v.eventId === eventId,
+      );
+      expect(insert).toBeDefined();
     });
 
     it("returns 400 for invalid UUID", async () => {

@@ -1,8 +1,15 @@
 import type { NextFunction, Request, Response } from "express";
-import { and, desc, eq, gte, inArray, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { stories, userProfiles, userSaves, writers } from "../db/schema";
+import {
+  events,
+  eventSources,
+  stories,
+  userProfiles,
+  userSaves,
+  writers,
+} from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 import { personalizeStory } from "../services/personalizationService";
 
@@ -82,6 +89,80 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     commentary_source: null,
     source_url: row.sourceUrl,
     source_name: row.sourceName,
+    // Phase 12e.7a — multi-source attribution. Hand-curated stories
+    // carry a synthetic single-element array so the wire shape is
+    // uniform across legacy stories and ingestion-written events.
+    primary_source_url: row.sourceUrl,
+    sources: [
+      { url: row.sourceUrl, name: row.sourceName, role: "primary" as const },
+    ],
+    published_at: row.publishedAt,
+    created_at: row.createdAt,
+    author: row.authorId
+      ? { id: row.authorId, name: row.authorName, bio: row.authorBio }
+      : null,
+    is_saved: Boolean(row.isSaved),
+    save_count: Number(row.saveCount ?? 0),
+    comment_count: Number(row.commentCount ?? 0),
+  };
+}
+
+// Phase 12e.7a — event-row shape and renderer. EventRow mirrors StoryRow
+// where the columns line up; the divergent fields are
+// `primarySourceUrl` / `primarySourceName` (denormalized on `events`)
+// versus `sourceUrl` / `sourceName` (on `stories`). `sources` is fetched
+// separately and passed in by the caller.
+interface EventRow {
+  id: string;
+  sector: string;
+  headline: string;
+  context: string;
+  whyItMatters: string;
+  whyItMattersTemplate: string | null;
+  primarySourceUrl: string;
+  primarySourceName: string | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+  authorId: string | null;
+  authorName: string | null;
+  authorBio: string | null;
+  isSaved: boolean;
+  saveCount: number;
+  commentCount: number;
+}
+
+interface EventSourceRow {
+  url: string;
+  name: string | null;
+  role: string;
+}
+
+function shapeEvent(
+  row: EventRow,
+  role: string | null,
+  sources: EventSourceRow[],
+): Record<string, unknown> {
+  return {
+    id: row.id,
+    sector: row.sector,
+    headline: row.headline,
+    context: row.context,
+    why_it_matters: row.whyItMatters,
+    why_it_matters_to_you: personalizeStory({
+      whyItMatters: row.whyItMatters,
+      whyItMattersTemplate: row.whyItMattersTemplate,
+      role,
+    }),
+    commentary: null,
+    commentary_source: null,
+    // `source_url` and `source_name` are kept on the wire for
+    // backward compatibility with v1 consumers — they reflect the
+    // primary source. New consumers should read `sources` for the
+    // full attribution list.
+    source_url: row.primarySourceUrl,
+    source_name: row.primarySourceName,
+    primary_source_url: row.primarySourceUrl,
+    sources,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -103,6 +184,25 @@ function saveCountExpr(): ReturnType<typeof sql<number>> {
 
 function commentCountExpr(): ReturnType<typeof sql<number>> {
   return sql<number>`(SELECT COUNT(*)::int FROM comments c WHERE c.story_id = ${stories.id} AND c.deleted_at IS NULL)`;
+}
+
+// Phase 12e.7a — event-side equivalents of the three subquery helpers
+// above. The `is_saved` / `save_count` / `comment_count` semantics on the
+// API payload are unchanged; the difference is which FK column the
+// subquery targets.
+function isEventSavedExpr(userId: string): ReturnType<typeof sql<boolean>> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM user_saves us
+    WHERE us.event_id = ${events.id} AND us.user_id = ${userId}
+  )`;
+}
+
+function eventSaveCountExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`(SELECT COUNT(*)::int FROM user_saves us WHERE us.event_id = ${events.id})`;
+}
+
+function eventCommentCountExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`(SELECT COUNT(*)::int FROM comments c WHERE c.event_id = ${events.id} AND c.deleted_at IS NULL)`;
 }
 
 const baseStoryColumns = {
@@ -140,7 +240,12 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       return;
     }
 
-    const rows = (await db
+    // Phase 12e.7a — dual-read across `stories` (legacy hand-curated)
+    // and `events` (ingestion-written). Each table is queried with the
+    // same limit/offset; the two pages are merged client-side and sliced
+    // back to `limit` before shaping. `total` is the union row count
+    // (sum across both tables) so `has_more` reflects the union.
+    const storyRows = (await db
       .select({
         ...baseStoryColumns,
         isSaved: isSavedExpr(userId),
@@ -154,19 +259,97 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       .limit(limit)
       .offset(offset)) as StoryRow[];
 
-    const [countRow] = await db
+    const eventRows = (await db
+      .select({
+        id: events.id,
+        sector: events.sector,
+        headline: events.headline,
+        context: events.context,
+        whyItMatters: events.whyItMatters,
+        whyItMattersTemplate: events.whyItMattersTemplate,
+        primarySourceUrl: events.primarySourceUrl,
+        primarySourceName: events.primarySourceName,
+        publishedAt: events.publishedAt,
+        createdAt: events.createdAt,
+        authorId: writers.id,
+        authorName: writers.name,
+        authorBio: writers.bio,
+        isSaved: isEventSavedExpr(userId),
+        saveCount: eventSaveCountExpr(),
+        commentCount: eventCommentCountExpr(),
+      })
+      .from(events)
+      .leftJoin(writers, eq(writers.id, events.authorId))
+      .where(inArray(events.sector, sectorsFilter))
+      .orderBy(desc(sql`COALESCE(${events.publishedAt}, ${events.createdAt})`))
+      .limit(limit)
+      .offset(offset)) as EventRow[];
+
+    type MergedItem =
+      | { _type: "story"; row: StoryRow }
+      | { _type: "event"; row: EventRow };
+    const merged: MergedItem[] = [
+      ...storyRows.map((row): MergedItem => ({ _type: "story", row })),
+      ...eventRows.map((row): MergedItem => ({ _type: "event", row })),
+    ];
+    merged.sort((a, b) => {
+      const aTs = (a.row.publishedAt ?? a.row.createdAt).getTime();
+      const bTs = (b.row.publishedAt ?? b.row.createdAt).getTime();
+      return bTs - aTs;
+    });
+    const pageItems = merged.slice(0, limit);
+
+    // Batch-fetch event_sources for whichever event items survived the
+    // merge slice. Skip the round-trip when no events are on the page.
+    const eventIds = pageItems
+      .filter((m): m is { _type: "event"; row: EventRow } => m._type === "event")
+      .map((m) => m.row.id);
+    const allSources =
+      eventIds.length > 0
+        ? await db
+            .select({
+              eventId: eventSources.eventId,
+              url: eventSources.url,
+              name: eventSources.name,
+              role: eventSources.role,
+            })
+            .from(eventSources)
+            .where(inArray(eventSources.eventId, eventIds))
+        : [];
+    const sourcesByEventId = new Map<string, EventSourceRow[]>();
+    for (const s of allSources) {
+      const arr = sourcesByEventId.get(s.eventId) ?? [];
+      arr.push({ url: s.url, name: s.name, role: s.role });
+      sourcesByEventId.set(s.eventId, arr);
+    }
+
+    // Counts: union total = stories matching sectors + events matching sectors.
+    const [storiesCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(stories)
       .where(inArray(stories.sector, sectorsFilter));
-    const total = Number(countRow?.count ?? 0);
+    const [eventsCountRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(events)
+      .where(inArray(events.sector, sectorsFilter));
+    const total =
+      Number(storiesCountRow?.count ?? 0) + Number(eventsCountRow?.count ?? 0);
 
-    const shaped = rows.map((row) => shapeStory(row, profile?.role ?? null));
+    const shaped = pageItems.map((m) =>
+      m._type === "story"
+        ? shapeStory(m.row, profile?.role ?? null)
+        : shapeEvent(
+            m.row,
+            profile?.role ?? null,
+            sourcesByEventId.get(m.row.id) ?? [],
+          ),
+    );
 
     res.json({
       data: {
         stories: shaped,
         total,
-        has_more: offset + rows.length < total,
+        has_more: offset + pageItems.length < total,
         limit,
         offset,
       },
@@ -204,7 +387,49 @@ export async function getStoryById(
       .limit(1)) as StoryRow[];
 
     if (!row) {
-      throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+      // Phase 12e.7a — events fallback. The id may name an
+      // ingestion-written event rather than a hand-curated story.
+      const [eventRow] = (await db
+        .select({
+          id: events.id,
+          sector: events.sector,
+          headline: events.headline,
+          context: events.context,
+          whyItMatters: events.whyItMatters,
+          whyItMattersTemplate: events.whyItMattersTemplate,
+          primarySourceUrl: events.primarySourceUrl,
+          primarySourceName: events.primarySourceName,
+          publishedAt: events.publishedAt,
+          createdAt: events.createdAt,
+          authorId: writers.id,
+          authorName: writers.name,
+          authorBio: writers.bio,
+          isSaved: isEventSavedExpr(userId),
+          saveCount: eventSaveCountExpr(),
+          commentCount: eventCommentCountExpr(),
+        })
+        .from(events)
+        .leftJoin(writers, eq(writers.id, events.authorId))
+        .where(eq(events.id, id))
+        .limit(1)) as EventRow[];
+
+      if (!eventRow) {
+        throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+      }
+
+      const sources = await db
+        .select({
+          url: eventSources.url,
+          name: eventSources.name,
+          role: eventSources.role,
+        })
+        .from(eventSources)
+        .where(eq(eventSources.eventId, id));
+
+      res.json({
+        data: { story: shapeEvent(eventRow, profile?.role ?? null, sources) },
+      });
+      return;
     }
 
     res.json({ data: { story: shapeStory(row, profile?.role ?? null) } });
@@ -213,23 +438,16 @@ export async function getStoryById(
   }
 }
 
-async function countSaves(storyId: string): Promise<number> {
+// Phase 12e.7a — saves can target either a story or an event. Counts
+// match on whichever FK column carries the id; the CHECK constraint at
+// the DB level guarantees exactly one is non-null per row, so the OR
+// here doesn't double-count.
+async function countSaves(itemId: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(userSaves)
-    .where(eq(userSaves.storyId, storyId));
+    .where(or(eq(userSaves.storyId, itemId), eq(userSaves.eventId, itemId)));
   return Number(row?.count ?? 0);
-}
-
-async function ensureStoryExists(storyId: string): Promise<void> {
-  const [row] = await db
-    .select({ id: stories.id })
-    .from(stories)
-    .where(eq(stories.id, storyId))
-    .limit(1);
-  if (!row) {
-    throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
-  }
 }
 
 export async function saveStory(
@@ -240,14 +458,36 @@ export async function saveStory(
   try {
     const userId = requireUserId(req);
     const { id } = idParamSchema.parse(req.params);
-    await ensureStoryExists(id);
 
-    await db
-      .insert(userSaves)
-      .values({ userId, storyId: id })
-      .onConflictDoNothing({
-        target: [userSaves.userId, userSaves.storyId],
-      });
+    // Dispatch on whether the id names a story or an event. UUIDs are
+    // generated globally so there's no namespace collision risk.
+    const [storyCheck] = await db
+      .select({ id: stories.id })
+      .from(stories)
+      .where(eq(stories.id, id))
+      .limit(1);
+
+    if (storyCheck) {
+      await db
+        .insert(userSaves)
+        .values({ userId, storyId: id })
+        .onConflictDoNothing({
+          target: [userSaves.userId, userSaves.storyId],
+        });
+    } else {
+      const [eventCheck] = await db
+        .select({ id: events.id })
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+      if (!eventCheck) {
+        throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+      }
+      await db
+        .insert(userSaves)
+        .values({ userId, eventId: id })
+        .onConflictDoNothing();
+    }
 
     const saveCount = await countSaves(id);
     res.json({ data: { saved: true, save_count: saveCount } });
@@ -267,7 +507,12 @@ export async function unsaveStory(
 
     await db
       .delete(userSaves)
-      .where(and(eq(userSaves.userId, userId), eq(userSaves.storyId, id)));
+      .where(
+        and(
+          eq(userSaves.userId, userId),
+          or(eq(userSaves.storyId, id), eq(userSaves.eventId, id)),
+        ),
+      );
 
     const saveCount = await countSaves(id);
     res.json({ data: { saved: false, save_count: saveCount } });
