@@ -89,6 +89,7 @@ export interface CandidateRowForWrite {
   sector: string | null;
   facts: Record<string, unknown> | null;
   tierOutputs: Record<string, unknown> | null;
+  embedding: number[] | null;
   sourceDisplayName: string;
   sourcePairedWriterId: string | null;
 }
@@ -109,6 +110,7 @@ async function loadCandidateForWrite(
       sector: ingestionCandidates.sector,
       facts: ingestionCandidates.facts,
       tierOutputs: ingestionCandidates.tierOutputs,
+      embedding: ingestionCandidates.embedding,
       sourceDisplayName: ingestionSources.displayName,
       sourcePairedWriterId: ingestionSources.pairedWriterId,
     })
@@ -259,6 +261,7 @@ export async function writeEvent(
         authorId: candidate.sourcePairedWriterId,
         facts: factsBlob,
         publishedAt: candidate.rawPublishedAt,
+        embedding: candidate.embedding,
       })
       .returning({ id: events.id });
 
