@@ -54,6 +54,11 @@ export interface Story {
   commentary_source: CommentarySource | null;
   source_url: string;
   source_name: string | null;
+  // Phase 12e.7a: multi-source attribution for ingestion-written events.
+  // Legacy hand-curated stories carry a synthetic single-element array
+  // so the wire shape is uniform across legacy and ingestion items.
+  primary_source_url: string | null;
+  sources: Array<{ url: string; name: string | null; role: "primary" | "alternate" }>;
   published_at: string | null;
   created_at: string;
   author: StoryAuthor | null;

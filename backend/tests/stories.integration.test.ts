@@ -87,7 +87,13 @@ describe("stories endpoints", () => {
       queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow()]);
-      mock.queueSelect([{ count: 1 }]);
+      // Phase 12e.7a — getFeed does a dual-read across stories + events,
+      // batched event_sources, then a count per table. Empty events
+      // returns mean the event_sources fetch is skipped (controller
+      // guards on eventIds.length > 0).
+      mock.queueSelect([]); // events query — empty
+      mock.queueSelect([{ count: 1 }]); // stories count
+      mock.queueSelect([{ count: 0 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -107,7 +113,9 @@ describe("stories endpoints", () => {
       queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "vc" }]);
       mock.queueSelect([makeRow({ sector: "finance" })]);
-      mock.queueSelect([{ count: 1 }]);
+      mock.queueSelect([]); // events query — empty
+      mock.queueSelect([{ count: 1 }]); // stories count
+      mock.queueSelect([{ count: 0 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed?sectors=finance")
@@ -124,7 +132,9 @@ describe("stories endpoints", () => {
       queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow(), makeRow({ id: "22222222-2222-2222-2222-222222222222" })]);
-      mock.queueSelect([{ count: 10 }]);
+      mock.queueSelect([]); // events query — empty
+      mock.queueSelect([{ count: 10 }]); // stories count
+      mock.queueSelect([{ count: 0 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed?limit=2&offset=0")
@@ -136,6 +146,76 @@ describe("stories endpoints", () => {
       expect(res.body.data.has_more).toBe(true);
       expect(res.body.data.limit).toBe(2);
       expect(res.body.data.offset).toBe(0);
+    });
+
+    // Phase 12e.7a — dual-read merged sort. Verifies that an events row
+    // newer than every story comes first in the merged page, event_sources
+    // are batched + attached, and multi-source attribution surfaces on
+    // the wire shape of both event items and legacy story items.
+    it("merges stories + events sorted by published_at DESC and attaches sources", async () => {
+      queueOnboarded();
+      mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
+      // stories: one row at 2026-04-01
+      mock.queueSelect([makeRow({ headline: "Older story" })]);
+      // events: one row at 2026-04-10 (newer) — should land first
+      const eventId = "33333333-3333-3333-3333-333333333333";
+      mock.queueSelect([
+        {
+          id: eventId,
+          sector: "ai",
+          headline: "Newer event",
+          context: "Event context",
+          whyItMatters: "Event WIM",
+          whyItMattersTemplate: null,
+          primarySourceUrl: "https://primary.example.com",
+          primarySourceName: "Primary Source",
+          publishedAt: new Date("2026-04-10T00:00:00Z"),
+          createdAt: new Date("2026-04-10T00:00:00Z"),
+          authorId: null,
+          authorName: null,
+          authorBio: null,
+          isSaved: false,
+          saveCount: 0,
+          commentCount: 0,
+        },
+      ]);
+      // event_sources batch: two rows for the one event (primary + alternate)
+      mock.queueSelect([
+        {
+          eventId,
+          url: "https://primary.example.com",
+          name: "Primary Source",
+          role: "primary",
+        },
+        {
+          eventId,
+          url: "https://alternate.example.com",
+          name: "Alternate Source",
+          role: "alternate",
+        },
+      ]);
+      mock.queueSelect([{ count: 1 }]); // stories count
+      mock.queueSelect([{ count: 1 }]); // events count
+
+      const res = await request(app)
+        .get("/api/v1/stories/feed")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories).toHaveLength(2);
+      // Newer event lands first.
+      expect(res.body.data.stories[0].id).toBe(eventId);
+      expect(res.body.data.stories[0].headline).toBe("Newer event");
+      expect(res.body.data.stories[0].sources).toHaveLength(2);
+      expect(res.body.data.stories[0].primary_source_url).toBe(
+        "https://primary.example.com",
+      );
+      // Older story second; legacy stories carry a synthetic single-element sources array.
+      expect(res.body.data.stories[1].headline).toBe("Older story");
+      expect(res.body.data.stories[1].sources).toHaveLength(1);
+      expect(res.body.data.stories[1].sources[0].role).toBe("primary");
+      expect(res.body.data.total).toBe(2);
+      expect(res.body.data.has_more).toBe(false);
     });
 
     it("rejects invalid limit values", async () => {
@@ -179,9 +259,10 @@ describe("stories endpoints", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 404 when story is missing", async () => {
+    it("returns 404 when story is missing (and events fallback also misses)", async () => {
       mock.queueSelect([{ role: "engineer" }]);
-      mock.queueSelect([]);
+      mock.queueSelect([]); // story lookup miss
+      mock.queueSelect([]); // Phase 12e.7a — events fallback miss
 
       const res = await request(app)
         .get(`/api/v1/stories/${storyId}`)
@@ -189,6 +270,63 @@ describe("stories endpoints", () => {
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    // Phase 12e.7a — events fallback. When the id names an
+    // ingestion-written event (no row in `stories`), the controller
+    // falls back to the `events` table and returns the shaped event
+    // with its event_sources array.
+    it("returns event from the fallback path with multi-source attribution", async () => {
+      const eventId = "44444444-4444-4444-4444-444444444444";
+      mock.queueSelect([{ role: "engineer" }]);
+      mock.queueSelect([]); // story lookup miss
+      mock.queueSelect([
+        {
+          id: eventId,
+          sector: "semiconductors",
+          headline: "TSMC pulls in 2nm",
+          context: "Context.",
+          whyItMatters: "Costs fall.",
+          whyItMattersTemplate: null,
+          primarySourceUrl: "https://primary.example.com",
+          primarySourceName: "Primary",
+          publishedAt: new Date("2026-04-12T00:00:00Z"),
+          createdAt: new Date("2026-04-12T00:00:00Z"),
+          authorId: null,
+          authorName: null,
+          authorBio: null,
+          isSaved: false,
+          saveCount: 0,
+          commentCount: 0,
+        },
+      ]);
+      mock.queueSelect([
+        {
+          url: "https://primary.example.com",
+          name: "Primary",
+          role: "primary",
+        },
+        {
+          url: "https://alt.example.com",
+          name: "Alt",
+          role: "alternate",
+        },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${eventId}`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.story.id).toBe(eventId);
+      expect(res.body.data.story.headline).toBe("TSMC pulls in 2nm");
+      expect(res.body.data.story.sources).toHaveLength(2);
+      expect(res.body.data.story.primary_source_url).toBe(
+        "https://primary.example.com",
+      );
+      expect(res.body.data.story.why_it_matters_to_you).toContain(
+        "As an engineer",
+      );
     });
 
     it("returns the story with personalized why_it_matters_to_you", async () => {
