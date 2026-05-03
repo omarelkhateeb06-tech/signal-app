@@ -35,6 +35,7 @@ import {
   checkCluster as defaultCheckCluster,
   type ClusterCheckResult,
 } from "./clusterCheckSeam";
+import { attachEventSource as defaultAttachEventSource } from "./attachEventSource";
 import { getOpenAIClient } from "../../lib/openaiClient";
 
 export interface EnrichmentJobInput {
@@ -67,6 +68,11 @@ export interface EnrichmentJobResult {
   // reads this to dispatch new-event vs. attach-as-alternate without a
   // second DB roundtrip.
   clusterResult?: ClusterCheckResult;
+  // 12e.6b: present when the cluster-match attach path ran. true when
+  // the incoming source's priority outranked the matched event's current
+  // primary and the new row was promoted to role='primary'. Absent on
+  // the no-match (writeEvent) branch and on attach failures.
+  promoted?: boolean;
 }
 
 // Seam interface — each method is filled in by a downstream sub-session.
@@ -125,6 +131,11 @@ export interface EnrichmentJobDeps {
   // to assert the call shape without exercising the full transactional
   // events + event_sources + candidate-status update chain.
   writeEvent?: typeof defaultWriteEvent;
+  // Phase 12e.6b — optional override for the cluster-match attach path.
+  // Defaults to `attachEventSource` from attachEventSource.ts. Tests
+  // inject a mock to assert dispatch behavior without exercising the
+  // full priority-comparison + transaction logic of the seam.
+  attachEventSource?: typeof defaultAttachEventSource;
   // Optional override for the per-stage Sentry capture helper (12e.5c
   // sub-step 6). Defaults to `captureIngestionStageFailure` from
   // lib/sentryHelpers.ts. Tests inject a mock to assert per-stage tag
@@ -612,9 +623,56 @@ export async function processEnrichmentJob(
 
   if (tierSummary.completed) {
     // markTierGeneratedComplete has written status='tier_generated' +
-    // tier_generated_at. Sub-step 3 wires the chain through to
-    // writeEvent: insert events + event_sources, advance candidate to
-    // 'published', set resolved_event_id.
+    // tier_generated_at. The chain now dispatches into one of two
+    // event-write paths based on 12e.6a's clusterResult:
+    //
+    //   matched   → 12e.6b attachEventSource: row added to event_sources
+    //               (role='alternate', or 'primary' if the incoming
+    //               source's priority outranks the current primary and
+    //               the existing primary is demoted in the same txn).
+    //               Candidate published with resolved_event_id pointing
+    //               at the matched event.
+    //   no match  → 12e.5c writeEvent: insert new events row + primary
+    //               event_sources row + advance candidate to published.
+    //   absent    → embedding seam soft-failed; treat as no-match and
+    //               fall through to writeEvent (avoids losing a candidate
+    //               on an embedding outage).
+    if (clusterResult?.matched) {
+      const runAttach = deps.attachEventSource ?? defaultAttachEventSource;
+      const attachResult = await runAttach(
+        {
+          candidateId: input.candidateId,
+          matchedEventId: clusterResult.matchedEventId,
+          similarity: clusterResult.similarity,
+        },
+        { db },
+      );
+      if (!attachResult.ok) {
+        captureFailure({
+          stage: "attach_event_source",
+          candidateId: input.candidateId,
+          sourceSlug: snapshot?.sourceSlug ?? null,
+          rejectionReason: attachResult.rejectionReason,
+          err: attachResult.error,
+        });
+        return {
+          candidateId: input.candidateId,
+          resolvedEventId: null,
+          terminalStatus: "failed",
+          failureReason: `attach_error: ${attachResult.rejectionReason}`,
+          clusterResult,
+        };
+      }
+      return {
+        candidateId: input.candidateId,
+        resolvedEventId: clusterResult.matchedEventId,
+        terminalStatus: "published",
+        failureReason: null,
+        clusterResult,
+        promoted: attachResult.promoted,
+      };
+    }
+
     const runWriteEvent = deps.writeEvent ?? defaultWriteEvent;
     try {
       const { eventId } = await runWriteEvent(input.candidateId, { db });

@@ -542,6 +542,9 @@ export const ingestionSources = pgTable(
     sectors: text("sectors").array().notNull(),
     fetchIntervalSeconds: integer("fetch_interval_seconds").notNull().default(1800),
     qualityScore: smallint("quality_score").notNull().default(5),
+    // Phase 12e.6b: lower = higher priority. Drives primary-source
+    // promotion on cluster match. 1=lab/SEC, 2=analyst, 3=news, 4=community.
+    priority: integer("priority").notNull().default(3),
     enabled: boolean("enabled").notNull().default(true),
     pairedWriterId: uuid("paired_writer_id").references(() => writers.id, {
       onDelete: "set null",

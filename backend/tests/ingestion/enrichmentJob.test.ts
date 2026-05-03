@@ -1632,4 +1632,188 @@ describe("processEnrichmentJob", () => {
       expect(embeddingCalls).toHaveLength(0);
     });
   });
+
+  describe("12e.6b two-branch dispatch (cluster match → attach; no match → writeEvent)", () => {
+    const passingHeuristic = {
+      pass: true,
+      body: { text: "article body for the test", truncated: false },
+    };
+
+    function fullSeams(): {
+      runHeuristic: jest.Mock;
+      runRelevanceGate: jest.Mock;
+      extractFacts: jest.Mock;
+    } {
+      return {
+        runHeuristic: jest.fn().mockResolvedValue(passingHeuristic),
+        runRelevanceGate: jest.fn().mockResolvedValue({
+          relevant: true,
+          sector: "ai",
+          reason: "x",
+        }),
+        extractFacts: jest.fn().mockResolvedValue({
+          ok: true,
+          facts: { facts: [{ text: "fact text >=10 chars", category: "actor" }] },
+        }),
+      };
+    }
+
+    const completedTier = {
+      candidateId: CANDIDATE_ID,
+      ranTiers: ["accessible", "briefed", "technical"],
+      skippedTiers: [],
+      failedTier: null,
+      completed: true,
+    };
+
+    function fakeEmbedding(): number[] {
+      return Array(1536).fill(0.5);
+    }
+
+    it("cluster match → attachEventSource called, writeEvent NOT called, terminalStatus=published, promoted forwarded", async () => {
+      mock.queueSelect([]); // snapshot
+      const seams = fullSeams();
+      const computeEmbedding = jest
+        .fn()
+        .mockResolvedValue({ ok: true, embedding: fakeEmbedding() });
+      const checkCluster = jest.fn().mockResolvedValue({
+        matched: true,
+        matchedEventId: "evt-cluster-99",
+        similarity: 0.93,
+      });
+      const attachEventSourceMock = jest
+        .fn()
+        .mockResolvedValue({ ok: true, promoted: true });
+      const writeEventMock = jest.fn();
+      const processTier = jest.fn().mockResolvedValue(completedTier);
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { ...seams, computeEmbedding, checkCluster },
+          processTier,
+          writeEvent: writeEventMock,
+          attachEventSource: attachEventSourceMock,
+        },
+      );
+      expect(attachEventSourceMock).toHaveBeenCalledTimes(1);
+      expect(attachEventSourceMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          candidateId: CANDIDATE_ID,
+          matchedEventId: "evt-cluster-99",
+          similarity: 0.93,
+        }),
+        expect.any(Object),
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("published");
+      expect(result.resolvedEventId).toBe("evt-cluster-99");
+      expect(result.promoted).toBe(true);
+    });
+
+    it("cluster match + attach failure → captureFailure with stage='attach_event_source', terminalStatus=failed", async () => {
+      mock.queueSelect([]);
+      const seams = fullSeams();
+      const computeEmbedding = jest
+        .fn()
+        .mockResolvedValue({ ok: true, embedding: fakeEmbedding() });
+      const checkCluster = jest.fn().mockResolvedValue({
+        matched: true,
+        matchedEventId: "evt-cluster-99",
+        similarity: 0.93,
+      });
+      const attachError = new Error("simulated unique-violation");
+      const attachEventSourceMock = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "attach_db_error",
+        error: attachError,
+      });
+      const writeEventMock = jest.fn();
+      const captureFailure = jest.fn();
+      const processTier = jest.fn().mockResolvedValue(completedTier);
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { ...seams, computeEmbedding, checkCluster },
+          processTier,
+          writeEvent: writeEventMock,
+          attachEventSource: attachEventSourceMock,
+          captureFailure,
+        },
+      );
+      expect(writeEventMock).not.toHaveBeenCalled();
+      expect(captureFailure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          stage: "attach_event_source",
+          rejectionReason: "attach_db_error",
+          err: attachError,
+        }),
+      );
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toMatch(/^attach_error: /);
+    });
+
+    it("no cluster match → writeEvent called (existing path), attach NOT called", async () => {
+      mock.queueSelect([]);
+      const seams = fullSeams();
+      const computeEmbedding = jest
+        .fn()
+        .mockResolvedValue({ ok: true, embedding: fakeEmbedding() });
+      const checkCluster = jest.fn().mockResolvedValue({ matched: false });
+      const attachEventSourceMock = jest.fn();
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "evt-new-100" });
+      const processTier = jest.fn().mockResolvedValue(completedTier);
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { ...seams, computeEmbedding, checkCluster },
+          processTier,
+          writeEvent: writeEventMock,
+          attachEventSource: attachEventSourceMock,
+        },
+      );
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(attachEventSourceMock).not.toHaveBeenCalled();
+      expect(result.terminalStatus).toBe("published");
+      expect(result.resolvedEventId).toBe("evt-new-100");
+      expect(result.promoted).toBeUndefined();
+    });
+
+    it("clusterResult absent (embedding soft-failed) → writeEvent called, treated as no-match", async () => {
+      mock.queueSelect([]);
+      const seams = fullSeams();
+      // Embedding seam fails soft → clusterResult never populated.
+      const computeEmbedding = jest.fn().mockResolvedValue({
+        ok: false,
+        rejectionReason: "embedding_api_error",
+      });
+      const checkCluster = jest.fn();
+      const attachEventSourceMock = jest.fn();
+      const writeEventMock = jest
+        .fn()
+        .mockResolvedValue({ eventId: "evt-new-101" });
+      const processTier = jest.fn().mockResolvedValue(completedTier);
+      const captureFailure = jest.fn();
+      const result = await processEnrichmentJob(
+        { candidateId: CANDIDATE_ID },
+        {
+          db: mock.db,
+          seams: { ...seams, computeEmbedding, checkCluster },
+          processTier,
+          writeEvent: writeEventMock,
+          attachEventSource: attachEventSourceMock,
+          captureFailure,
+        },
+      );
+      expect(checkCluster).not.toHaveBeenCalled();
+      expect(attachEventSourceMock).not.toHaveBeenCalled();
+      expect(writeEventMock).toHaveBeenCalledTimes(1);
+      expect(result.terminalStatus).toBe("published");
+      expect(result.clusterResult).toBeUndefined();
+    });
+  });
 });
