@@ -28,6 +28,23 @@
  */
 
 import "dotenv/config";
+
+// Phase 12e.8 — production guard. Refuse to run when NODE_ENV is
+// "production". The hand-curated seed file is dev-only content; a
+// production seed event would silently land prototype rows next to
+// ingestion-written events. Unbypassable by `--yes` or any CLI flag —
+// removing this guard requires editing the source file, which is the
+// intentional friction. Runs before the DB import so the pg pool
+// isn't even constructed against a prod connection string.
+if (process.env.NODE_ENV === "production") {
+  // eslint-disable-next-line no-console
+  console.error(
+    "seedStories: refusing to run in production. " +
+      "Remove this guard in the source file if a production seed is intentionally required.",
+  );
+  process.exit(1);
+}
+
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";

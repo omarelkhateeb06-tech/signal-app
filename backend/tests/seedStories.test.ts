@@ -235,3 +235,48 @@ describe("insertStoryBatch", () => {
     );
   });
 });
+
+// Phase 12e.8 — production guard. The guard runs at module-load time
+// and calls process.exit(1), so it can't be tested in-process (it would
+// kill the jest worker). spawnSync isolates it. Slow (~3s) but the only
+// way to assert the runtime exit semantics.
+describe("seedStories — production guard (12e.8)", () => {
+  // Disabled by default in fast-feedback runs; enable via SEED_GUARD_TEST=1.
+  // The spawn cost (npx ts-node startup, ~2-3s) isn't worth paying on
+  // every jest run when the guard logic is a 4-line top-of-file check.
+  const ENABLED = process.env.SEED_GUARD_TEST === "1";
+  const maybeIt = ENABLED ? it : it.skip;
+
+  maybeIt(
+    "exits with code 1 when NODE_ENV=production, even with --yes",
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const path = require("node:path") as typeof import("node:path");
+
+      const script = path.resolve(__dirname, "../src/scripts/seedStories.ts");
+      const result = spawnSync(
+        "npx",
+        ["ts-node", script, "--yes"],
+        {
+          env: {
+            ...process.env,
+            NODE_ENV: "production",
+            // Provide a connection string so the guard isn't tripped on a
+            // missing-DB error before NODE_ENV is even checked. The guard
+            // runs before the DB import — but defensive.
+            DATABASE_URL: "postgresql://noop:noop@localhost:1/noop",
+          },
+          encoding: "utf8",
+          timeout: 30_000,
+          shell: process.platform === "win32",
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr ?? "").toContain("refusing to run in production");
+    },
+    30_000,
+  );
+});

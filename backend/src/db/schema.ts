@@ -565,6 +565,11 @@ export const ingestionSources = pgTable(
     }),
     config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
     lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    // Phase 12e.8 — last successful poll per source. Distinct from
+    // lastPolledAt, which records every attempt (success or failure).
+    // Null = source has never successfully polled. Written by
+    // sourcePollJob on the success branch only.
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
     consecutiveFailureCount: integer("consecutive_failure_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
