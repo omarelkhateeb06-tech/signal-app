@@ -34,6 +34,9 @@
 //   filtered_video_url     — URL path contains a known video sub-path
 //                            (e.g. Bloomberg /news/videos/) — pages are
 //                            not scrapable as articles.
+//   filtered_paywall       — origin returned a paywall response body
+//                            (CNBC etc.) — fact extraction can't see
+//                            the article.
 //
 // Informational only (NOT a rejection — pairs with status='heuristic_passed'):
 //   body_truncated         — extracted text exceeded the 200 KB cap and
@@ -77,6 +80,7 @@ export const HEURISTIC_REASONS = {
   BODY_TOO_SHORT: "body_too_short",
   BODY_TRUNCATED: "body_truncated",
   FILTERED_VIDEO_URL: "filtered_video_url",
+  FILTERED_PAYWALL: "filtered_paywall",
 } as const;
 export type HeuristicReason = (typeof HEURISTIC_REASONS)[keyof typeof HEURISTIC_REASONS];
 
