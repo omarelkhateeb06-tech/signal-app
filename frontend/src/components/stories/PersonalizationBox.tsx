@@ -5,8 +5,8 @@ interface PersonalizationBoxProps {
   text: string | null | undefined;
   // Phase 12c: when true, render the shimmer skeleton instead of text.
   // Separated from text-null because we want to show the header chrome
-  // (icon + "Why it matters to you") immediately and only swap the
-  // body between skeleton and commentary.
+  // (icon + "Why it matters") immediately and only swap the body
+  // between skeleton and commentary.
   loading?: boolean;
 }
 
@@ -34,7 +34,7 @@ export function PersonalizationBox({ text, loading }: PersonalizationBoxProps): 
       <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
       <div className="flex-1 space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-          Why it matters to you
+          Why it matters
         </p>
         {showSkeleton ? (
           <CommentarySkeleton />

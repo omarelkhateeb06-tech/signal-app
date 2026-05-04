@@ -26,6 +26,7 @@ import Parser from "rss-parser";
 
 import type { AdapterContext, AdapterResult, Candidate } from "../types";
 import { canonicalizeUrl } from "../../../utils/url";
+import { stripHtml } from "../../../utils/htmlStrip";
 
 const DEFAULT_USER_AGENT = "SIGNAL/12e.2 (+contact@signal.so)";
 const FETCH_TIMEOUT_MS = 30_000;
@@ -74,10 +75,32 @@ function pickSummary(item: {
   content?: string;
   summary?: string;
 }): string | null {
-  if (item.contentSnippet && item.contentSnippet.length > 0) return item.contentSnippet;
-  if (item.content && item.content.length > 0) return item.content;
-  if (item.summary && item.summary.length > 0) return item.summary;
-  return null;
+  // 12e.x: strip HTML tags + decode entities at ingestion. rss-parser's
+  // contentSnippet is already mostly text but some feeds (SEC EDGAR Atom
+  // in particular) put `<b>Filed:</b><a href=...>` in `content`. Without
+  // this, the literal markup ends up in stories.summary and renders as
+  // raw text on the frontend.
+  const raw = item.contentSnippet ?? item.content ?? item.summary ?? null;
+  return stripHtml(raw);
+}
+
+// Form-type extraction for SEC EDGAR Atom titles (e.g. "8-K - Apple Inc.
+// (0000320193) (Filer) ..."). The form code is the prefix before the
+// first " - " separator. Null when no separator is present, which
+// causes the allowlist filter to reject the item (better than letting
+// an unparsed title through under a "filtered" form-type list).
+function extractEdgarFormType(title: string | null): string | null {
+  if (!title) return null;
+  const idx = title.indexOf(" - ");
+  if (idx <= 0) return null;
+  return title.slice(0, idx).trim();
+}
+
+function readFormTypeAllowlist(config: Record<string, unknown>): Set<string> | null {
+  const raw = config.formTypeAllowlist;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const list = raw.filter((v): v is string => typeof v === "string");
+  return list.length > 0 ? new Set(list) : null;
 }
 
 function parsePubDate(raw: string | undefined): Date | null {
@@ -140,6 +163,15 @@ export async function rssAdapter(ctx: AdapterContext): Promise<AdapterResult> {
     throw new Error("parse_error");
   }
 
+  // 12e.x: optional form-type allowlist (used by sec-edgar-full to drop
+  // low-signal SEC filings before they enter the enrichment queue —
+  // prevents 424B2 / ABS-15G / 13F-HR / POS EX / ... from flooding the
+  // pipeline). When `config.formTypeAllowlist` is set, items whose
+  // parsed EDGAR form-type isn't in the set are filtered (silently
+  // dropped — they never become candidate rows, so there's no row to
+  // attach a `filtered_form_type` reason to).
+  const formAllowlist = readFormTypeAllowlist(ctx.config);
+
   // Normalize.
   const candidates: Candidate[] = [];
   for (const item of feed.items) {
@@ -155,6 +187,12 @@ export async function rssAdapter(ctx: AdapterContext): Promise<AdapterResult> {
     }
 
     const title = item.title && item.title.length > 0 ? item.title : null;
+
+    if (formAllowlist) {
+      const formType = extractEdgarFormType(title);
+      if (!formType || !formAllowlist.has(formType)) continue;
+    }
+
     const summary = pickSummary(item);
     const publishedAt = parsePubDate(item.pubDate);
     const externalId = externalIdFor(item);

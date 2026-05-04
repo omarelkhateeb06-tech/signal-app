@@ -29,7 +29,7 @@ export function Commentary({ commentary }: CommentaryProps): JSX.Element {
       <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
       <div className="flex-1 space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
-          Why it matters to you
+          Why it matters
         </p>
         <p className="text-sm leading-relaxed text-slate-800">
           {commentary.thesis}

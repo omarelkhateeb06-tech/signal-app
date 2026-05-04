@@ -5,6 +5,7 @@ import {
   computeWhyItMatters,
   computeContext,
   computeWhyItMattersTemplate,
+  isTransientWriteError,
   type CandidateRowForWrite,
 } from "../../src/jobs/ingestion/writeEvent";
 
@@ -381,6 +382,113 @@ describe("writeEvent integration", () => {
     const result = await writeEvent(CANDIDATE_ID, { db: mock.db });
     expect(result).toEqual({ eventId: EVENT_ID });
     expect(mock.state.insertedValues[0].embedding).toBeNull();
+  });
+
+  describe("retry on transient errors (issue #64)", () => {
+    function transientErr(): Error & { code: string } {
+      const e = Object.assign(new Error("serialization_failure"), {
+        code: "40001",
+      });
+      return e;
+    }
+
+    function nonTransientErr(): Error & { code: string } {
+      const e = Object.assign(new Error("unique_violation"), { code: "23505" });
+      return e;
+    }
+
+    it("retries up to maxAttempts on transient PG errors and succeeds on the last try", async () => {
+      // Three total attempts: load+insert pair queued for each. Throws
+      // during the events insert on attempts 1 and 2, succeeds on 3.
+      let insertCallCount = 0;
+      // Queue three candidate loads (one per attempt).
+      mock.queueSelect([fullCandidate()]);
+      mock.queueSelect([fullCandidate()]);
+      mock.queueSelect([fullCandidate()]);
+      // Only the third attempt's events insert reaches the queued return.
+      mock.queueInsert([{ id: EVENT_ID }]);
+
+      const originalInsert = mock.db.insert;
+      mock.db.insert = (table: any) => {
+        insertCallCount += 1;
+        // First two events inserts throw transient.
+        if (insertCallCount <= 2) {
+          throw transientErr();
+        }
+        return originalInsert(table);
+      };
+
+      const sleepCalls: number[] = [];
+      const sleepMs = async (ms: number): Promise<void> => {
+        sleepCalls.push(ms);
+      };
+
+      const result = await writeEvent(CANDIDATE_ID, {
+        db: mock.db,
+        sleepMs,
+      });
+      expect(result).toEqual({ eventId: EVENT_ID });
+      // Two backoff sleeps fired (between attempts 1→2 and 2→3).
+      expect(sleepCalls).toEqual([500, 1000]);
+    });
+
+    it("does not retry on non-transient errors (e.g. unique violation)", async () => {
+      mock.queueSelect([fullCandidate()]);
+
+      let insertCallCount = 0;
+      mock.db.insert = (_table: any) => {
+        insertCallCount += 1;
+        throw nonTransientErr();
+      };
+
+      const sleepCalls: number[] = [];
+      const sleepMs = async (ms: number): Promise<void> => {
+        sleepCalls.push(ms);
+      };
+
+      await expect(
+        writeEvent(CANDIDATE_ID, { db: mock.db, sleepMs }),
+      ).rejects.toThrow(/unique_violation/);
+      expect(insertCallCount).toBe(1);
+      expect(sleepCalls).toHaveLength(0);
+    });
+
+    it("gives up after maxAttempts and rethrows the last transient error", async () => {
+      mock.queueSelect([fullCandidate()]);
+      mock.queueSelect([fullCandidate()]);
+      mock.queueSelect([fullCandidate()]);
+
+      mock.db.insert = (_table: any) => {
+        throw transientErr();
+      };
+
+      const sleepMs = async (): Promise<void> => undefined;
+
+      await expect(
+        writeEvent(CANDIDATE_ID, { db: mock.db, sleepMs }),
+      ).rejects.toMatchObject({ code: "40001" });
+    });
+
+    it("isTransientWriteError classifies common PG and Node codes", () => {
+      expect(isTransientWriteError(transientErr())).toBe(true);
+      expect(
+        isTransientWriteError(Object.assign(new Error("dl"), { code: "40P01" })),
+      ).toBe(true);
+      expect(
+        isTransientWriteError(
+          Object.assign(new Error("conn"), { code: "ECONNRESET" }),
+        ),
+      ).toBe(true);
+      expect(isTransientWriteError(nonTransientErr())).toBe(false);
+      expect(
+        isTransientWriteError(
+          Object.assign(new Error("zod"), { name: "ZodError", code: "40001" }),
+        ),
+      ).toBe(false);
+      expect(isTransientWriteError(new Error("plain"))).toBe(false);
+      expect(isTransientWriteError(null)).toBe(false);
+      expect(isTransientWriteError("string")).toBe(false);
+    });
   });
 
   it("transaction rollback: event_sources insert failure propagates and skips candidate update", async () => {

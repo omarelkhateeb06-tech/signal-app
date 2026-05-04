@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   DEFAULT_BODY_USER_AGENT,
+  detectPaywall,
   fetchAndExtractBody,
 } from "../../src/jobs/ingestion/bodyExtractor";
 import { BODY_SIZE_CAP_BYTES, HEURISTIC_REASONS } from "../../src/jobs/ingestion/heuristics";
@@ -182,6 +183,81 @@ describe("fetchAndExtractBody", () => {
       if (!result.success) return;
       expect(result.truncated).toBe(false);
       expect(result.text.length).toBeLessThan(BODY_SIZE_CAP_BYTES);
+    });
+  });
+
+  describe("paywall detection (12e.x — CNBC)", () => {
+    it("returns filtered_paywall when CNBC body carries a paywall marker", async () => {
+      mockHtml(
+        '<!doctype html><html><body><div class="ProPaywall-container">Subscribe</div></body></html>',
+      );
+      const result = await fetchAndExtractBody(
+        "https://www.cnbc.com/2026/04/27/x.html",
+        { userAgent: DEFAULT_BODY_USER_AGENT },
+      );
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.reason).toBe(HEURISTIC_REASONS.FILTERED_PAYWALL);
+    });
+
+    it("does not flag non-CNBC URLs even if the body contains a marker", async () => {
+      mockHtml(
+        '<!doctype html><html><body><article><div class="ProPaywall-container">x</div><p>' +
+          "lorem ".repeat(200) +
+          "</p></article></body></html>",
+      );
+      const result = await fetchAndExtractBody(
+        "https://example.com/article",
+        { userAgent: DEFAULT_BODY_USER_AGENT },
+      );
+      // Either succeeds (extraction works) or fails with a non-paywall
+      // reason. The key is it should NOT be filtered_paywall.
+      if (!result.success) {
+        expect(result.reason).not.toBe(HEURISTIC_REASONS.FILTERED_PAYWALL);
+      }
+    });
+
+    it("does not flag CNBC URLs without paywall markers", async () => {
+      const article =
+        '<!doctype html><html><body><article><h1>News</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(article);
+      const result = await fetchAndExtractBody(
+        "https://www.cnbc.com/2026/04/27/x.html",
+        { userAgent: DEFAULT_BODY_USER_AGENT },
+      );
+      expect(result.success).toBe(true);
+    });
+
+    describe("detectPaywall (pure)", () => {
+      it("returns true for CNBC host + paywall marker", () => {
+        expect(
+          detectPaywall(
+            "https://www.cnbc.com/x",
+            '<div class="ProPaywall-foo">x</div>',
+          ),
+        ).toBe(true);
+      });
+
+      it("returns false for CNBC host without marker", () => {
+        expect(detectPaywall("https://www.cnbc.com/x", "<p>news</p>")).toBe(
+          false,
+        );
+      });
+
+      it("returns false for non-CNBC host with marker", () => {
+        expect(
+          detectPaywall(
+            "https://nytimes.com/x",
+            '<div class="ProPaywall-foo">x</div>',
+          ),
+        ).toBe(false);
+      });
+
+      it("returns false for malformed URL", () => {
+        expect(detectPaywall("not-a-url", "ProPaywall-")).toBe(false);
+      });
     });
   });
 });

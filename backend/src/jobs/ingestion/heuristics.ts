@@ -27,6 +27,17 @@
 // Post-fetch check:
 //   body_too_short         — extracted text below the 500-char floor.
 //
+// Source-shape filters (12e.x soak refines — rejections that are
+// expected, not failures; tracked separately from the noise / fetch
+// taxonomy so soak metrics distinguish "we deliberately dropped it"
+// from "we tried to enrich and couldn't"):
+//   filtered_video_url     — URL path contains a known video sub-path
+//                            (e.g. Bloomberg /news/videos/) — pages are
+//                            not scrapable as articles.
+//   filtered_paywall       — origin returned a paywall response body
+//                            (CNBC etc.) — fact extraction can't see
+//                            the article.
+//
 // Informational only (NOT a rejection — pairs with status='heuristic_passed'):
 //   body_truncated         — extracted text exceeded the 200 KB cap and
 //                            was truncated; candidate still advances.
@@ -68,6 +79,8 @@ export const HEURISTIC_REASONS = {
   BODY_NETWORK: "body_network",
   BODY_TOO_SHORT: "body_too_short",
   BODY_TRUNCATED: "body_truncated",
+  FILTERED_VIDEO_URL: "filtered_video_url",
+  FILTERED_PAYWALL: "filtered_paywall",
 } as const;
 export type HeuristicReason = (typeof HEURISTIC_REASONS)[keyof typeof HEURISTIC_REASONS];
 
@@ -115,6 +128,26 @@ export function matchesNoisePattern(
     for (const re of PAID_CONTENT_PATTERNS) if (re.test(h)) return { match: true, category: "paid" };
   }
   return { match: false };
+}
+
+// 12e.x: URL-path patterns that point at non-article surfaces (video
+// pages, etc.). Bloomberg's `/news/videos/` is the soak-discovered case
+// — every URL matching it produced a body fetch / fact-extract failure
+// because the page is a video player, not an article. Add new entries
+// here when more host-specific shapes turn up.
+const NON_ARTICLE_URL_PATTERNS: RegExp[] = [
+  /\/news\/videos\//i,
+];
+
+export function isNonArticleUrl(rawUrl: string | null): boolean {
+  if (!rawUrl) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(rawUrl).pathname;
+  } catch {
+    return false;
+  }
+  return NON_ARTICLE_URL_PATTERNS.some((re) => re.test(pathname));
 }
 
 export function noiseCategoryToReason(cat: NoiseCategory): HeuristicReason {

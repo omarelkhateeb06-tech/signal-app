@@ -125,6 +125,19 @@ describe("runHeuristicSeam", () => {
       expect(result.reason).toBe(HEURISTIC_REASONS.NOISE_PAID);
       expect(fetchBody).not.toHaveBeenCalled();
     });
+
+    it("rejects filtered_video_url for Bloomberg /news/videos/ paths", async () => {
+      mock.queueSelect([
+        makeRow({
+          url: "https://www.bloomberg.com/news/videos/2026-04-27/some-clip",
+        }),
+      ]);
+      const fetchBody = fetchOk("never called");
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(result.pass).toBe(false);
+      expect(result.reason).toBe(HEURISTIC_REASONS.FILTERED_VIDEO_URL);
+      expect(fetchBody).not.toHaveBeenCalled();
+    });
   });
 
   describe("body fetch failure branches", () => {

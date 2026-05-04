@@ -19,6 +19,36 @@ import { BODY_SIZE_CAP_BYTES, HEURISTIC_REASONS, type HeuristicReason } from "./
 export const DEFAULT_BODY_USER_AGENT = "SIGNAL/12e.3 (+contact@signal.so)";
 export const DEFAULT_BODY_TIMEOUT_MS = 15_000;
 
+// 12e.x: paywall detection. Most paywalled CNBC URLs serve HTML that
+// readability "succeeds" on but ends up with extracted text consisting
+// of subscribe-prompts and nav chrome — fact extraction then trips on
+// missing article body and surfaces as facts_parse_error. Catching the
+// paywall response at fetch time turns it into a clean
+// `heuristic_filtered`/`filtered_paywall` rejection instead of a
+// downstream stage failure. Indicators: distinctive markup classes
+// CNBC uses for the paywall gate. Kept to high-precision strings so
+// non-paywalled CNBC pages don't get caught by accident.
+const PAYWALL_HOSTS = new Set(["cnbc.com", "www.cnbc.com"]);
+const PAYWALL_HTML_INDICATORS: readonly string[] = [
+  "ProPaywall-",
+  "data-test=\"PaywallContent\"",
+  "PaywallInline-",
+  "id=\"paywall\"",
+];
+
+function hostMatchesPaywallSet(rawUrl: string): boolean {
+  try {
+    return PAYWALL_HOSTS.has(new URL(rawUrl).host.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export function detectPaywall(rawUrl: string, html: string): boolean {
+  if (!hostMatchesPaywallSet(rawUrl)) return false;
+  return PAYWALL_HTML_INDICATORS.some((needle) => html.includes(needle));
+}
+
 export type BodyExtractionResult =
   | { success: true; text: string; truncated: boolean }
   | { success: false; reason: HeuristicReason };
@@ -84,6 +114,15 @@ export async function fetchAndExtractBody(
     html = await res.text();
   } finally {
     clearTimeout(timer);
+  }
+
+  // 12e.x: paywall detection runs before readability — if the host is
+  // known to paywall and the body carries a paywall marker, surface
+  // it as a `filtered_paywall` rejection rather than letting
+  // readability succeed on subscribe chrome and downstream stages
+  // trip on the missing article body.
+  if (detectPaywall(url, html)) {
+    return { success: false, reason: HEURISTIC_REASONS.FILTERED_PAYWALL };
   }
 
   // Parse with jsdom and run readability.

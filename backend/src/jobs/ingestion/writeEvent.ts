@@ -67,9 +67,74 @@ const HEADLINE_MAX_CHARS = 255;
 // the story" and "small enough to avoid copy-pasting full articles."
 const CONTEXT_MAX_CHARS = 500;
 
+// 12e.x — issue #64: retry transient writeEvent failures with
+// exponential backoff. Caps at 3 attempts (so two retries after the
+// initial try) with a base delay of 500ms; max sleep before the third
+// attempt is 1000ms, total worst-case extra latency 1500ms. Tuning
+// kept tight on purpose — this is a worker-internal retry, not a
+// user-visible call path, so we don't want to hold the candidate's
+// status='tier_generated'/resolved_event_id=null partial state for
+// long.
+const WRITE_EVENT_MAX_ATTEMPTS = 3;
+const WRITE_EVENT_BASE_DELAY_MS = 500;
+
+// PG SQLSTATE classes that indicate a retryable transient failure.
+// 40xxx — transaction-rollback (serialization_failure, deadlock_detected).
+// 08xxx — connection exceptions.
+// 53xxx — insufficient resources (out_of_memory, too_many_connections).
+// 57P01-03 — admin shutdown / crash shutdown / cannot_connect_now.
+const TRANSIENT_PG_CODES: ReadonlySet<string> = new Set([
+  "40001",
+  "40P01",
+  "08000",
+  "08003",
+  "08006",
+  "08001",
+  "08004",
+  "08007",
+  "08P01",
+  "53300",
+  "53400",
+  "57P01",
+  "57P02",
+  "57P03",
+]);
+
+const TRANSIENT_NODE_CODES: ReadonlySet<string> = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "ENOTFOUND",
+]);
+
+export function isTransientWriteError(err: unknown): boolean {
+  if (err === null || typeof err !== "object") return false;
+  // Zod errors and Error subclasses we throw from this module are
+  // never transient.
+  const name = (err as { name?: string }).name;
+  if (name === "ZodError") return false;
+
+  const code = (err as { code?: string }).code;
+  if (typeof code === "string" && code.length > 0) {
+    if (TRANSIENT_PG_CODES.has(code)) return true;
+    if (TRANSIENT_NODE_CODES.has(code)) return true;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export interface WriteEventDeps {
   db?: typeof defaultDb;
   now?: () => Date;
+  // Test seam: stub the per-attempt sleep so the retry loop doesn't
+  // actually wait. Production never sets this.
+  sleepMs?: (ms: number) => Promise<void>;
+  // Test seam: override the attempt cap. Production never sets this.
+  maxAttempts?: number;
 }
 
 export interface WriteEventResult {
@@ -215,9 +280,9 @@ export function computeWhyItMattersTemplate(
   return JSON.stringify(validated);
 }
 
-export async function writeEvent(
+async function writeEventOnce(
   candidateId: string,
-  deps: WriteEventDeps = {},
+  deps: WriteEventDeps,
 ): Promise<WriteEventResult> {
   const db = deps.db ?? defaultDb;
   const now = deps.now ?? ((): Date => new Date());
@@ -298,4 +363,33 @@ export async function writeEvent(
 
     return { eventId };
   });
+}
+
+export async function writeEvent(
+  candidateId: string,
+  deps: WriteEventDeps = {},
+): Promise<WriteEventResult> {
+  const maxAttempts = deps.maxAttempts ?? WRITE_EVENT_MAX_ATTEMPTS;
+  const sleepMs = deps.sleepMs ?? sleep;
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await writeEventOnce(candidateId, deps);
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientWriteError(err) || attempt === maxAttempts) {
+        throw err;
+      }
+      // Exponential backoff: 500ms, 1000ms, ...
+      const delay = WRITE_EVENT_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ingestion-write-event] candidate=${candidateId} transient error on attempt ${attempt}/${maxAttempts}; retrying in ${delay}ms:`,
+        err instanceof Error ? err.message : err,
+      );
+      await sleepMs(delay);
+    }
+  }
+  throw lastErr;
 }
