@@ -190,6 +190,91 @@ describe("rssAdapter", () => {
     });
   });
 
+  describe("form-type allowlist (SEC EDGAR full-feed filter)", () => {
+    const buildEdgarLikeFeed = (): string => `<?xml version="1.0"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>EDGAR</title>
+        <entry>
+          <title>8-K - Apple Inc. (0000320193) (Filer)</title>
+          <link href="https://www.sec.gov/cgi-bin/browse-edgar?id=1"/>
+          <id>urn:tag:8-k-1</id>
+          <updated>2026-04-27T12:00:00Z</updated>
+          <summary>filing</summary>
+        </entry>
+        <entry>
+          <title>424B2 - Bank Inc. (0000123456) (Filer)</title>
+          <link href="https://www.sec.gov/cgi-bin/browse-edgar?id=2"/>
+          <id>urn:tag:424b2-1</id>
+          <updated>2026-04-27T12:00:00Z</updated>
+          <summary>filing</summary>
+        </entry>
+        <entry>
+          <title>13F-HR - Fund Co. (0000999999) (Filer)</title>
+          <link href="https://www.sec.gov/cgi-bin/browse-edgar?id=3"/>
+          <id>urn:tag:13f-1</id>
+          <updated>2026-04-27T12:00:00Z</updated>
+          <summary>filing</summary>
+        </entry>
+        <entry>
+          <title>10-K - Other Corp. (0000111111) (Filer)</title>
+          <link href="https://www.sec.gov/cgi-bin/browse-edgar?id=4"/>
+          <id>urn:tag:10-k-1</id>
+          <updated>2026-04-27T12:00:00Z</updated>
+          <summary>filing</summary>
+        </entry>
+      </feed>`;
+
+    it("keeps only items whose form-type prefix is in the allowlist", async () => {
+      mockOk(buildEdgarLikeFeed(), "application/atom+xml");
+      const result = await rssAdapter(
+        makeCtx({
+          config: { formTypeAllowlist: ["8-K", "10-K"] },
+        }),
+      );
+      const titles = result.candidates.map((c) => c.title);
+      expect(titles).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("8-K"),
+          expect.stringContaining("10-K"),
+        ]),
+      );
+      expect(result.candidates).toHaveLength(2);
+    });
+
+    it("drops items whose title doesn't start with a recognizable form prefix", async () => {
+      const xml = `<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>EDGAR</title>
+          <entry>
+            <title>No separator title</title>
+            <link href="https://example.com/x"/>
+            <id>urn:1</id>
+            <updated>2026-04-27T12:00:00Z</updated>
+            <summary>x</summary>
+          </entry>
+        </feed>`;
+      mockOk(xml, "application/atom+xml");
+      const result = await rssAdapter(
+        makeCtx({ config: { formTypeAllowlist: ["8-K"] } }),
+      );
+      expect(result.candidates).toHaveLength(0);
+    });
+
+    it("is a no-op when allowlist is unset", async () => {
+      mockOk(buildEdgarLikeFeed(), "application/atom+xml");
+      const result = await rssAdapter(makeCtx({ config: {} }));
+      expect(result.candidates).toHaveLength(4);
+    });
+
+    it("is a no-op when allowlist is an empty array", async () => {
+      mockOk(buildEdgarLikeFeed(), "application/atom+xml");
+      const result = await rssAdapter(
+        makeCtx({ config: { formTypeAllowlist: [] } }),
+      );
+      expect(result.candidates).toHaveLength(4);
+    });
+  });
+
   describe("HTML stripping at ingestion (12e.x)", () => {
     it("strips tags and decodes entities from item description", async () => {
       const xml = `<?xml version="1.0"?><rss version="2.0"><channel>
