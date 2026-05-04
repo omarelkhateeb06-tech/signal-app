@@ -189,4 +189,28 @@ describe("rssAdapter", () => {
       ).rejects.toThrow("network");
     });
   });
+
+  describe("HTML stripping at ingestion (12e.x)", () => {
+    it("strips tags and decodes entities from item description", async () => {
+      const xml = `<?xml version="1.0"?><rss version="2.0"><channel>
+        <title>t</title><link>https://example.com</link><description>d</description>
+        <item>
+          <title>Filing</title>
+          <link>https://example.com/a</link>
+          <guid>g1</guid>
+          <pubDate>Mon, 27 Apr 2026 12:00:00 GMT</pubDate>
+          <description><![CDATA[<b>Filed:</b> 2026-04-27<br/><a href="https://x">link</a> &amp; more]]></description>
+        </item>
+      </channel></rss>`;
+      mockOk(xml);
+      const result = await rssAdapter(makeCtx());
+      const summary = result.candidates[0]!.summary;
+      expect(typeof summary).toBe("string");
+      expect(summary).not.toMatch(/<[^>]+>/);
+      expect(summary).not.toContain("&amp;");
+      expect(summary).toContain("Filed:");
+      expect(summary).toContain("link");
+      expect(summary).toContain("&");
+    });
+  });
 });

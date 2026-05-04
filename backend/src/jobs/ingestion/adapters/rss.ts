@@ -26,6 +26,7 @@ import Parser from "rss-parser";
 
 import type { AdapterContext, AdapterResult, Candidate } from "../types";
 import { canonicalizeUrl } from "../../../utils/url";
+import { stripHtml } from "../../../utils/htmlStrip";
 
 const DEFAULT_USER_AGENT = "SIGNAL/12e.2 (+contact@signal.so)";
 const FETCH_TIMEOUT_MS = 30_000;
@@ -74,10 +75,13 @@ function pickSummary(item: {
   content?: string;
   summary?: string;
 }): string | null {
-  if (item.contentSnippet && item.contentSnippet.length > 0) return item.contentSnippet;
-  if (item.content && item.content.length > 0) return item.content;
-  if (item.summary && item.summary.length > 0) return item.summary;
-  return null;
+  // 12e.x: strip HTML tags + decode entities at ingestion. rss-parser's
+  // contentSnippet is already mostly text but some feeds (SEC EDGAR Atom
+  // in particular) put `<b>Filed:</b><a href=...>` in `content`. Without
+  // this, the literal markup ends up in stories.summary and renders as
+  // raw text on the frontend.
+  const raw = item.contentSnippet ?? item.content ?? item.summary ?? null;
+  return stripHtml(raw);
 }
 
 function parsePubDate(raw: string | undefined): Date | null {
