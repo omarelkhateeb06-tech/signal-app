@@ -1,6 +1,7 @@
 import {
   BODY_LENGTH_FLOOR_CHARS,
   HEURISTIC_REASONS,
+  isNonArticleUrl,
   isRecent,
   isSummaryAndTitleEmpty,
   matchesNoisePattern,
@@ -195,6 +196,38 @@ describe("heuristics — pure functions", () => {
       expect(noiseCategoryToReason("linkbait")).toBe(HEURISTIC_REASONS.NOISE_LINKBAIT);
       expect(noiseCategoryToReason("listicle")).toBe(HEURISTIC_REASONS.NOISE_LISTICLE);
       expect(noiseCategoryToReason("paid")).toBe(HEURISTIC_REASONS.NOISE_PAID);
+    });
+  });
+
+  describe("isNonArticleUrl", () => {
+    it("matches Bloomberg /news/videos/ paths", () => {
+      expect(
+        isNonArticleUrl("https://www.bloomberg.com/news/videos/2026-04-27/clip"),
+      ).toBe(true);
+    });
+
+    it("matches the pattern case-insensitively", () => {
+      expect(
+        isNonArticleUrl("https://www.bloomberg.com/News/Videos/2026-04-27/clip"),
+      ).toBe(true);
+    });
+
+    it("does not match Bloomberg article paths", () => {
+      expect(
+        isNonArticleUrl("https://www.bloomberg.com/news/articles/2026-04-27/x"),
+      ).toBe(false);
+    });
+
+    it("does not match unrelated URLs", () => {
+      expect(isNonArticleUrl("https://example.com/foo/bar")).toBe(false);
+    });
+
+    it("returns false for null URL", () => {
+      expect(isNonArticleUrl(null)).toBe(false);
+    });
+
+    it("returns false for malformed URL", () => {
+      expect(isNonArticleUrl("not-a-url")).toBe(false);
     });
   });
 });

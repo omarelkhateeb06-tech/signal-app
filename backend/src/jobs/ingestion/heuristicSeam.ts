@@ -20,6 +20,7 @@ import { ingestionCandidates, ingestionSources } from "../../db/schema";
 import {
   HEURISTIC_REASONS,
   type HeuristicReason,
+  isNonArticleUrl,
   isRecent,
   isSummaryAndTitleEmpty,
   matchesNoisePattern,
@@ -122,6 +123,15 @@ export async function runHeuristicSeam(
   const noise = matchesNoisePattern(candidate.rawTitle, candidate.rawSummary);
   if (noise.match && noise.category) {
     return { pass: false, reason: noiseCategoryToReason(noise.category) };
+  }
+
+  // 3b. Non-article URL shapes (12e.x). Drop video pages etc. before
+  // we waste a body fetch on a player surface. These rejections share
+  // the heuristic_filtered terminal status; the reason
+  // `filtered_video_url` flags them as expected drops, distinct from
+  // body_*/noise_* failure / noise classes in soak metrics.
+  if (isNonArticleUrl(candidate.url)) {
+    return { pass: false, reason: HEURISTIC_REASONS.FILTERED_VIDEO_URL };
   }
 
   // 4. Body fetch.
