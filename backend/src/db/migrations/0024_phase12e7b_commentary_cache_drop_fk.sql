@@ -4,4 +4,4 @@
 -- Cascade-delete from stories no longer fires; orphaned cache rows for
 -- deleted events are handled by the 12c.1 GC stub.
 ALTER TABLE commentary_cache
-  DROP CONSTRAINT commentary_cache_story_id_fkey;
+  DROP CONSTRAINT commentary_cache_story_id_fk;
