@@ -148,22 +148,25 @@ describe("stories endpoints", () => {
       expect(res.body.data.offset).toBe(0);
     });
 
-    // Phase 12e.7a — dual-read merged sort. Verifies that an events row
-    // newer than every story comes first in the merged page, event_sources
-    // are batched + attached, and multi-source attribution surfaces on
-    // the wire shape of both event items and legacy story items.
-    it("merges stories + events sorted by published_at DESC and attaches sources", async () => {
+    // Phase 12e.7a / 12f — dual-read merged sort. Verifies that an
+    // event with a higher effective_score lands first in the merged
+    // page (the 12f sort key replaced the pre-12f published_at DESC
+    // sort), event_sources are batched + attached, and multi-source
+    // attribution surfaces on the wire shape of both event items and
+    // legacy story items.
+    it("merges stories + events sorted by effective_score DESC and attaches sources", async () => {
       queueOnboarded();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      // stories: one row at 2026-04-01
-      mock.queueSelect([makeRow({ headline: "Older story" })]);
-      // events: one row at 2026-04-10 (newer) — should land first
+      // stories: one row — legacy stories sort against the
+      // STORY_BASELINE_EFFECTIVE_SCORE constant (currently 7).
+      mock.queueSelect([makeRow({ headline: "Lower-ranked story" })]);
+      // events: one row with effective_score 9.5 — should land first.
       const eventId = "33333333-3333-3333-3333-333333333333";
       mock.queueSelect([
         {
           id: eventId,
           sector: "ai",
-          headline: "Newer event",
+          headline: "Higher-ranked event",
           context: "Event context",
           whyItMatters: "Event WIM",
           whyItMattersTemplate: null,
@@ -177,6 +180,7 @@ describe("stories endpoints", () => {
           isSaved: false,
           saveCount: 0,
           commentCount: 0,
+          effectiveScore: 9.5,
         },
       ]);
       // event_sources batch: two rows for the one event (primary + alternate)
@@ -203,15 +207,15 @@ describe("stories endpoints", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.stories).toHaveLength(2);
-      // Newer event lands first.
+      // Higher-ranked event lands first (effective_score 9.5 vs. story baseline 7).
       expect(res.body.data.stories[0].id).toBe(eventId);
-      expect(res.body.data.stories[0].headline).toBe("Newer event");
+      expect(res.body.data.stories[0].headline).toBe("Higher-ranked event");
       expect(res.body.data.stories[0].sources).toHaveLength(2);
       expect(res.body.data.stories[0].primary_source_url).toBe(
         "https://primary.example.com",
       );
-      // Older story second; legacy stories carry a synthetic single-element sources array.
-      expect(res.body.data.stories[1].headline).toBe("Older story");
+      // Story second; legacy stories carry a synthetic single-element sources array.
+      expect(res.body.data.stories[1].headline).toBe("Lower-ranked story");
       expect(res.body.data.stories[1].sources).toHaveLength(1);
       expect(res.body.data.stories[1].sources[0].role).toBe("primary");
       expect(res.body.data.total).toBe(2);
