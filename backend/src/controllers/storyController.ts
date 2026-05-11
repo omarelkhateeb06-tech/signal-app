@@ -12,6 +12,16 @@ import {
 } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 import { personalizeStory } from "../services/personalizationService";
+import {
+  EDGAR_PENALTY,
+  EDGAR_SOURCE_SLUGS,
+  FEED_MAX_STORIES,
+  FRESHNESS_BONUS,
+  FRESHNESS_QUALITY_THRESHOLD,
+  FRESHNESS_WINDOW_HOURS,
+  W1,
+  W2,
+} from "../feed/rankingConstants";
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 10;
@@ -129,6 +139,10 @@ interface EventRow {
   isSaved: boolean;
   saveCount: number;
   commentCount: number;
+  // Phase 12f — ranking score computed in SQL. Used by the merge step
+  // to sort events vs. legacy stories on a unified scale. Never sent
+  // to the wire (shapeEvent strips it).
+  effectiveScore: number;
 }
 
 interface EventSourceRow {
@@ -205,6 +219,123 @@ function eventCommentCountExpr(): ReturnType<typeof sql<number>> {
   return sql<number>`(SELECT COUNT(*)::int FROM comments c WHERE c.event_id = ${events.id} AND c.deleted_at IS NULL)`;
 }
 
+// Phase 12f — ranking expressions for the events query. Each helper is
+// a SQL fragment, composable inside the SELECT list and the ORDER BY.
+// The composite `eventEffectiveScoreExpr()` mirrors the TS function
+// `calculateEffectiveScore` in src/feed/calculateEffectiveScore.ts —
+// the TS function exists for unit tests; the SQL is canonical for
+// production. Keep them in lockstep.
+
+/**
+ * Quality score of the event's primary source, looked up via the
+ * `role='primary'` event_sources row. Falls back to 5 (the schema
+ * default on ingestion_sources.quality_score) when no primary source
+ * row exists, which is rare but possible for legacy event rows.
+ */
+function eventQualityScoreExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`COALESCE(
+    (SELECT isrc.quality_score
+       FROM event_sources es
+       JOIN ingestion_sources isrc ON isrc.id = es.ingestion_source_id
+       WHERE es.event_id = ${events.id} AND es.role = 'primary'
+       LIMIT 1),
+    5
+  )`;
+}
+
+/**
+ * Number of *alternate* event_sources attached to this event. Equal to
+ * (total event_sources rows − 1); a solo event passes 0. Guarded by
+ * GREATEST so an orphaned event with zero sources doesn't underflow.
+ */
+function eventAlternatesCountExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`GREATEST(0, (SELECT COUNT(*)::int - 1 FROM event_sources es WHERE es.event_id = ${events.id}))`;
+}
+
+/**
+ * Age of the event in hours since published_at (or created_at if
+ * published_at is null). Float — fractional hours preserved.
+ */
+function eventAgeHoursExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`(EXTRACT(EPOCH FROM (NOW() - COALESCE(${events.publishedAt}, ${events.createdAt}))) / 3600.0)`;
+}
+
+/**
+ * True iff the event has exactly one event_sources row AND that
+ * source's slug is in EDGAR_SOURCE_SLUGS. Used as the first half of
+ * the EDGAR-penalty gate.
+ */
+function eventIsEdgarSoleSourceExpr(): ReturnType<typeof sql<boolean>> {
+  const slugList = sql.join(
+    EDGAR_SOURCE_SLUGS.map((slug) => sql`${slug}`),
+    sql`, `,
+  );
+  return sql<boolean>`(
+    (SELECT COUNT(*) FROM event_sources es WHERE es.event_id = ${events.id}) = 1
+    AND EXISTS (
+      SELECT 1 FROM event_sources es
+        JOIN ingestion_sources isrc ON isrc.id = es.ingestion_source_id
+        WHERE es.event_id = ${events.id} AND isrc.slug IN (${slugList})
+    )
+  )`;
+}
+
+/**
+ * True iff at least one ingestion_candidate resolved to this event has
+ * non-empty body_text. False = body enrichment never produced usable
+ * text, which (combined with `isEdgarSoleSource`) triggers the EDGAR
+ * penalty.
+ */
+function eventBodyTextPresentExpr(): ReturnType<typeof sql<boolean>> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ingestion_candidates ic
+      WHERE ic.resolved_event_id = ${events.id}
+        AND ic.body_text IS NOT NULL
+        AND ic.body_text <> ''
+  )`;
+}
+
+/**
+ * Composite effective_score expression. Used both as a SELECT column
+ * (so the row carries its score for downstream sort/inspection) and in
+ * the ORDER BY clause.
+ */
+function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
+  const quality = eventQualityScoreExpr();
+  const alternates = eventAlternatesCountExpr();
+  const ageHours = eventAgeHoursExpr();
+  const isEdgarSole = eventIsEdgarSoleSourceExpr();
+  const bodyPresent = eventBodyTextPresentExpr();
+
+  return sql<number>`(
+    ${quality}::numeric
+    + ${W1}::numeric * LN(1 + ${alternates}::numeric)
+    - ${W2}::numeric * ${ageHours}::numeric
+    + CASE
+        WHEN ${quality}::numeric >= ${FRESHNESS_QUALITY_THRESHOLD}::numeric
+          AND ${ageHours}::numeric <= ${FRESHNESS_WINDOW_HOURS}::numeric
+        THEN ${FRESHNESS_BONUS}::numeric
+        ELSE 0::numeric
+      END
+    - CASE
+        WHEN ${isEdgarSole} AND NOT ${bodyPresent}
+        THEN ${EDGAR_PENALTY}::numeric
+        ELSE 0::numeric
+      END
+  )`;
+}
+
+/**
+ * Static baseline score assigned to legacy hand-curated stories so
+ * they sort coherently against ranked events in the merge step.
+ * Stories are evergreen seed content (the 20 rows in
+ * seed-data/stories.json) and don't have ingestion_sources rows to
+ * derive a quality_score from. Pegged at the editorial mid-tier so
+ * they surface above low-quality events but below freshness-bonused
+ * primary-lab events.
+ */
+const STORY_BASELINE_EFFECTIVE_SCORE = 7;
+
 const baseStoryColumns = {
   id: stories.id,
   sector: stories.sector,
@@ -235,16 +366,20 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     const profileSectors = profile?.sectors ?? [];
     const sectorsFilter = requestedSectors.length > 0 ? requestedSectors : profileSectors;
 
-    if (sectorsFilter.length === 0) {
-      res.json({ data: { stories: [], total: 0, has_more: false, limit, offset } });
-      return;
-    }
+    // Phase 12f — sector filter is a *hard* WHERE (applied before
+    // ranking). An empty `sectorsFilter` means the user hasn't picked
+    // any sectors and didn't pass a `?sectors=` query param; in that
+    // case we return all sectors rather than empty (CLAUDE.md feed
+    // behavior).
+    const storiesSectorWhere =
+      sectorsFilter.length > 0 ? inArray(stories.sector, sectorsFilter) : undefined;
+    const eventsSectorWhere =
+      sectorsFilter.length > 0 ? inArray(events.sector, sectorsFilter) : undefined;
 
-    // Phase 12e.7a — dual-read across `stories` (legacy hand-curated)
-    // and `events` (ingestion-written). Each table is queried with the
-    // same limit/offset; the two pages are merged client-side and sliced
-    // back to `limit` before shaping. `total` is the union row count
-    // (sum across both tables) so `has_more` reflects the union.
+    // Phase 12e.7a — dual-read across `stories` (legacy hand-curated,
+    // 20 rows) and `events` (ingestion-written, the bulk). Stories keep
+    // their chronological order (no ranking inputs apply); events are
+    // ranked via the 12f effective_score expression.
     const storyRows = (await db
       .select({
         ...baseStoryColumns,
@@ -254,11 +389,16 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       })
       .from(stories)
       .leftJoin(writers, eq(writers.id, stories.authorId))
-      .where(inArray(stories.sector, sectorsFilter))
+      .where(storiesSectorWhere)
       .orderBy(desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`))
       .limit(limit)
       .offset(offset)) as StoryRow[];
 
+    // Phase 12f — events query is ranked by effective_score DESC and
+    // capped at FEED_MAX_STORIES (the top-N pool). User-supplied limit
+    // and offset paginate the merged result downstream; the SQL-level
+    // cap is the candidate pool size, not the page size.
+    const eventEffectiveScore = eventEffectiveScoreExpr();
     const eventRows = (await db
       .select({
         id: events.id,
@@ -277,22 +417,38 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         isSaved: isEventSavedExpr(userId),
         saveCount: eventSaveCountExpr(),
         commentCount: eventCommentCountExpr(),
+        effectiveScore: eventEffectiveScore,
       })
       .from(events)
       .leftJoin(writers, eq(writers.id, events.authorId))
-      .where(inArray(events.sector, sectorsFilter))
-      .orderBy(desc(sql`COALESCE(${events.publishedAt}, ${events.createdAt})`))
-      .limit(limit)
-      .offset(offset)) as EventRow[];
+      .where(eventsSectorWhere)
+      .orderBy(desc(eventEffectiveScore))
+      .limit(FEED_MAX_STORIES)) as EventRow[];
 
     type MergedItem =
-      | { _type: "story"; row: StoryRow }
-      | { _type: "event"; row: EventRow };
+      | { _type: "story"; row: StoryRow; sortKey: number }
+      | { _type: "event"; row: EventRow; sortKey: number };
     const merged: MergedItem[] = [
-      ...storyRows.map((row): MergedItem => ({ _type: "story", row })),
-      ...eventRows.map((row): MergedItem => ({ _type: "event", row })),
+      ...storyRows.map(
+        (row): MergedItem => ({
+          _type: "story",
+          row,
+          sortKey: STORY_BASELINE_EFFECTIVE_SCORE,
+        }),
+      ),
+      ...eventRows.map(
+        (row): MergedItem => ({
+          _type: "event",
+          row,
+          // `effectiveScore` comes back as numeric → string from pg in
+          // some configurations; coerce defensively.
+          sortKey: Number(row.effectiveScore),
+        }),
+      ),
     ];
     merged.sort((a, b) => {
+      if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
+      // Stable tiebreaker: newer first.
       const aTs = (a.row.publishedAt ?? a.row.createdAt).getTime();
       const bTs = (b.row.publishedAt ?? b.row.createdAt).getTime();
       return bTs - aTs;
@@ -302,7 +458,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     // Batch-fetch event_sources for whichever event items survived the
     // merge slice. Skip the round-trip when no events are on the page.
     const eventIds = pageItems
-      .filter((m): m is { _type: "event"; row: EventRow } => m._type === "event")
+      .filter((m): m is { _type: "event"; row: EventRow; sortKey: number } => m._type === "event")
       .map((m) => m.row.id);
     const allSources =
       eventIds.length > 0
@@ -324,14 +480,16 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     }
 
     // Counts: union total = stories matching sectors + events matching sectors.
+    // Same optional-WHERE semantics as the main queries above: when the
+    // user has no sectors, count all rows.
     const [storiesCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(stories)
-      .where(inArray(stories.sector, sectorsFilter));
+      .where(storiesSectorWhere);
     const [eventsCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(events)
-      .where(inArray(events.sector, sectorsFilter));
+      .where(eventsSectorWhere);
     const total =
       Number(storiesCountRow?.count ?? 0) + Number(eventsCountRow?.count ?? 0);
 
