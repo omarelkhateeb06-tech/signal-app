@@ -27,9 +27,12 @@ jest.mock("../../src/db", () => ({
   pool: {},
 }));
 
+import { PgDialect } from "drizzle-orm/pg-core";
+
 import { createApp } from "../../src/app";
 import { generateToken } from "../../src/services/authService";
 import { calculateEffectiveScore } from "../../src/feed/calculateEffectiveScore";
+import { eventHasEnabledSourceExpr } from "../../src/controllers/storyController";
 import {
   EDGAR_PENALTY,
   FRESHNESS_BONUS,
@@ -309,5 +312,78 @@ describe("getFeed — sector filter (Phase 12f)", () => {
       (s) => s.headline,
     );
     expect(headlines).toEqual(["Higher-score event", "Lower-score event"]);
+  });
+});
+
+// Hotfix (GH #88) — the feed query now also filters out events whose
+// every source is currently disabled (`ingestion_sources.enabled =
+// false`). This is a WHERE-clause predicate composed into the events
+// query alongside the sector filter. The mockDb chain doesn't apply
+// WHERE, so we test the SQL fragment directly via PgDialect.sqlToQuery
+// — verifying the builder produces the expected `EXISTS (... enabled
+// = true ...)` predicate. Behavior at the live-DB layer is a function
+// of that fragment plus Postgres semantics.
+describe("eventHasEnabledSourceExpr — disabled-source filter (hotfix #88)", () => {
+  it("produces an EXISTS subquery joining event_sources and ingestion_sources with enabled = true", () => {
+    const dialect = new PgDialect();
+    const { sql: rendered } = dialect.sqlToQuery(eventHasEnabledSourceExpr());
+
+    // Whitespace-collapse for resilient substring assertions.
+    const collapsed = rendered.replace(/\s+/g, " ").toLowerCase();
+
+    expect(collapsed).toContain("exists");
+    expect(collapsed).toContain("event_sources");
+    expect(collapsed).toContain("ingestion_sources");
+    expect(collapsed).toMatch(/s\.enabled\s*=\s*true/);
+    // The subquery is correlated on the outer events row.
+    expect(collapsed).toContain("es.event_id");
+  });
+
+  it("getFeed filters events when the SQL-side filter has already excluded the disabled-source rows", async () => {
+    // mockDb can't enforce the WHERE itself — but the test still
+    // documents the contract end-to-end: the controller takes the
+    // post-filter events result from the DB and emits exactly those
+    // rows on the wire. If the SQL filter were ever dropped, the
+    // PgDialect test above would still pass on the helper, but a
+    // future integration test against a real Postgres would catch
+    // the regression.
+    const token = generateToken(userId, "user@example.com");
+    mock.queueSelect([{ completedAt: new Date("2026-04-01T00:00:00Z") }]);
+    mock.queueSelect([{ sectors: ["ai"], role: null }]);
+    mock.queueSelect([]); // stories
+    // events: the SQL filter would have excluded any disabled-source
+    // events; we return only the surviving enabled-source event.
+    mock.queueSelect([
+      {
+        id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        sector: "ai",
+        headline: "Enabled-source event",
+        context: "ctx",
+        whyItMatters: "wim",
+        whyItMattersTemplate: null,
+        primarySourceUrl: "https://example.com/a",
+        primarySourceName: "Editorial",
+        publishedAt: new Date("2026-05-12T00:00:00Z"),
+        createdAt: new Date("2026-05-12T00:00:00Z"),
+        authorId: null,
+        authorName: null,
+        authorBio: null,
+        isSaved: false,
+        saveCount: 0,
+        commentCount: 0,
+        effectiveScore: 8.0,
+      },
+    ]);
+    mock.queueSelect([]); // event_sources batch
+    mock.queueSelect([{ count: 0 }]); // stories count
+    mock.queueSelect([{ count: 1 }]); // events count (post-filter)
+
+    const res = await request(app)
+      .get("/api/v1/stories/feed")
+      .set(...auth(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.stories).toHaveLength(1);
+    expect(res.body.data.stories[0].headline).toBe("Enabled-source event");
   });
 });

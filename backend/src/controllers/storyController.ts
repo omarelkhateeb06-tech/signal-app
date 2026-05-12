@@ -296,6 +296,25 @@ function eventBodyTextPresentExpr(): ReturnType<typeof sql<boolean>> {
 }
 
 /**
+ * WHERE-clause predicate: event has at least one event_source whose
+ * `ingestion_sources.enabled = true`. Used to exclude events whose every
+ * source is currently disabled — when sources are taken offline via SQL
+ * (e.g. sec-edgar-full / sec-edgar-semis on 2026-05-11, see GH #88),
+ * already-ingested events from those sources must stop appearing in the
+ * feed even though the source row itself is kept (preserves attribution
+ * history). An orphaned event with zero event_sources rows fails the
+ * EXISTS — intentional; orphan-recovery is out of scope here.
+ */
+export function eventHasEnabledSourceExpr(): ReturnType<typeof sql<boolean>> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM event_sources es
+      JOIN ingestion_sources s ON s.id = es.ingestion_source_id
+      WHERE es.event_id = ${events.id}
+        AND s.enabled = true
+  )`;
+}
+
+/**
  * Composite effective_score expression. Used both as a SELECT column
  * (so the row carries its score for downstream sort/inspection) and in
  * the ORDER BY clause.
@@ -375,6 +394,10 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       sectorsFilter.length > 0 ? inArray(stories.sector, sectorsFilter) : undefined;
     const eventsSectorWhere =
       sectorsFilter.length > 0 ? inArray(events.sector, sectorsFilter) : undefined;
+    // Hotfix (GH #88) — exclude events whose every source is disabled.
+    // `and(undefined, x)` collapses to `x` in Drizzle, so this composes
+    // cleanly whether or not sectorsFilter is empty.
+    const eventsWhere = and(eventsSectorWhere, eventHasEnabledSourceExpr());
 
     // Phase 12e.7a — dual-read across `stories` (legacy hand-curated,
     // 20 rows) and `events` (ingestion-written, the bulk). Stories keep
@@ -421,7 +444,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       })
       .from(events)
       .leftJoin(writers, eq(writers.id, events.authorId))
-      .where(eventsSectorWhere)
+      .where(eventsWhere)
       .orderBy(desc(eventEffectiveScore))
       .limit(FEED_MAX_STORIES)) as EventRow[];
 
@@ -489,7 +512,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     const [eventsCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(events)
-      .where(eventsSectorWhere);
+      .where(eventsWhere);
     const total =
       Number(storiesCountRow?.count ?? 0) + Number(eventsCountRow?.count ?? 0);
 
