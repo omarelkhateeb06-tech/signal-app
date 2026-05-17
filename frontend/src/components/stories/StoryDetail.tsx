@@ -7,6 +7,7 @@ import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
 import { Commentary } from "./Commentary";
 import { DepthToggle } from "./DepthToggle";
+import { SourceBody } from "./SourceBody";
 import { UpgradeCtaButton } from "./UpgradeCta";
 import { Card } from "@/components/ui/Card";
 import {
@@ -184,9 +185,13 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
           From the source
         </h2>
-        <p className="whitespace-pre-line text-[15px] leading-[1.7] text-ink">
-          {story.context}
-        </p>
+        {/* Phase 12e.x fix cluster — body extractor stores readability-
+            parsed HTML. SourceBody runs the content through DOMPurify
+            with a tight tag allowlist + .source-body styling so the
+            prose reads as editorial content. Feed previews keep using
+            plain text (commentary thesis) — only the detail surface
+            renders structured HTML. */}
+        <SourceBody html={story.context} />
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-ink-muted">
