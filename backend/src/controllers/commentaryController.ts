@@ -17,9 +17,11 @@ import type { NextFunction, Request, Response } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { userProfiles, DEPTH_LEVELS, type DepthLevel } from "../db/schema";
+import { events, stories, userProfiles, DEPTH_LEVELS, type DepthLevel } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
+import { resolveEffectiveTier } from "../middleware/requireTier";
 import { getOrGenerateCommentary } from "../services/commentaryService";
+import { buildGatePayload, teaserFirstLine } from "../services/paywallService";
 
 const idParamSchema = z.object({ id: z.string().uuid() });
 
@@ -53,6 +55,52 @@ export async function getCommentary(
     const { id: storyId } = idParamSchema.parse(req.params);
     const { depth: depthOverride } = querySchema.parse(req.query);
 
+    // Phase 12g — tier resolution (also lazy-downgrades expired
+    // pro_trial → free). Free users are restricted to `accessible`
+    // depth; an explicit `?depth=briefed|technical` from a free user
+    // is gated with reason="depth" instead of generating commentary.
+    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
+    const trialAvailable = !trialStartedAt;
+    const requestedHigherDepth =
+      depthOverride === "briefed" || depthOverride === "technical";
+
+    if (tier === "free" && requestedHigherDepth) {
+      // Fetch the headline + why_it_matters for the gate teaser. Try
+      // stories first, fall back to events (mirroring the dual-read
+      // pattern of getStoryById). A missing story still emits 404 —
+      // the gate is only meaningful for an existing story.
+      const [storyRow] = await db
+        .select({ headline: stories.headline, whyItMatters: stories.whyItMatters })
+        .from(stories)
+        .where(eq(stories.id, storyId))
+        .limit(1);
+      let headline: string;
+      let whyItMatters: string;
+      if (storyRow) {
+        headline = storyRow.headline;
+        whyItMatters = storyRow.whyItMatters;
+      } else {
+        const [eventRow] = await db
+          .select({ headline: events.headline, whyItMatters: events.whyItMatters })
+          .from(events)
+          .where(eq(events.id, storyId))
+          .limit(1);
+        if (!eventRow) {
+          throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+        }
+        headline = eventRow.headline;
+        whyItMatters = eventRow.whyItMatters;
+      }
+      const payload = buildGatePayload(
+        "depth",
+        headline,
+        teaserFirstLine(whyItMatters),
+        trialAvailable,
+      );
+      res.json({ data: payload });
+      return;
+    }
+
     // Load the user's depth_preference + profile_version in a single
     // read. profileVersion is the cache-key input — reading it in the
     // same tick the request is handled means a concurrent Settings
@@ -85,8 +133,17 @@ export async function getCommentary(
     // the onboarding flow makes it mandatory but a direct API caller
     // could bypass. See §9 of CLAUDE.md — "accessible" is the free-tier
     // default and the right floor here.
-    const depth: DepthLevel =
+    //
+    // Phase 12g — for free users, the precedence is clamped to
+    // `accessible` regardless of stored preference. The explicit-
+    // override case above already short-circuited briefed / technical
+    // requests with a 200 gate response; this clamp covers the
+    // implicit case where a user's stored preference is higher than
+    // their tier allows (e.g. they paid, lost their trial, but never
+    // re-onboarded their depth pick).
+    const baseDepth: DepthLevel =
       depthOverride ?? profile.depthPreference ?? "accessible";
+    const depth: DepthLevel = tier === "free" ? "accessible" : baseDepth;
 
     const result = await getOrGenerateCommentary(
       {
