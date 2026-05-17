@@ -339,7 +339,7 @@ export function eventHasEnabledSourceExpr(): ReturnType<typeof sql<boolean>> {
  * (so the row carries its score for downstream sort/inspection) and in
  * the ORDER BY clause.
  */
-function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
+export function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
   const quality = eventQualityScoreExpr();
   const alternates = eventAlternatesCountExpr();
   const ageHours = eventAgeHoursExpr();
@@ -373,7 +373,7 @@ function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
  * they surface above low-quality events but below freshness-bonused
  * primary-lab events.
  */
-const STORY_BASELINE_EFFECTIVE_SCORE = 7;
+export const STORY_BASELINE_EFFECTIVE_SCORE = 7;
 
 const baseStoryColumns = {
   id: stories.id,

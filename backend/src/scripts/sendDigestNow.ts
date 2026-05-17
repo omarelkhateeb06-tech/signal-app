@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { sendWeeklyDigests } from "../jobs/digestJob";
+import { sendDailyDigests } from "../jobs/digestJob";
 import { startEmailWorker, stopEmailWorker } from "../jobs/emailWorker";
 import { closeEmailQueue } from "../jobs/emailQueue";
 import { closeRedis } from "../lib/redis";
@@ -42,11 +42,11 @@ async function main(): Promise<void> {
     process.env.DISABLE_EMAIL_SEND = "1";
   }
 
-  const result = await sendWeeklyDigests({ targetUserId: args.user });
+  const result = await sendDailyDigests({ targetUserId: args.user });
 
   // eslint-disable-next-line no-console
   console.log(
-    `[send-digest-now] enqueued=${result.enqueued} skipped=${result.skipped} window=${result.window.label}`,
+    `[send-digest-now] enqueued=${result.enqueued} skipped=${result.skipped} failed=${result.failed} window=${result.window.label}`,
   );
 
   if (worker) {

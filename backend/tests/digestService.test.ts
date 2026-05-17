@@ -11,73 +11,146 @@ jest.mock("../src/db", () => ({
   pool: {},
 }));
 
-import { compileDigest, currentDigestWindow } from "../src/services/digestService";
+import {
+  compileDailyDigest,
+  currentDailyWindow,
+} from "../src/services/digestService";
 
-describe("digestService", () => {
+describe("digestService (12i daily)", () => {
   beforeEach(() => {
     mock.reset();
   });
 
-  describe("currentDigestWindow", () => {
-    it("returns a 7-day window ending at UTC midnight", () => {
-      const now = new Date("2026-04-19T14:33:00Z");
-      const window = currentDigestWindow(now);
-      expect(window.end.toISOString()).toBe("2026-04-19T00:00:00.000Z");
-      expect(window.start.toISOString()).toBe("2026-04-12T00:00:00.000Z");
-      expect(window.label).toContain("Apr 12");
-      expect(window.label).toContain("Apr 19");
+  describe("currentDailyWindow", () => {
+    it("returns a 24h window ending at the call moment with a 'Mon D' label", () => {
+      const now = new Date("2026-05-17T11:00:00Z");
+      const window = currentDailyWindow(now);
+      expect(window.sentAt.toISOString()).toBe("2026-05-17T11:00:00.000Z");
+      expect(window.start.toISOString()).toBe("2026-05-16T11:00:00.000Z");
+      expect(window.label).toBe("May 17");
     });
   });
 
-  describe("compileDigest", () => {
-    const row = (overrides: Record<string, unknown>) => ({
-      id: "s1",
+  describe("compileDailyDigest", () => {
+    const storyRow = (overrides: Record<string, unknown> = {}) => ({
+      id: "s-ai-1",
       sector: "ai",
-      headline: "Headline",
-      context: "Context",
-      whyItMatters: "Matters",
+      headline: "Story headline",
+      whyItMatters: "Role-neutral fallback.",
+      genericCommentary: "Pre-generated generic body.",
       sourceName: "Wired",
-      publishedAt: new Date("2026-04-15T00:00:00Z"),
-      createdAt: new Date("2026-04-15T00:00:00Z"),
-      saveCount: 5,
-      commentCount: 2,
-      score: 12,
+      publishedAt: new Date("2026-05-17T08:00:00Z"),
+      createdAt: new Date("2026-05-17T08:00:00Z"),
       ...overrides,
     });
 
-    it("returns shaped stories from the db query", async () => {
-      mock.queueSelect([row({}), row({ id: "s2", saveCount: 1, commentCount: 1 })]);
-      const result = await compileDigest();
-      expect(result.stories).toHaveLength(2);
-      expect(result.stories[0]).toMatchObject({
-        id: "s1",
-        sector: "ai",
-        saveCount: 5,
-        commentCount: 2,
-      });
-      expect(result.window.end).toBeInstanceOf(Date);
+    const eventRow = (overrides: Record<string, unknown> = {}) => ({
+      id: "e-fin-1",
+      sector: "finance",
+      headline: "Event headline",
+      whyItMatters: "Role-neutral fallback.",
+      genericCommentary: "Pre-generated generic body.",
+      sourceName: "Bloomberg",
+      publishedAt: new Date("2026-05-17T07:30:00Z"),
+      createdAt: new Date("2026-05-17T07:30:00Z"),
+      effectiveScore: 9.5,
+      ...overrides,
     });
 
-    it("caps limit at 20", async () => {
-      mock.queueSelect([]);
-      await compileDigest({ limit: 500 });
-      // No direct assertion on SQL — mockDb does not capture args. This just
-      // exercises the clamp path without throwing.
-      expect(mock.state.selectResults.length).toBe(0);
+    it("merges stories + events and groups the page by sector preserving rank order", async () => {
+      // Higher-score event ranks above the baseline-7 story.
+      mock.queueSelect([storyRow({ id: "s1", sector: "ai" })]); // stories
+      mock.queueSelect([
+        eventRow({ id: "e1", sector: "finance", effectiveScore: 11 }),
+        eventRow({ id: "e2", sector: "ai", effectiveScore: 8 }),
+      ]); // events
+
+      const result = await compileDailyDigest();
+
+      expect(result.stories.map((s) => s.id)).toEqual(["e1", "e2", "s1"]);
+      // bySector preserves the rank order — Finance first because
+      // its top item ranked highest overall.
+      expect(Array.from(result.bySector.keys())).toEqual(["finance", "ai"]);
+      expect(result.bySector.get("finance")?.map((s) => s.id)).toEqual(["e1"]);
+      expect(result.bySector.get("ai")?.map((s) => s.id)).toEqual(["e2", "s1"]);
     });
 
-    it("returns an empty list when no stories match", async () => {
+    it("prefers generic_commentary over why_it_matters for the body text", async () => {
+      mock.queueSelect([
+        storyRow({
+          whyItMatters: "FALLBACK text.",
+          genericCommentary: "Generic body.",
+        }),
+      ]);
+      mock.queueSelect([]); // no events
+
+      const result = await compileDailyDigest();
+      expect(result.stories[0].commentary).toBe("Generic body.");
+    });
+
+    it("falls back to why_it_matters when generic_commentary is null", async () => {
+      mock.queueSelect([
+        storyRow({ whyItMatters: "Fallback role-neutral.", genericCommentary: null }),
+      ]);
       mock.queueSelect([]);
-      const result = await compileDigest({ sectors: ["ai"] });
-      expect(result.stories).toEqual([]);
+
+      const result = await compileDailyDigest();
+      expect(result.stories[0].commentary).toBe("Fallback role-neutral.");
+    });
+
+    it("returns empty commentary when both sources are null/empty", async () => {
+      mock.queueSelect([
+        storyRow({ whyItMatters: "", genericCommentary: null }),
+      ]);
+      mock.queueSelect([]);
+
+      const result = await compileDailyDigest();
+      expect(result.stories[0].commentary).toBe("");
+    });
+
+    it("caps the page at DAILY_DIGEST_SIZE (default 10)", async () => {
+      const many = Array.from({ length: 15 }, (_, i) =>
+        eventRow({ id: `e-${i}`, sector: "ai", effectiveScore: 10 - i / 100 }),
+      );
+      mock.queueSelect([]); // stories empty
+      mock.queueSelect(many);
+
+      const result = await compileDailyDigest();
+      expect(result.stories).toHaveLength(10);
+    });
+
+    it("honors an explicit limit option", async () => {
+      const many = Array.from({ length: 5 }, (_, i) =>
+        eventRow({ id: `e-${i}`, effectiveScore: 10 - i / 100 }),
+      );
+      mock.queueSelect([]);
+      mock.queueSelect(many);
+
+      const result = await compileDailyDigest({ limit: 3 });
+      expect(result.stories).toHaveLength(3);
     });
 
     it("uses publishedAt when available, otherwise createdAt", async () => {
       mock.queueSelect([
-        row({ publishedAt: null, createdAt: new Date("2026-04-10T00:00:00Z") }),
+        storyRow({
+          publishedAt: null,
+          createdAt: new Date("2026-05-17T06:00:00Z"),
+        }),
       ]);
-      const result = await compileDigest();
-      expect(result.stories[0].publishedAt).toEqual(new Date("2026-04-10T00:00:00Z"));
+      mock.queueSelect([]);
+
+      const result = await compileDailyDigest();
+      expect(result.stories[0].publishedAt).toEqual(
+        new Date("2026-05-17T06:00:00Z"),
+      );
+    });
+
+    it("returns an empty page when neither side has rows", async () => {
+      mock.queueSelect([]);
+      mock.queueSelect([]);
+      const result = await compileDailyDigest();
+      expect(result.stories).toEqual([]);
+      expect(result.bySector.size).toBe(0);
     });
   });
 });

@@ -156,7 +156,12 @@ export const userProfiles = pgTable("user_profiles", {
   timezone: text("timezone"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   profileVersion: integer("profile_version").notNull().default(1),
-  emailFrequency: emailFrequencyEnum("email_frequency").notNull().default("weekly"),
+  // Phase 12i — default flipped from "weekly" to "daily" alongside
+  // the deprecation of the weekly digest job. See migration 0031.
+  // The tier gate (Pro / pro_trial only) is enforced at query time
+  // in sendDailyDigests; free signups inheriting this default get
+  // filtered out and never see a digest.
+  emailFrequency: emailFrequencyEnum("email_frequency").notNull().default("daily"),
   emailUnsubscribed: boolean("email_unsubscribed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
