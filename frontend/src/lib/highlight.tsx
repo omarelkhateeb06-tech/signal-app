@@ -60,7 +60,7 @@ export function highlightText(text: string, terms: string[]): ReactNode {
     lowered.has(part.toLowerCase()) ? (
       <mark
         key={idx}
-        className="rounded bg-amber-100 px-0.5 text-inherit"
+        className="rounded-sm bg-warn/20 px-0.5 text-inherit"
       >
         {part}
       </mark>

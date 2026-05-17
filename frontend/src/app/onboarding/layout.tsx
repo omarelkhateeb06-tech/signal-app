@@ -25,15 +25,15 @@ export default function OnboardingLayout({
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-muted-foreground">Loading…</p>
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <p className="text-sm text-ink-muted">Loading…</p>
       </div>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-start justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-2xl space-y-6">{children}</div>
+    <main className="flex min-h-screen items-start justify-center bg-bg px-4 py-12">
+      <div className="w-full max-w-[640px] space-y-6">{children}</div>
     </main>
   );
 }
