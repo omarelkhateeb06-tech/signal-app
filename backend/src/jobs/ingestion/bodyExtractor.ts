@@ -50,8 +50,62 @@ export function detectPaywall(rawUrl: string, html: string): boolean {
 }
 
 export type BodyExtractionResult =
-  | { success: true; text: string; truncated: boolean }
+  | { success: true; text: string; truncated: boolean; imageUrl: string | null }
   | { success: false; reason: HeuristicReason };
+
+// Phase 12k — extract the page's og:image (or twitter:image fallback)
+// from the parsed HTML. Returns null when:
+//   - neither meta tag is present
+//   - the content attribute is missing / empty
+//   - the URL is malformed
+//   - the URL is not http(s) (e.g. data: URI, javascript:, file:, etc.)
+//
+// Resolved against `baseUrl` so relative `og:image` paths (rare but
+// they happen) become absolute. Soft-fail discipline: any DOM parse
+// problem returns null, never throws. The caller treats null as "no
+// image" — not an error condition.
+export function extractOgImage(
+  document: Document,
+  baseUrl: string,
+): string | null {
+  const candidates: ReadonlyArray<{ selector: string }> = [
+    { selector: 'meta[property="og:image"]' },
+    { selector: 'meta[property="og:image:url"]' },
+    { selector: 'meta[name="twitter:image"]' },
+    { selector: 'meta[name="twitter:image:src"]' },
+  ];
+  for (const { selector } of candidates) {
+    const el = document.querySelector(selector);
+    if (!el) continue;
+    const raw = el.getAttribute("content");
+    if (!raw) continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue;
+    // Reject data: / javascript: / file: / mailto: outright before
+    // attempting URL resolution — `new URL('data:...')` succeeds, so we
+    // can't rely on the constructor alone to enforce http(s).
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.startsWith("data:") ||
+      lower.startsWith("javascript:") ||
+      lower.startsWith("file:") ||
+      lower.startsWith("mailto:")
+    ) {
+      continue;
+    }
+    let resolved: URL;
+    try {
+      resolved = new URL(trimmed, baseUrl);
+    } catch {
+      continue;
+    }
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+      continue;
+    }
+    return resolved.toString();
+  }
+  return null;
+}
 
 export interface FetchAndExtractOptions {
   userAgent: string;
@@ -125,10 +179,17 @@ export async function fetchAndExtractBody(
     return { success: false, reason: HEURISTIC_REASONS.FILTERED_PAYWALL };
   }
 
-  // Parse with jsdom and run readability.
+  // Parse with jsdom and run readability. The same parsed document also
+  // feeds the og:image extractor — single DOM parse, two consumers.
   let textContent: string;
+  let imageUrl: string | null = null;
   try {
     const dom = new JSDOM(html, { url });
+    // Pull og:image first — readability's parse() can mutate document
+    // structure (or, on some pages, throw). Doing meta-tag extraction
+    // before readability isolates the cheap, reliable pass from the
+    // expensive, occasionally-fragile one.
+    imageUrl = extractOgImage(dom.window.document, url);
     const article = new Readability(dom.window.document).parse();
     if (!article || typeof article.textContent !== "string") {
       return { success: false, reason: HEURISTIC_REASONS.BODY_PARSE_ERROR };
@@ -143,7 +204,8 @@ export async function fetchAndExtractBody(
       success: true,
       text: textContent.slice(0, BODY_SIZE_CAP_BYTES),
       truncated: true,
+      imageUrl,
     };
   }
-  return { success: true, text: textContent, truncated: false };
+  return { success: true, text: textContent, truncated: false, imageUrl };
 }

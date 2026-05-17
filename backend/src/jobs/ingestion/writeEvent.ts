@@ -155,6 +155,7 @@ export interface CandidateRowForWrite {
   facts: Record<string, unknown> | null;
   tierOutputs: Record<string, unknown> | null;
   embedding: number[] | null;
+  imageUrl: string | null;
   sourceDisplayName: string;
   sourcePairedWriterId: string | null;
 }
@@ -176,6 +177,7 @@ async function loadCandidateForWrite(
       facts: ingestionCandidates.facts,
       tierOutputs: ingestionCandidates.tierOutputs,
       embedding: ingestionCandidates.embedding,
+      imageUrl: ingestionCandidates.imageUrl,
       sourceDisplayName: ingestionSources.displayName,
       sourcePairedWriterId: ingestionSources.pairedWriterId,
     })
@@ -347,6 +349,7 @@ async function writeEventOnce(
         facts: factsBlob,
         publishedAt: candidate.rawPublishedAt,
         embedding: candidate.embedding,
+        imageUrl: candidate.imageUrl,
       })
       .returning({ id: events.id });
 

@@ -74,6 +74,7 @@ interface StoryRow {
   genericCommentary: string | null;
   sourceUrl: string;
   sourceName: string | null;
+  imageUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
   authorId: string | null;
@@ -124,6 +125,9 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     sources: [
       { url: row.sourceUrl, name: row.sourceName, role: "primary" as const },
     ],
+    // Phase 12k — og:image URL or null. Null is the no-image path;
+    // frontend renders no thumbnail / hero in that case.
+    image_url: row.imageUrl,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -150,6 +154,7 @@ interface EventRow {
   genericCommentary: string | null;
   primarySourceUrl: string;
   primarySourceName: string | null;
+  imageUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
   authorId: string | null;
@@ -197,6 +202,8 @@ function shapeEvent(
     source_name: row.primarySourceName,
     primary_source_url: row.primarySourceUrl,
     sources,
+    // Phase 12k — see shapeStory: null when no og:image was found.
+    image_url: row.imageUrl,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -385,6 +392,7 @@ const baseStoryColumns = {
   genericCommentary: stories.genericCommentary,
   sourceUrl: stories.sourceUrl,
   sourceName: stories.sourceName,
+  imageUrl: stories.imageUrl,
   publishedAt: stories.publishedAt,
   createdAt: stories.createdAt,
   authorId: writers.id,
@@ -497,6 +505,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         genericCommentary: events.genericCommentary,
         primarySourceUrl: events.primarySourceUrl,
         primarySourceName: events.primarySourceName,
+        imageUrl: events.imageUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,
@@ -703,6 +712,7 @@ export async function getStoryById(
           whyItMattersTemplate: events.whyItMattersTemplate,
           primarySourceUrl: events.primarySourceUrl,
           primarySourceName: events.primarySourceName,
+          imageUrl: events.imageUrl,
           publishedAt: events.publishedAt,
           createdAt: events.createdAt,
           authorId: writers.id,

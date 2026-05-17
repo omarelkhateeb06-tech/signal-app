@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ExternalLink, Lock, MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
@@ -66,6 +67,24 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
 
   return (
     <article className="space-y-7">
+      {/* Phase 12k — hero image above the headline when an og:image is
+          available. Full-width, capped at ~300px tall, object-cover. No
+          placeholder when image_url is null — the article opens with the
+          headline as it did pre-12k. */}
+      {story.image_url && (
+        <div className="relative -mx-1 overflow-hidden rounded-lg" style={{ maxHeight: 300 }}>
+          <Image
+            src={story.image_url}
+            alt=""
+            width={1200}
+            height={600}
+            unoptimized
+            loading="lazy"
+            className="h-auto w-full object-cover"
+            style={{ maxHeight: 300 }}
+          />
+        </div>
+      )}
       <header className="space-y-4">
         <h1 className="font-display text-[28px] font-semibold leading-tight text-ink md:text-[30px]">
           {story.headline}

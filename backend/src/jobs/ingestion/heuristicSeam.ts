@@ -36,7 +36,7 @@ import {
 export type HeuristicSeamResult = {
   pass: boolean;
   reason?: HeuristicReason;
-  body?: { text: string; truncated: boolean };
+  body?: { text: string; truncated: boolean; imageUrl: string | null };
 };
 
 export interface HeuristicSeamDeps {
@@ -148,11 +148,18 @@ export async function runHeuristicSeam(
   // candidates we run the length floor against the pre-fetched text and
   // skip the network call entirely. URL-based candidates fall through
   // to fetchAndExtractBody as before.
+  //
+  // Phase 12k — og:image extraction rides along on the URL-fetched
+  // branch (the same JSDOM parse that feeds readability). The pre-
+  // fetched branch never resolves an og:image (the HN self-post body
+  // is plain text, no <meta> tags), so imageUrl stays null there.
   let bodyText: string;
   let truncated: boolean;
+  let imageUrl: string | null;
   if (candidate.bodyText && candidate.bodyText.length > 0) {
     bodyText = candidate.bodyText;
     truncated = false;
+    imageUrl = null;
   } else {
     const userAgent = candidate.sourceUserAgent ?? DEFAULT_BODY_USER_AGENT;
     const fetchResult: BodyExtractionResult = await fetchBody(candidate.url, { userAgent });
@@ -161,6 +168,7 @@ export async function runHeuristicSeam(
     }
     bodyText = fetchResult.text;
     truncated = fetchResult.truncated;
+    imageUrl = fetchResult.imageUrl;
   }
 
   // 5. Length floor (post-resolution).
@@ -170,6 +178,6 @@ export async function runHeuristicSeam(
 
   return {
     pass: true,
-    body: { text: bodyText, truncated },
+    body: { text: bodyText, truncated, imageUrl },
   };
 }

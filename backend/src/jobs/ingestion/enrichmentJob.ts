@@ -86,7 +86,11 @@ export interface EnrichmentSeams {
   runHeuristic?: (candidateId: string) => Promise<{
     pass: boolean;
     reason?: HeuristicReason;
-    body?: { text: string; truncated: boolean };
+    // Phase 12k: `imageUrl` on the body shape is optional so existing
+    // test fixtures (and the real seam shape) can omit it when no
+    // og:image was extracted — treated as null downstream. The real
+    // seam always populates it (string or null) from the body fetch.
+    body?: { text: string; truncated: boolean; imageUrl?: string | null };
   }>;
   runRelevanceGate?: (
     candidateId: string,
@@ -339,12 +343,19 @@ export async function processEnrichmentJob(
       processedAt: Date;
       bodyText?: string;
       statusReason?: string;
+      imageUrl?: string | null;
     } = {
       status: "heuristic_passed",
       processedAt: new Date(),
     };
     if (result.body) {
       updates.bodyText = result.body.text;
+      // Phase 12k — og:image extracted from the same fetch; nullable
+      // and never blocks the candidate. Coalesce undefined → null so
+      // a seam that omits the field doesn't leave the column at its
+      // prior value (UPDATE … SET image_url = NULL is the explicit
+      // "we ran, found nothing" signal).
+      updates.imageUrl = result.body.imageUrl ?? null;
       if (result.body.truncated) {
         updates.statusReason = HEURISTIC_REASONS.BODY_TRUNCATED;
       }

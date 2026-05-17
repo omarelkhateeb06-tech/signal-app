@@ -261,6 +261,11 @@ export const stories = pgTable(
     sourceName: varchar("source_name", { length: 255 }),
     authorId: uuid("author_id").references(() => writers.id, { onDelete: "set null" }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // Phase 12k — og:image URL extracted from the source page during
+    // enrichment (or backfilled for legacy curated rows). Null when the
+    // source page didn't carry an og:image / twitter:image meta tag —
+    // the frontend renders no thumbnail in that case (no placeholder).
+    imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -638,6 +643,10 @@ export const events = pgTable(
     facts: jsonb("facts").$type<Record<string, unknown>>().notNull().default({}),
     embedding: vector("embedding", { dimensions: 1536 }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    // Phase 12k — og:image URL from the primary source page, populated
+    // by writeEvent from the candidate row. Null when extraction failed
+    // or the page didn't carry one.
+    imageUrl: text("image_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -715,6 +724,12 @@ export const ingestionCandidates = pgTable(
     // jobs/ingestion/enrichmentRecovery.ts owns these reads + writes.
     recoveryAttempts: integer("recovery_attempts").notNull().default(0),
     enrichmentFailed: boolean("enrichment_failed").notNull().default(false),
+    // Phase 12k — og:image URL extracted alongside body text during the
+    // heuristic stage. Persisted here and carried into events.image_url
+    // by writeEvent. Null when the page didn't carry an og:image /
+    // twitter:image meta tag or extraction failed (extraction is soft —
+    // never blocks the candidate).
+    imageUrl: text("image_url"),
   },
   (t) => ({
     sourceExternalIdUnique: unique("ingestion_candidates_source_external_id_key").on(
