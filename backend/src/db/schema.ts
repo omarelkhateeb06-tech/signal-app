@@ -710,6 +710,11 @@ export const ingestionCandidates = pgTable(
     }),
     discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Phase 12e.x fix cluster — enrichment recovery state. See
+    // migration 0032 for rationale; recovery scheduler in
+    // jobs/ingestion/enrichmentRecovery.ts owns these reads + writes.
+    recoveryAttempts: integer("recovery_attempts").notNull().default(0),
+    enrichmentFailed: boolean("enrichment_failed").notNull().default(false),
   },
   (t) => ({
     sourceExternalIdUnique: unique("ingestion_candidates_source_external_id_key").on(

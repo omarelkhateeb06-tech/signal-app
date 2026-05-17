@@ -9,6 +9,7 @@ import { scheduleAggregationRepeatable } from "./jobs/aggregationQueue";
 import { startSourcePollWorker } from "./jobs/ingestion/sourcePollWorker";
 import { scheduleSourcePollRepeatable } from "./jobs/ingestion/sourcePollQueue";
 import { startEnrichmentWorker } from "./jobs/ingestion/enrichmentWorker";
+import { startEnrichmentRecoveryScheduler } from "./jobs/ingestion/enrichmentRecoveryScheduler";
 
 initSentry();
 runStartupEnvCheck();
@@ -43,6 +44,12 @@ void scheduleSourcePollRepeatable().catch((err: unknown) => {
     err,
   );
 });
+// Phase 12e.x fix cluster — enrichment recovery cron. Fires every
+// 6h, re-enqueues candidates with partial tier_outputs (Haiku timed
+// out on one tier; the rest landed). Idempotent + capped at 3
+// attempts per candidate. See jobs/ingestion/enrichmentRecovery.ts.
+startEnrichmentRecoveryScheduler();
+
 // eslint-disable-next-line no-console
 console.log("[signal-backend] ingestion workers online");
 

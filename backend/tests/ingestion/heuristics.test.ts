@@ -229,5 +229,33 @@ describe("heuristics — pure functions", () => {
     it("returns false for malformed URL", () => {
       expect(isNonArticleUrl("not-a-url")).toBe(false);
     });
+
+    // 12e.x post-12j follow-up: expanded patterns + host-shape rules
+    // cover the dominant facts_parse_error sources surfaced in soak.
+    describe("expanded video patterns (post-12j)", () => {
+      it.each([
+        ["https://www.cnbc.com/video/2026/05/01/clip.html", true],
+        ["https://edition.cnn.com/videos/2026/04/29/clip", true],
+        ["https://www.youtube.com/watch?v=abc123", true],
+        ["https://youtu.be/abc123", true],
+        ["https://vimeo.com/12345", true],
+        ["https://www.example.com/podcast/episode-7", true],
+        ["https://www.example.com/podcasts/season-2", true],
+      ])("matches %s as non-article", (url, expected) => {
+        expect(isNonArticleUrl(url)).toBe(expected);
+      });
+
+      it("does NOT match an article URL on a video host's parent domain", () => {
+        expect(
+          isNonArticleUrl("https://www.cnbc.com/2026/05/01/wholesale-cpi.html"),
+        ).toBe(false);
+      });
+
+      it("does NOT match a path that happens to contain 'video' as a substring", () => {
+        expect(
+          isNonArticleUrl("https://example.com/articles/video-game-prices-rise"),
+        ).toBe(false);
+      });
+    });
   });
 });

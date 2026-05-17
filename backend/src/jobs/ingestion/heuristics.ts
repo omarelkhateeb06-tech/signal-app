@@ -130,24 +130,49 @@ export function matchesNoisePattern(
   return { match: false };
 }
 
-// 12e.x: URL-path patterns that point at non-article surfaces (video
-// pages, etc.). Bloomberg's `/news/videos/` is the soak-discovered case
-// — every URL matching it produced a body fetch / fact-extract failure
-// because the page is a video player, not an article. Add new entries
-// here when more host-specific shapes turn up.
+// URL-path patterns that point at non-article surfaces (video pages,
+// podcast players, etc.). The body extractor uses readability + jsdom
+// which can't pull article text out of a video player or audio shell,
+// so these URLs were the dominant `facts_parse_error` source during
+// the 12e soak. Skipping them up front is a clean filtered_video_url
+// drop instead of a body_parse_error failure.
+//
+// Path-shape rules (12e.x soak + post-12j follow-up):
+//   /news/videos/  — Bloomberg
+//   /video/        — generic CMS pattern (CNN, CNBC, NYT, etc.)
+//   /videos/       — generic
+//   /watch         — YouTube-style player URLs
+//   /podcast/      — podcast player shells
+//   /podcasts/     — same
 const NON_ARTICLE_URL_PATTERNS: RegExp[] = [
   /\/news\/videos\//i,
+  /\/video\//i,
+  /\/videos\//i,
+  /\/watch(\/|$|\?)/i,
+  /\/podcast\//i,
+  /\/podcasts\//i,
+];
+
+// Host-shape rules. Whole-host matches go here so we don't have to
+// teach the pattern array about every video host's path layout.
+// Match against the full host string (including www. prefix).
+const NON_ARTICLE_HOST_PATTERNS: RegExp[] = [
+  /(^|\.)youtube\.com$/i,
+  /(^|\.)youtu\.be$/i,
+  /(^|\.)vimeo\.com$/i,
+  /(^|\.)twitch\.tv$/i,
 ];
 
 export function isNonArticleUrl(rawUrl: string | null): boolean {
   if (!rawUrl) return false;
-  let pathname: string;
+  let url: URL;
   try {
-    pathname = new URL(rawUrl).pathname;
+    url = new URL(rawUrl);
   } catch {
     return false;
   }
-  return NON_ARTICLE_URL_PATTERNS.some((re) => re.test(pathname));
+  if (NON_ARTICLE_HOST_PATTERNS.some((re) => re.test(url.host))) return true;
+  return NON_ARTICLE_URL_PATTERNS.some((re) => re.test(url.pathname));
 }
 
 export function noiseCategoryToReason(cat: NoiseCategory): HeuristicReason {
