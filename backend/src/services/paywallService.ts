@@ -30,6 +30,7 @@ import { getRedis } from "../lib/redis";
 // complexity at 15/day.
 
 export const FREE_TIER_STORY_CAP = 15;
+export const FREE_TIER_SEARCH_CAP = 3;
 
 function utcDateKey(now: Date): string {
   return now.toISOString().slice(0, 10);
@@ -153,6 +154,52 @@ export async function recordOrCheckStoryView(
   }
 }
 
+function searchCounterKey(userId: string, now: Date): string {
+  return `paywall:searches:${userId}:${utcDateKey(now)}`;
+}
+
+export interface SearchDecision {
+  gated: boolean;
+  // The counter value after this call. 0 on Redis-down fail-open
+  // (caller can treat as "no information").
+  newCount: number;
+}
+
+/**
+ * Free-tier search-endpoint path: monotonically increment the daily
+ * search counter and return whether the request should be served. The
+ * 4th and later attempts each turn return `gated: true` (the counter
+ * is allowed to grow past the cap — only the threshold matters, and
+ * not rolling back keeps this one Redis round-trip). TTL is anchored
+ * to next UTC midnight on the first INCR of the day.
+ */
+export async function recordOrCheckSearch(
+  userId: string,
+  now: Date = new Date(),
+): Promise<SearchDecision> {
+  const redis = getRedis();
+  if (!redis) {
+    return { gated: false, newCount: 0 };
+  }
+  const key = searchCounterKey(userId, now);
+  try {
+    const count = await redis.incr(key);
+    if (count === 1) {
+      await redis.expire(key, secondsUntilNextUtcMidnight(now));
+    }
+    return {
+      gated: count > FREE_TIER_SEARCH_CAP,
+      newCount: count,
+    };
+  } catch (err) {
+    Sentry.captureMessage("Paywall: Redis INCR (search) failed (fail-open)", {
+      level: "warning",
+      extra: { userId, err: err instanceof Error ? err.message : String(err) },
+    });
+    return { gated: false, newCount: 0 };
+  }
+}
+
 export type GateReason = "story_limit" | "depth" | "search_limit";
 
 export interface GateUpgradeCta {
@@ -192,6 +239,20 @@ export function buildGatePayload(
     teaser: { headline, first_line: firstLine },
     upgrade_cta: buildUpgradeCta(trialAvailable),
   };
+}
+
+/**
+ * Search-limit gate. Teaser is static — there's no story context to
+ * pull from, and the frontend renders the modal copy from
+ * `upgrade_cta.message` plus a constant prefix.
+ */
+export function buildSearchLimitGate(trialAvailable: boolean): GatePayload {
+  return buildGatePayload(
+    "search_limit",
+    "Search limit reached",
+    `You've used ${FREE_TIER_SEARCH_CAP} of ${FREE_TIER_SEARCH_CAP} free searches today.`,
+    trialAvailable,
+  );
 }
 
 /**

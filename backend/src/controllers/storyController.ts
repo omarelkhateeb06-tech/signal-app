@@ -15,9 +15,11 @@ import { resolveEffectiveTier } from "../middleware/requireTier";
 import { personalizeStory } from "../services/personalizationService";
 import {
   buildGatePayload,
+  buildSearchLimitGate,
   buildUpgradeCta,
   FREE_TIER_STORY_CAP,
   getViewedStoryIds,
+  recordOrCheckSearch,
   recordOrCheckStoryView,
   teaserFirstLine,
   type GatePayload,
@@ -941,6 +943,18 @@ export async function searchStories(
   try {
     const userId = requireUserId(req);
     const parsed = searchQuerySchema.parse(req.query);
+
+    // Phase 12g — free-tier search cap (3/day). Tier resolved before
+    // any expensive search work; the counter only fires for free
+    // users, so pro / pro_trial pay only the users-row SELECT.
+    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
+    if (tier === "free") {
+      const decision = await recordOrCheckSearch(userId);
+      if (decision.gated) {
+        res.json({ data: buildSearchLimitGate(!trialStartedAt) });
+        return;
+      }
+    }
 
     const fromDate = parsed.from_date
       ? parseBoundaryDate(parsed.from_date, false)

@@ -9,10 +9,11 @@ const saddMock = jest.fn();
 const smembersMock = jest.fn();
 const expireMock = jest.fn();
 const ttlMock = jest.fn();
+const incrMock = jest.fn();
 
 let redisInstance: Pick<
   Redis,
-  "sismember" | "scard" | "sadd" | "smembers" | "expire" | "ttl"
+  "sismember" | "scard" | "sadd" | "smembers" | "expire" | "ttl" | "incr"
 > | null = {
   sismember: sismemberMock as unknown as Redis["sismember"],
   scard: scardMock as unknown as Redis["scard"],
@@ -20,6 +21,7 @@ let redisInstance: Pick<
   smembers: smembersMock as unknown as Redis["smembers"],
   expire: expireMock as unknown as Redis["expire"],
   ttl: ttlMock as unknown as Redis["ttl"],
+  incr: incrMock as unknown as Redis["incr"],
 };
 
 jest.mock("../../src/lib/redis", () => ({
@@ -36,9 +38,12 @@ jest.mock("@sentry/node", () => ({
 
 import {
   buildGatePayload,
+  buildSearchLimitGate,
   buildUpgradeCta,
+  FREE_TIER_SEARCH_CAP,
   FREE_TIER_STORY_CAP,
   getViewedStoryIds,
+  recordOrCheckSearch,
   recordOrCheckStoryView,
   teaserFirstLine,
 } from "../../src/services/paywallService";
@@ -54,6 +59,7 @@ function resetRedis(): void {
   smembersMock.mockReset();
   expireMock.mockReset();
   ttlMock.mockReset();
+  incrMock.mockReset();
   captureMessageMock.mockReset();
   redisInstance = {
     sismember: sismemberMock as unknown as Redis["sismember"],
@@ -62,6 +68,7 @@ function resetRedis(): void {
     smembers: smembersMock as unknown as Redis["smembers"],
     expire: expireMock as unknown as Redis["expire"],
     ttl: ttlMock as unknown as Redis["ttl"],
+    incr: incrMock as unknown as Redis["incr"],
   };
 }
 
@@ -188,6 +195,62 @@ describe("paywallService", () => {
         expect.stringContaining("Redis op failed"),
         expect.objectContaining({ level: "warning" }),
       );
+    });
+  });
+
+  describe("recordOrCheckSearch", () => {
+    it("fail-opens (gated=false) when Redis is not configured", async () => {
+      redisInstance = null;
+      const decision = await recordOrCheckSearch(USER, NOW);
+      expect(decision).toEqual({ gated: false, newCount: 0 });
+    });
+
+    it("admits the first search of the day and anchors TTL", async () => {
+      incrMock.mockResolvedValueOnce(1);
+      const decision = await recordOrCheckSearch(USER, NOW);
+      expect(decision).toEqual({ gated: false, newCount: 1 });
+      expect(incrMock).toHaveBeenCalledWith(
+        `paywall:searches:${USER}:2026-05-17`,
+      );
+      expect(expireMock).toHaveBeenCalledWith(expect.any(String), 43200);
+    });
+
+    it("admits searches up to and including the cap", async () => {
+      incrMock.mockResolvedValueOnce(FREE_TIER_SEARCH_CAP);
+      const decision = await recordOrCheckSearch(USER, NOW);
+      expect(decision.gated).toBe(false);
+      expect(decision.newCount).toBe(FREE_TIER_SEARCH_CAP);
+      expect(expireMock).not.toHaveBeenCalled(); // not the first INCR
+    });
+
+    it("gates the first request that pushes the counter past the cap", async () => {
+      incrMock.mockResolvedValueOnce(FREE_TIER_SEARCH_CAP + 1);
+      const decision = await recordOrCheckSearch(USER, NOW);
+      expect(decision.gated).toBe(true);
+      expect(decision.newCount).toBe(FREE_TIER_SEARCH_CAP + 1);
+    });
+
+    it("fail-opens on Redis error and logs a Sentry warning", async () => {
+      incrMock.mockRejectedValueOnce(new Error("redis boom"));
+      const decision = await recordOrCheckSearch(USER, NOW);
+      expect(decision).toEqual({ gated: false, newCount: 0 });
+      expect(captureMessageMock).toHaveBeenCalledWith(
+        expect.stringContaining("INCR (search) failed"),
+        expect.objectContaining({ level: "warning" }),
+      );
+    });
+  });
+
+  describe("buildSearchLimitGate", () => {
+    it("returns a search_limit gate with a static teaser and matching CTA", () => {
+      const payload = buildSearchLimitGate(true);
+      expect(payload.gated).toBe(true);
+      expect(payload.gate_reason).toBe("search_limit");
+      expect(payload.teaser.headline).toBe("Search limit reached");
+      expect(payload.teaser.first_line).toContain(
+        `${FREE_TIER_SEARCH_CAP} of ${FREE_TIER_SEARCH_CAP}`,
+      );
+      expect(payload.upgrade_cta.trial_available).toBe(true);
     });
   });
 

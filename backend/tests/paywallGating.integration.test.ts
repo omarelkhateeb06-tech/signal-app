@@ -23,10 +23,11 @@ const saddMock = jest.fn();
 const smembersMock = jest.fn();
 const expireMock = jest.fn();
 const ttlMock = jest.fn();
+const incrMock = jest.fn();
 
 let redisInstance: Pick<
   Redis,
-  "sismember" | "scard" | "sadd" | "smembers" | "expire" | "ttl"
+  "sismember" | "scard" | "sadd" | "smembers" | "expire" | "ttl" | "incr"
 > | null = null;
 
 jest.mock("../src/lib/redis", () => ({
@@ -56,6 +57,7 @@ function setRedis(mockOn: boolean): void {
       smembers: smembersMock as unknown as Redis["smembers"],
       expire: expireMock as unknown as Redis["expire"],
       ttl: ttlMock as unknown as Redis["ttl"],
+      incr: incrMock as unknown as Redis["incr"],
     };
   } else {
     redisInstance = null;
@@ -70,6 +72,7 @@ function resetAll(): void {
   smembersMock.mockReset();
   expireMock.mockReset();
   ttlMock.mockReset();
+  incrMock.mockReset();
   setRedis(true);
 }
 
@@ -312,6 +315,101 @@ describe("Phase 12g paywall gating", () => {
       expect(res.status).toBe(200);
       expect(res.body.data.story.gated).toBe(false);
       expect(res.body.data.story.headline).toBe("Model release headline");
+    });
+  });
+
+  describe("GET /api/v1/stories/search — free-tier cap", () => {
+    const queueOnboarded = (): void => {
+      mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
+    };
+
+    it("admits the 3rd search of the day for a free user", async () => {
+      queueOnboarded();
+      queueTierFree();
+      incrMock.mockResolvedValueOnce(3); // exactly at cap — still admitted
+      mock.queueSelect([{ role: "engineer" }]);
+      mock.queueSelect([]); // search results
+      mock.queueSelect([{ count: 0 }]);
+
+      const res = await request(app)
+        .get("/api/v1/stories/search?q=models")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories).toBeDefined();
+      expect(res.body.data.gated).toBeUndefined();
+    });
+
+    it("returns the search-limit gate envelope on the 4th search", async () => {
+      queueOnboarded();
+      queueTierFree();
+      incrMock.mockResolvedValueOnce(4); // over cap
+
+      const res = await request(app)
+        .get("/api/v1/stories/search?q=models")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        gated: true,
+        gate_reason: "search_limit",
+        teaser: {
+          headline: "Search limit reached",
+          first_line: expect.stringContaining("3 of 3"),
+        },
+        upgrade_cta: {
+          trial_available: false,
+          message: expect.stringContaining("$10/month"),
+        },
+      });
+      // No DB select for the search results — gating short-circuits.
+      expect(mock.state.selectResults).toHaveLength(0);
+    });
+
+    it("anchors TTL via EXPIRE on the first search of the day", async () => {
+      queueOnboarded();
+      queueTierFree();
+      incrMock.mockResolvedValueOnce(1); // first INCR returns 1
+      mock.queueSelect([{ role: "engineer" }]);
+      mock.queueSelect([]);
+      mock.queueSelect([{ count: 0 }]);
+
+      await request(app)
+        .get("/api/v1/stories/search?q=models")
+        .set(...auth(token));
+
+      expect(expireMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT call INCR for a pro user (cap is free-only)", async () => {
+      queueOnboarded();
+      mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
+      mock.queueSelect([{ role: "engineer" }]);
+      mock.queueSelect([]);
+      mock.queueSelect([{ count: 0 }]);
+
+      const res = await request(app)
+        .get("/api/v1/stories/search?q=models")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(incrMock).not.toHaveBeenCalled();
+    });
+
+    it("fail-opens when Redis is unavailable", async () => {
+      setRedis(false);
+      queueOnboarded();
+      queueTierFree();
+      mock.queueSelect([{ role: "engineer" }]);
+      mock.queueSelect([]);
+      mock.queueSelect([{ count: 0 }]);
+
+      const res = await request(app)
+        .get("/api/v1/stories/search?q=models")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.gated).toBeUndefined();
     });
   });
 });
