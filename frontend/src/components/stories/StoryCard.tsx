@@ -109,8 +109,8 @@ export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
       className="animate-fade-up p-6"
       style={{ animationDelay: staggerDelay }}
     >
-      <Link href={`/stories/${story.id}`} className="block hover:no-underline">
-        <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink group-hover:text-accent">
+      <Link href={`/stories/${story.id}`} className="group block hover:no-underline">
+        <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink transition-colors duration-150 group-hover:text-accent">
           {story.headline}
         </h2>
         {sourceLabel && (
