@@ -48,12 +48,12 @@ export function CommentItem({
       />
       <div className="flex-1 space-y-2">
         <header className="flex items-center gap-2 text-xs">
-          <span className="font-medium text-slate-900">
+          <span className="font-medium text-ink">
             {comment.author.name ?? comment.author.email}
           </span>
-          <span className="text-slate-500">{timeAgo(comment.created_at)}</span>
+          <span className="text-ink-muted">{timeAgo(comment.created_at)}</span>
           {comment.updated_at !== comment.created_at && !comment.is_deleted && (
-            <span className="text-slate-400">(edited)</span>
+            <span className="text-ink-muted/70">(edited)</span>
           )}
         </header>
 
@@ -73,7 +73,7 @@ export function CommentItem({
           <p
             className={clsx(
               "whitespace-pre-wrap text-sm leading-relaxed",
-              comment.is_deleted ? "italic text-slate-400" : "text-slate-800",
+              comment.is_deleted ? "italic text-ink-muted/70" : "text-ink",
             )}
           >
             {comment.content}
@@ -81,12 +81,12 @@ export function CommentItem({
         )}
 
         {!editOpen && (
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-3 text-xs text-ink-muted">
             {isTopLevel && onReply && !comment.is_deleted && (
               <button
                 type="button"
                 onClick={() => setReplyOpen((v) => !v)}
-                className="hover:text-violet-700"
+                className="hover:text-accent"
               >
                 Reply
               </button>
@@ -95,7 +95,7 @@ export function CommentItem({
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
-                className="hover:text-violet-700"
+                className="hover:text-accent"
               >
                 Edit
               </button>
@@ -106,7 +106,7 @@ export function CommentItem({
                 onClick={() => {
                   void onDelete(comment.id);
                 }}
-                className="hover:text-rose-600"
+                className="hover:text-err"
               >
                 Delete
               </button>
@@ -130,11 +130,11 @@ export function CommentItem({
         )}
 
         {isTopLevel && comment.reply_count > 0 && (
-          <div className="space-y-3 border-l-2 border-slate-100 pl-4">
+          <div className="space-y-3 border-l-2 border-line pl-4">
             <button
               type="button"
               onClick={() => setShowReplies((v) => !v)}
-              className="text-xs font-medium text-violet-700 hover:underline"
+              className="text-xs font-medium text-accent hover:underline"
             >
               {showReplies
                 ? "Hide replies"
@@ -145,10 +145,10 @@ export function CommentItem({
             {showReplies && (
               <>
                 {replies.isLoading && (
-                  <p className="text-xs text-slate-500">Loading replies…</p>
+                  <p className="text-xs text-ink-muted">Loading replies…</p>
                 )}
                 {replies.error && (
-                  <p className="text-xs text-rose-600">
+                  <p className="text-xs text-err">
                     {extractApiError(replies.error, "Failed to load replies.")}
                   </p>
                 )}
