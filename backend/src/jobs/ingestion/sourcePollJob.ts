@@ -67,6 +67,11 @@ async function persistCandidates(
     rawPublishedAt: c.publishedAt,
     rawPayload: c.rawPayload,
     contentHash: c.contentHash,
+    // Pre-fetched body from adapters whose source format carries the
+    // article body inline (e.g. HN self-posts). When null/undefined the
+    // heuristic seam fetches the URL itself. See Candidate.bodyText in
+    // ../types.ts for the contract.
+    bodyText: c.bodyText ?? null,
   }));
 
   // onConflictDoNothing on the (ingestion_source_id, external_id) unique
