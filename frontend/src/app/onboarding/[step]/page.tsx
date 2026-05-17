@@ -3,10 +3,10 @@
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { DepthToggle } from "@/components/stories/DepthToggle";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import {
   DEPTH_PREFERENCES,
-  DIGEST_PREFERENCES,
   GOALS,
   ROLES,
   SECTORS,
@@ -71,12 +71,30 @@ function Screen1(): JSX.Element {
       <div className="space-y-3">
         {SECTORS.map((s) => {
           const checked = sectors.includes(s.value);
+          // Phase 12j — sector accent color on the selected state.
+          // Each sector card lights up with its design-system color
+          // so the user previews the in-app sector treatment.
+          const sectorVar =
+            s.value === "ai"
+              ? "var(--ai)"
+              : s.value === "finance"
+                ? "var(--finance)"
+                : s.value === "semiconductors"
+                  ? "var(--semis)"
+                  : "var(--accent)";
           return (
             <label
               key={s.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-              }`}
+              className="flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors"
+              style={
+                checked
+                  ? {
+                      borderColor: sectorVar,
+                      backgroundColor: `color-mix(in srgb, ${sectorVar} 6%, var(--surface))`,
+                      boxShadow: `inset 0 0 0 1px ${sectorVar}`,
+                    }
+                  : { borderColor: "var(--line)" }
+              }
             >
               <input
                 type="checkbox"
@@ -85,8 +103,8 @@ function Screen1(): JSX.Element {
                 onChange={() => toggle(s.value)}
               />
               <div>
-                <p className="font-medium">{s.label}</p>
-                <p className="text-sm text-muted-foreground">{s.description}</p>
+                <p className="font-medium text-ink">{s.label}</p>
+                <p className="text-sm text-ink-muted">{s.description}</p>
               </div>
             </label>
           );
@@ -152,7 +170,7 @@ function Screen2(): JSX.Element {
     >
       <div className="space-y-6">
         <fieldset className="space-y-2">
-          <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
             Your role
           </legend>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -162,7 +180,7 @@ function Screen2(): JSX.Element {
                 <label
                   key={r.value}
                   className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                    checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                    checked ? "border-accent ring-1 ring-accent/40" : "border-line hover:border-ink-muted hover:bg-bg"
                   }`}
                 >
                   <input
@@ -181,10 +199,10 @@ function Screen2(): JSX.Element {
         </fieldset>
 
         <fieldset className="space-y-2">
-          <legend className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
             What field do you work in?
           </legend>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-muted">
             Pick the closest match. Options are scoped to your selected
             sectors — choose &ldquo;General / Not sure&rdquo; if nothing
             fits.
@@ -232,7 +250,7 @@ function Screen3(): JSX.Element {
             <label
               key={s.value}
               className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                checked ? "border-accent ring-1 ring-accent/40" : "border-line hover:border-ink-muted hover:bg-bg"
               }`}
             >
               <input
@@ -305,7 +323,7 @@ function Screen4(): JSX.Element {
     >
       <div className="space-y-6">
         {sectors.length === 0 && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-ink-muted">
             Pick a sector on step 1 first.
           </p>
         )}
@@ -314,7 +332,7 @@ function Screen4(): JSX.Element {
           const sectorLabel = SECTORS.find((s) => s.value === sector)?.label ?? sector;
           return (
             <div key={sector} className="space-y-2">
-              <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
                 {sectorLabel}
               </p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -324,7 +342,7 @@ function Screen4(): JSX.Element {
                     <label
                       key={`${sector}:${t.value}`}
                       className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                        checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                        checked ? "border-accent ring-1 ring-accent/40" : "border-line hover:border-ink-muted hover:bg-bg"
                       }`}
                     >
                       <input
@@ -388,7 +406,7 @@ function Screen5(): JSX.Element {
             <label
               key={g.value}
               className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+                checked ? "border-accent ring-1 ring-accent/40" : "border-line hover:border-ink-muted hover:bg-bg"
               }`}
             >
               <input
@@ -420,42 +438,32 @@ function Screen6(): JSX.Element {
   useScreenViewEvent(6);
   const nav = useOnboardingNav(6);
 
+  // Phase 12j — depth selection now uses the DepthToggle component
+  // so users learn the in-app interaction immediately. lockHigherTiers
+  // is false here: onboarding lets the user pick any depth (their tier
+  // gate fires at request time, not at preference-set time). Default
+  // to "accessible" if nothing's set so the toggle always has a
+  // controlled value.
+  const value = (depthPreference ?? "accessible") as DepthPreference;
+
   return (
     <OnboardingShell
       step={6}
       title="How deep do you want to go?"
-      description="The free tier defaults to Accessible. You can change this any time."
+      description="Pick the depth you'd like by default. You can switch on any story, and your tier may gate the higher tiers."
       canContinue={true}
       onContinue={() => nav.goNext(7)}
       onBack={nav.goBack}
     >
-      <div className="space-y-3">
-        {DEPTH_PREFERENCES.map((d) => {
-          const checked = depthPreference === d.value;
-          return (
-            <label
-              key={d.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-md border p-4 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
-              }`}
-            >
-              <input
-                type="radio"
-                name="depth"
-                value={d.value}
-                className="mt-1 h-4 w-4"
-                checked={checked}
-                onChange={() => setDepthPreference(d.value as DepthPreference)}
-              />
-              <div>
-                <p className="font-medium">{d.label}</p>
-                {d.description && (
-                  <p className="text-sm text-muted-foreground">{d.description}</p>
-                )}
-              </div>
-            </label>
-          );
-        })}
+      <div className="flex justify-center py-2">
+        <DepthToggle
+          value={value as "accessible" | "briefed" | "technical"}
+          onSelect={(d) => setDepthPreference(d as DepthPreference)}
+          lockHigherTiers={false}
+        />
+      </div>
+      <div className="mt-4 space-y-2 text-center text-sm text-ink-muted">
+        {DEPTH_PREFERENCES.find((d) => d.value === value)?.description}
       </div>
     </OnboardingShell>
   );
@@ -551,7 +559,8 @@ function Screen7(): JSX.Element {
   return (
     <OnboardingShell
       step={7}
-      title="How often do you want a digest?"
+      title="Receive a daily digest email?"
+      description="A short, role-neutral roundup of the day's stories, sent in the morning."
       canContinue={canContinue}
       isSubmitting={complete.isPending}
       continueLabel="Finish"
@@ -559,36 +568,45 @@ function Screen7(): JSX.Element {
       onBack={nav.goBack}
       error={error}
     >
-      <div className="space-y-3">
-        {DIGEST_PREFERENCES.map((d) => {
-          const checked = store.digestPreference === d.value;
+      {/* Phase 12j — Pro-only digest is a single Yes/No toggle. The
+          legacy morning/evening/none triple is reduced to "daily"
+          (the canonical Pro cadence post-12i) vs "never". Default
+          to "daily" for fresh signups; users can flip off here. */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { value: "morning", label: "Yes, daily" },
+          { value: "none", label: "No, thanks" },
+        ].map((opt) => {
+          const checked = store.digestPreference === opt.value;
           return (
             <label
-              key={d.value}
-              className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors ${
-                checked ? "border-primary bg-accent" : "hover:bg-accent/50"
+              key={opt.value}
+              className={`flex cursor-pointer items-center justify-center gap-3 rounded-md border p-4 transition-colors ${
+                checked
+                  ? "border-accent ring-1 ring-accent/40"
+                  : "border-line hover:border-ink-muted hover:bg-bg"
               }`}
             >
               <input
                 type="radio"
                 name="digest"
-                value={d.value}
-                className="h-4 w-4"
+                value={opt.value}
+                className="sr-only"
                 checked={checked}
                 onChange={() =>
-                  store.setDigestPreference(d.value as DigestPreference)
+                  store.setDigestPreference(opt.value as DigestPreference)
                 }
               />
-              <span className="font-medium">{d.label}</span>
+              <span className="font-medium text-ink">{opt.label}</span>
             </label>
           );
         })}
-        {store.timezone && (
-          <p className="text-xs text-muted-foreground">
-            Detected timezone: {store.timezone}
-          </p>
-        )}
       </div>
+      {store.timezone && (
+        <p className="mt-4 text-center text-xs text-ink-muted">
+          Detected timezone: {store.timezone}
+        </p>
+      )}
     </OnboardingShell>
   );
 }

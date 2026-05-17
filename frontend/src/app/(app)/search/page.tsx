@@ -9,9 +9,12 @@ import {
   saveRecentSearch,
   useSearch,
 } from "@/hooks/useSearch";
+import { useTier } from "@/hooks/useTier";
 import { SearchFilters } from "@/components/search/SearchFilters";
 import { SearchResultCard } from "@/components/search/SearchResultCard";
 import { SearchLimitModal } from "@/components/search/SearchLimitModal";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { extractApiError } from "@/lib/api";
 import { extractHighlightTerms } from "@/lib/highlight";
 import { SECTORS } from "@/lib/onboarding";
@@ -64,14 +67,12 @@ export default function SearchPage(): JSX.Element {
     offset,
   });
 
-  // Phase 12g — search-limit gate envelope from a free user's 4th
-  // query. Surfaced as a dismissable modal; the modal can be closed
-  // (dismiss handler clears `dismissedGate`) but the search results
-  // stay empty until the day's counter rolls.
+  const tierQuery = useTier();
+  const isFree = tierQuery.data?.tier === "free";
+
   const gate = isGatePayload(searchQuery.data) ? searchQuery.data : null;
   const [dismissedGate, setDismissedGate] = useState(false);
   useEffect(() => {
-    // Re-show the modal on each fresh gated response.
     if (gate) setDismissedGate(false);
   }, [gate]);
 
@@ -115,32 +116,45 @@ export default function SearchPage(): JSX.Element {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 py-6">
       <header className="space-y-3">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Search</h1>
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search stories by keyword or phrase..."
-            className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-            aria-label="Search stories"
-            autoFocus
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={clearQuery}
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        <h1 className="font-display text-[36px] font-semibold leading-tight tracking-tight text-ink">
+          Search
+        </h1>
+        <Input
+          ref={inputRef}
+          inputSize="lg"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search your briefing…"
+          aria-label="Search stories"
+          autoFocus
+          leadingIcon={<SearchIcon className="h-4 w-4" />}
+          trailingSlot={
+            query ? (
+              <button
+                type="button"
+                onClick={clearQuery}
+                aria-label="Clear search"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-muted hover:bg-line/60 hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null
+          }
+        />
+        {/* Phase 12g — free-tier search counter. Hidden for pro and
+            during the initial useTier fetch to avoid flashing chrome. */}
+        {isFree && tierQuery.data && (
+          <p className="text-xs text-ink-muted">
+            {/* Counter is a UI affordance only — the server enforces the
+                actual cap (chunk 4). At present we don't surface a
+                per-day usage number from the API, so we show the cap
+                as guidance. */}
+            3 free searches per day.
+          </p>
+        )}
       </header>
 
       <div className="grid gap-6 md:grid-cols-[220px_1fr]">
@@ -159,16 +173,15 @@ export default function SearchPage(): JSX.Element {
         <section className="space-y-4">
           {!enabled && (
             <div className="space-y-6">
-              <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-                Start typing to search. Use quotes for exact phrases, e.g.
-                {" "}
-                <span className="font-mono text-slate-700">&quot;reasoning models&quot;</span>.
+              <div className="rounded-md border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-muted">
+                Start typing to search. Use quotes for exact phrases, e.g.{" "}
+                <span className="font-mono text-ink">&quot;reasoning models&quot;</span>.
               </div>
 
               {recent.length > 0 && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
                       Recent searches
                     </h2>
                     <button
@@ -177,7 +190,7 @@ export default function SearchPage(): JSX.Element {
                         clearRecentSearches();
                         setRecent([]);
                       }}
-                      className="text-xs text-slate-500 hover:text-slate-900"
+                      className="text-xs text-ink-muted transition-colors hover:text-ink"
                     >
                       Clear
                     </button>
@@ -188,7 +201,7 @@ export default function SearchPage(): JSX.Element {
                         key={term}
                         type="button"
                         onClick={() => applyRecent(term)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        className="rounded-pill border border-line bg-surface px-3 py-1 text-xs text-ink-muted transition-colors hover:border-ink-muted hover:text-ink"
                       >
                         {term}
                       </button>
@@ -198,7 +211,7 @@ export default function SearchPage(): JSX.Element {
               )}
 
               <div>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
                   Browse sectors
                 </h2>
                 <div className="flex flex-wrap gap-2">
@@ -207,7 +220,7 @@ export default function SearchPage(): JSX.Element {
                       key={sector.value}
                       type="button"
                       onClick={() => applySectorSuggestion(sector.value)}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                      className="rounded-pill border border-line bg-surface px-3 py-1 text-xs text-ink-muted transition-colors hover:border-ink-muted hover:text-ink"
                     >
                       {sector.label}
                     </button>
@@ -220,16 +233,13 @@ export default function SearchPage(): JSX.Element {
           {enabled && searchQuery.isLoading && (
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-32 animate-pulse rounded-lg border border-slate-200 bg-white"
-                />
+                <div key={i} className="skeleton h-32 rounded-md border border-line" />
               ))}
             </div>
           )}
 
           {enabled && searchQuery.error && (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+            <div className="rounded-md border border-err/40 bg-err/5 p-4 text-sm text-err">
               {extractApiError(searchQuery.error, "Search failed.")}
             </div>
           )}
@@ -237,12 +247,12 @@ export default function SearchPage(): JSX.Element {
           {enabled && !searchQuery.isLoading && !searchQuery.error && results && (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-ink-muted">
                   Found {total} {total === 1 ? "story" : "stories"}
                   {results.query && (
                     <>
                       {" for "}
-                      <span className="font-medium text-slate-900">
+                      <span className="font-medium text-ink">
                         &ldquo;{results.query}&rdquo;
                       </span>
                     </>
@@ -251,42 +261,43 @@ export default function SearchPage(): JSX.Element {
               </div>
 
               {results.stories.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center text-sm text-slate-500">
+                <div className="rounded-md border border-dashed border-line bg-surface p-12 text-center text-sm text-ink-muted">
                   No stories found. Try different keywords.
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {results.stories.map((story) => (
+                  {results.stories.map((story, i) => (
                     <SearchResultCard
                       key={story.id}
                       story={story}
                       terms={terms}
+                      index={i}
                     />
                   ))}
                 </div>
               )}
 
               <div className="flex items-center justify-between pt-2 text-xs">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                   disabled={offset === 0}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Previous
-                </button>
-                <span className="text-slate-500">
+                </Button>
+                <span className="text-ink-muted">
                   Showing {results.stories.length > 0 ? offset + 1 : 0}–
                   {offset + results.stories.length} of {total}
                 </span>
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setOffset(offset + PAGE_SIZE)}
                   disabled={!hasMore}
-                  className="rounded-md border border-slate-200 bg-white px-3 py-1 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Next
-                </button>
+                </Button>
               </div>
             </>
           )}

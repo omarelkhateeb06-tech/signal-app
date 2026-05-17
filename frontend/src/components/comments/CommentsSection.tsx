@@ -28,8 +28,8 @@ export function CommentsSection({ storyId }: CommentsSectionProps): JSX.Element 
   return (
     <section className="space-y-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Comments {total > 0 && <span className="text-slate-400">({total})</span>}
+        <h2 className="font-display text-lg font-semibold text-ink">
+          Comments {total > 0 && <span className="text-ink-muted/70">({total})</span>}
         </h2>
       </div>
 
@@ -43,23 +43,23 @@ export function CommentsSection({ storyId }: CommentsSectionProps): JSX.Element 
       )}
 
       {create.error && (
-        <p className="text-sm text-rose-600">
+        <p className="text-sm text-err">
           {extractApiError(create.error, "Failed to post comment.")}
         </p>
       )}
 
       {query.isLoading && (
-        <p className="text-sm text-slate-500">Loading comments…</p>
+        <p className="text-sm text-ink-muted">Loading comments…</p>
       )}
 
       {query.error && (
-        <p className="text-sm text-rose-600">
+        <p className="text-sm text-err">
           {extractApiError(query.error, "Failed to load comments.")}
         </p>
       )}
 
       {!query.isLoading && comments.length === 0 && (
-        <p className="rounded-lg border border-dashed border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+        <p className="rounded-md border border-dashed border-line bg-surface p-8 text-center text-sm text-ink-muted">
           Be the first to comment.
         </p>
       )}

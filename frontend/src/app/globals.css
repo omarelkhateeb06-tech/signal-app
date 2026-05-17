@@ -2,58 +2,140 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Phase 12j — design tokens.
+ *
+ *   Page bg          #FAF7F2   warm cream
+ *   Surface          #FFFFFF
+ *   Ink primary      #1A1816   warm near-black (16:1 on cream)
+ *   Ink muted        #6B655C   warm gray (5.2:1 on cream)
+ *   Line             #E8E2D7   warm light border
+ *   Accent           #0A6D79   warm blue-teal (5.55:1 on cream, AA)
+ *   AI sector        #5B4FD9   warm indigo (5.34:1 on cream, AA)
+ *   Finance sector   #0C7259   emerald-teal (5.43:1 on cream, AA)
+ *   Semis sector     #A04D17   burnt orange (5.31:1 on cream, AA)
+ *   Success / warn / err — sparingly.
+ *
+ * Dark mode is deliberately not wired (post-launch). The .dark block
+ * below stays for the shadcn-style legacy variables only.
+ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* ----- New design tokens (12j) ----- */
+    --bg: #faf7f2;
+    --surface: #ffffff;
+    --ink: #1a1816;
+    --ink-muted: #6b655c;
+    --line: #e8e2d7;
+    --accent: #0a6d79;
+    --accent-hover: #085a64;
+    --accent-fg: #ffffff;
+    --ai: #5b4fd9;
+    --finance: #0c7259;
+    --semis: #a04d17;
+    --ok: #1f8a4c;
+    --warn: #c77d14;
+    --err: #b83a3a;
+
+    /* ----- Legacy shadcn tokens, redirected to the new palette ----- */
+    /*  bg/cream → background; ink → foreground; accent → primary; etc. */
+    --background: 40 33% 96%;
+    --foreground: 30 8% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 30 8% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 30 8% 9%;
+    --primary: 186 85% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 25% 90%;
+    --secondary-foreground: 30 8% 9%;
+    --muted: 40 22% 92%;
+    --muted-foreground: 30 7% 39%;
+    --accent-h: 186 85% 26%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 56% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 25% 87%;
+    --input: 40 25% 87%;
+    --ring: 186 85% 26%;
+    --radius: 8px;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  /* Global resets / defaults */
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Selection: accent-tinted highlight */
+  ::selection {
+    background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--ink);
+  }
+
+  /* Focus rings: 2px accent, offset for keyboard nav */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Scrollbar (WebKit only — Firefox/Safari fall through to UA) */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border: 2px solid var(--bg);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--ink-muted) 40%, var(--line));
+  }
+
+  /* Link defaults — accent color, underline on hover only */
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+@layer utilities {
+  /* Card shimmer for skeleton states. Warm gray, not cold. */
+  .skeleton {
+    background-image: linear-gradient(
+      90deg,
+      var(--line) 0%,
+      color-mix(in srgb, var(--line) 40%, var(--surface)) 50%,
+      var(--line) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-x 1.6s linear infinite;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  /* Gated-card blur: applied to the body region under the upgrade
+     overlay. backdrop-filter for the overlay itself is set inline. */
+  .gate-blur {
+    filter: blur(6px);
+    pointer-events: none;
+    user-select: none;
   }
 }

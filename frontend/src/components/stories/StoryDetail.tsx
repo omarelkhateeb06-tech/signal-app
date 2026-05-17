@@ -8,30 +8,26 @@ import { PersonalizationBox } from "./PersonalizationBox";
 import { Commentary } from "./Commentary";
 import { DepthToggle } from "./DepthToggle";
 import { UpgradeCtaButton } from "./UpgradeCta";
+import { Card } from "@/components/ui/Card";
 import {
   useStoryCommentary,
   type DepthOverride,
 } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
+import { timeAgo } from "@/lib/timeAgo";
 import { isGatePayload, type Story } from "@/types/story";
-
-function formatDate(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 interface StoryDetailProps {
   story: Story;
 }
 
+// Phase 12j — story detail surface restyle. Header → meta row →
+// depth toggle → commentary (with inline depth-gate prompt) →
+// optional coverage section → "From the source" body → footer with
+// source link + comment-count.
+
 export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
-  const date = formatDate(story.published_at ?? story.created_at);
+  const stamp = timeAgo(story.published_at ?? story.created_at);
 
   // Phase 12g — tier drives the depth-toggle lock + the inline upgrade
   // prompt for free users who click a locked tier.
@@ -54,7 +50,9 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
   // this path (shouldn't if the toggle blocks free clicks, but a
   // direct API caller or an out-of-sync client could trigger it), we
   // surface the inline prompt rather than rendering empty commentary.
-  const serverGate = isGatePayload(commentaryQuery.data) ? commentaryQuery.data : null;
+  const serverGate = isGatePayload(commentaryQuery.data)
+    ? commentaryQuery.data
+    : null;
 
   const resolvedCommentary =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
@@ -66,21 +64,31 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
     commentaryQuery.isFetching;
 
   return (
-    <article className="space-y-6">
+    <article className="space-y-7">
       <header className="space-y-4">
-        <div className="flex items-center gap-3">
-          <SectorBadge sector={story.sector} />
-          {date && <span className="text-sm text-slate-500">{date}</span>}
-        </div>
-        <h1 className="text-3xl font-bold leading-tight text-slate-900">
+        <h1 className="font-display text-[28px] font-semibold leading-tight text-ink md:text-[30px]">
           {story.headline}
         </h1>
-        <div className="flex items-center justify-end">
+        {/* Meta row: sector · timestamp · save. Same bottom-row pattern
+            as the feed card so the user re-orients fast. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-muted">
+          <div className="flex items-center gap-3">
+            <SectorBadge sector={story.sector} />
+            {stamp && (
+              <span className="font-mono text-[11px] tracking-tight">{stamp}</span>
+            )}
+            {story.comment_count > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <MessageSquare className="h-3.5 w-3.5" />
+                {story.comment_count}
+              </span>
+            )}
+          </div>
           <StorySaveButton story={story} />
         </div>
       </header>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <DepthToggle
           value={depth}
           onSelect={(d) => {
@@ -94,11 +102,22 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         {/* Phase 12g — inline upgrade prompt when a free user clicks a
             locked depth tier OR if a server-side depth gate envelope
             slips through (defensive). Falls through to the normal
-            commentary render otherwise. */}
+            commentary render otherwise. The prompt uses an accent-
+            tinted Card body so the spatial context stays intact —
+            commentary renders here on the un-gated path. */}
         {lockedAttempt || serverGate ? (
-          <div className="rounded-md border border-violet-200 bg-violet-50 p-4">
-            <div className="mb-3 flex items-start gap-2 text-sm text-violet-900">
-              <Lock className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
+          <Card
+            flat
+            className="p-5"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, var(--accent) 6%, var(--surface))",
+              borderColor:
+                "color-mix(in srgb, var(--accent) 25%, var(--line))",
+            }}
+          >
+            <div className="mb-3 flex items-start gap-2 text-sm text-ink">
+              <Lock className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden />
               <span>
                 {serverGate?.upgrade_cta.message ??
                   (trialAvailable
@@ -114,7 +133,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
                 }
               }
             />
-          </div>
+          </Card>
         ) : resolvedCommentary ? (
           <Commentary commentary={resolvedCommentary} />
         ) : (
@@ -125,22 +144,25 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         )}
       </div>
 
-      {/*
-        Phase 12e.7b — discrete coverage list for multi-source events.
-        Single-source stories keep the existing footer attribution; only
-        multi-source items render this section. Primary source carries a
-        small badge so the relationship to the footer link is explicit.
-      */}
+      {/* Phase 12e.7b — coverage list for multi-source events. Single-
+          source stories keep the existing footer attribution; only
+          multi-source items render this section. */}
       {story.sources.length > 1 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
             Coverage
           </h2>
           <ul className="space-y-1">
             {story.sources.map((s) => (
               <li key={s.url} className="flex items-center gap-2 text-sm">
                 {s.role === "primary" && (
-                  <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-medium text-violet-700">
+                  <span
+                    className="rounded-sm px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent"
+                    style={{
+                      backgroundColor:
+                        "color-mix(in srgb, var(--accent) 12%, transparent)",
+                    }}
+                  >
                     Primary
                   </span>
                 )}
@@ -148,7 +170,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
                   href={s.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-slate-600 hover:text-violet-700 hover:underline"
+                  className="text-ink-muted hover:text-accent hover:underline"
                 >
                   {s.name ?? s.url}
                 </a>
@@ -158,21 +180,19 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </section>
       )}
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-700">
-            From the source
-          </h2>
-          <p className="whitespace-pre-line text-base leading-relaxed text-slate-800">
-            {story.context}
-          </p>
-        </div>
+      <section className="space-y-3">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
+          From the source
+        </h2>
+        <p className="whitespace-pre-line text-[15px] leading-[1.7] text-ink">
+          {story.context}
+        </p>
       </section>
 
-      <footer className="flex items-center justify-between border-t border-slate-200 pt-4 text-sm text-slate-500">
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-ink-muted">
         <span className="inline-flex items-center gap-1">
           <MessageSquare className="h-4 w-4" />
-          {story.comment_count} comments
+          {story.comment_count} {story.comment_count === 1 ? "comment" : "comments"}
         </span>
         {story.source_url && (
           <div className="flex flex-col items-end gap-1">
@@ -180,13 +200,13 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
               href={story.source_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-slate-600 hover:text-violet-700"
+              className="inline-flex items-center gap-1 text-ink-muted transition-colors hover:text-accent"
             >
               {story.source_name ?? "Read source"}
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
             {story.sources.length > 1 && (
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-ink-muted/80">
                 Also covered by{" "}
                 {story.sources
                   .filter((s) => s.role === "alternate")

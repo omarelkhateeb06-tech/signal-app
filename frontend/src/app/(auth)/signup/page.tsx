@@ -7,6 +7,8 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { extractApiError } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 const signupSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -44,67 +46,65 @@ export default function SignupPage(): JSX.Element {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">Create your account</h2>
-        <p className="text-sm text-muted-foreground">Start your SIGNAL briefing.</p>
+        <h2 className="font-display text-[24px] font-semibold leading-tight text-ink">
+          Create your account
+        </h2>
+        <p className="text-sm text-ink-muted">Start your SIGNAL briefing.</p>
       </div>
       <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <div className="space-y-1">
-          <label htmlFor="name" className="text-sm font-medium">
+          <label htmlFor="name" className="text-sm font-medium text-ink">
             Name
           </label>
-          <input
+          <Input
             id="name"
             type="text"
             autoComplete="name"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            invalid={Boolean(errors.name)}
             {...register("name")}
           />
-          {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
+          {errors.name && <p className="text-xs text-err">{errors.name.message}</p>}
         </div>
         <div className="space-y-1">
-          <label htmlFor="email" className="text-sm font-medium">
+          <label htmlFor="email" className="text-sm font-medium text-ink">
             Email
           </label>
-          <input
+          <Input
             id="email"
             type="email"
             autoComplete="email"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            invalid={Boolean(errors.email)}
             {...register("email")}
           />
-          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+          {errors.email && <p className="text-xs text-err">{errors.email.message}</p>}
         </div>
         <div className="space-y-1">
-          <label htmlFor="password" className="text-sm font-medium">
+          <label htmlFor="password" className="text-sm font-medium text-ink">
             Password
           </label>
-          <input
+          <Input
             id="password"
             type="password"
             autoComplete="new-password"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none ring-ring focus-visible:ring-2"
+            invalid={Boolean(errors.password)}
             {...register("password")}
           />
           {errors.password && (
-            <p className="text-xs text-destructive">{errors.password.message}</p>
+            <p className="text-xs text-err">{errors.password.message}</p>
           )}
         </div>
         {submitError && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-err">
             {submitError}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {isSubmitting ? "Creating account..." : "Create account"}
-        </button>
+        <Button type="submit" disabled={isSubmitting} className="w-full">
+          {isSubmitting ? "Creating account…" : "Create account"}
+        </Button>
       </form>
-      <p className="text-center text-sm text-muted-foreground">
+      <p className="text-center text-sm text-ink-muted">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
+        <Link href="/login" className="font-medium text-accent hover:underline">
           Log in
         </Link>
       </p>

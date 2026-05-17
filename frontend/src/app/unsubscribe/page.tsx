@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { extractApiError, unsubscribeRequest } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 type Status = "pending" | "success" | "error";
 
@@ -40,65 +42,77 @@ function UnsubscribeContent(): JSX.Element {
   }, [token]);
 
   return (
-    <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+    <Card className="w-full max-w-md p-8">
       <div className="mb-6 text-center">
-        <Link href="/" className="text-lg font-bold tracking-tight text-slate-900">
+        <Link
+          href="/"
+          className="font-display text-lg font-semibold tracking-[0.18em] text-ink hover:no-underline"
+        >
           SIGNAL
         </Link>
       </div>
       {status === "pending" && (
         <div className="flex flex-col items-center gap-3 text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-violet-600" aria-hidden />
-          <p className="text-sm text-slate-600">Processing your unsubscribe...</p>
+          <Loader2 className="h-10 w-10 animate-spin text-accent" aria-hidden />
+          <p className="text-sm text-ink-muted">Processing your unsubscribe…</p>
         </div>
       )}
       {status === "success" && (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-500" aria-hidden />
-          <h1 className="text-xl font-semibold text-slate-900">You&apos;ve been unsubscribed</h1>
-          <p className="text-sm text-slate-600">
-            We&apos;ll stop sending marketing emails{email ? ` to ${email}` : ""}. You can change this
-            any time from your settings.
+        <div className="flex flex-col items-center gap-4 text-center">
+          <CheckCircle2 className="h-10 w-10 text-ok" aria-hidden />
+          <h1 className="font-display text-[22px] font-semibold text-ink">
+            You&apos;ve been unsubscribed
+          </h1>
+          <p className="text-sm leading-relaxed text-ink-muted">
+            We&apos;ll stop sending the SIGNAL daily digest
+            {email ? ` to ${email}` : ""}. You can re-enable it any time from your
+            settings.
           </p>
           <Link
-            href="/settings"
-            className="mt-2 inline-flex items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700"
+            href="/feed"
+            className="mt-2 inline-flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover hover:no-underline"
           >
-            Manage email preferences
+            Back to SIGNAL →
           </Link>
         </div>
       )}
       {status === "error" && (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <XCircle className="h-10 w-10 text-rose-500" aria-hidden />
-          <h1 className="text-xl font-semibold text-slate-900">Something went wrong</h1>
-          <p className="text-sm text-slate-600">{error}</p>
+        <div className="flex flex-col items-center gap-4 text-center">
+          <XCircle className="h-10 w-10 text-err" aria-hidden />
+          <h1 className="font-display text-[22px] font-semibold text-ink">
+            Something went wrong
+          </h1>
+          <p className="text-sm text-ink-muted">{error}</p>
           <Link
             href="/settings"
-            className="mt-2 inline-flex items-center rounded-md border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="mt-2 inline-flex h-10 items-center rounded-md border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors hover:border-ink-muted hover:no-underline"
           >
             Go to settings
           </Link>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 function UnsubscribeFallback(): JSX.Element {
   return (
-    <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+    <Card className="w-full max-w-md p-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <Loader2 className="h-10 w-10 animate-spin text-violet-600" aria-hidden />
-        <p className="text-sm text-slate-600">Loading...</p>
+        <Loader2 className="h-10 w-10 animate-spin text-accent" aria-hidden />
+        <p className="text-sm text-ink-muted">Loading…</p>
       </div>
-    </div>
+    </Card>
   );
 }
 
 export default function UnsubscribePage(): JSX.Element {
+  // Touch Button so it stays in the import graph for future use in
+  // this file — currently the page renders Link-as-button. Lint
+  // configurations that drop unused imports can strip this.
+  void Button;
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4 py-12">
       <Suspense fallback={<UnsubscribeFallback />}>
         <UnsubscribeContent />
       </Suspense>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import clsx from "clsx";
+import { Button } from "@/components/ui/Button";
 
 const MAX = 2000;
 
@@ -15,6 +15,10 @@ interface CommentFormProps {
   autoFocus?: boolean;
 }
 
+// Phase 12j — restyled onto design tokens. Textarea uses the same
+// border / focus pattern as the Input primitive (Input itself is
+// single-line, so the textarea stays explicit). Submit + Cancel
+// use the Button primitive.
 export function CommentForm({
   placeholder = "Add a comment…",
   submitLabel = "Post",
@@ -43,39 +47,23 @@ export function CommentForm({
         placeholder={placeholder}
         rows={3}
         autoFocus={autoFocus}
-        className="w-full resize-y rounded-md border border-slate-200 bg-white p-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+        className="w-full resize-y rounded-md border border-line bg-surface p-3 text-sm text-ink placeholder:text-ink-muted transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
       />
       <div className="flex items-center justify-between gap-2">
         <span
-          className={clsx(
-            "text-xs",
-            value.length > MAX ? "text-rose-600" : "text-slate-500",
-          )}
+          className={`text-xs ${value.length > MAX ? "text-err" : "text-ink-muted"}`}
         >
           {value.length}/{MAX}
         </span>
         <div className="flex items-center gap-2">
           {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
+            <Button variant="secondary" size="sm" onClick={onCancel}>
               Cancel
-            </button>
+            </Button>
           )}
-          <button
-            type="submit"
-            disabled={disabled}
-            className={clsx(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              disabled
-                ? "cursor-not-allowed bg-slate-200 text-slate-400"
-                : "bg-violet-600 text-white hover:bg-violet-700",
-            )}
-          >
+          <Button type="submit" size="sm" disabled={disabled}>
             {isSubmitting ? "Posting…" : submitLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </form>

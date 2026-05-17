@@ -1,17 +1,10 @@
 "use client";
 
 // Phase 12d — expandable thesis/support commentary surface.
-//
-// Reads the structured CommentaryShape and renders thesis by default
-// with a "Go deeper" button that toggles support visibility. State is
-// pure session-scope `useState` per Decision 12d.3 — preference is not
-// persisted across reloads so a fresh visit always lands on the
-// thesis-only view.
-//
-// Visual frame matches PersonalizationBox (icon + violet rule) for
-// continuity; this is the 12c surface upgraded, not a new shelf. The
-// component intentionally stays minimal in this commit: thesis,
-// button, support panel, 200ms slide. Polish iterates in 12d.1.
+// Phase 12j — restyled onto the design tokens. Same data shape,
+// same expand-collapse interaction; visual frame moves from
+// violet → accent-tinted card so the surface reads as the same
+// "personalized briefing" affordance throughout the app.
 
 import { useState } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
@@ -25,23 +18,29 @@ export function Commentary({ commentary }: CommentaryProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="flex gap-3 rounded-lg border border-violet-200 bg-violet-50/60 p-4">
-      <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-violet-600" />
-      <div className="flex-1 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+    <div
+      className="flex gap-3 rounded-lg border p-5"
+      style={{
+        backgroundColor: "color-mix(in srgb, var(--accent) 5%, var(--surface))",
+        borderColor: "color-mix(in srgb, var(--accent) 22%, var(--line))",
+      }}
+    >
+      <Sparkles className="mt-1 h-4 w-4 flex-shrink-0 text-accent" />
+      <div className="flex-1 space-y-3">
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
           Why it matters
         </p>
-        <p className="text-sm leading-relaxed text-slate-800">
+        <p className="text-[15px] leading-[1.7] text-ink">
           {commentary.thesis}
         </p>
         <div
-          className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out ${
+          className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-soft-out ${
             expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
           }`}
           aria-hidden={!expanded}
         >
           <div className="min-h-0">
-            <p className="pt-2 text-sm leading-relaxed text-slate-700">
+            <p className="pt-1 text-[15px] leading-[1.7] text-ink-muted">
               {commentary.support}
             </p>
           </div>
@@ -50,7 +49,7 @@ export function Commentary({ commentary }: CommentaryProps): JSX.Element {
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="inline-flex items-center gap-1 text-xs font-medium text-violet-700 hover:text-violet-900"
+          className="inline-flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
         >
           {expanded ? "Show less" : "Go deeper"}
           <ChevronDown

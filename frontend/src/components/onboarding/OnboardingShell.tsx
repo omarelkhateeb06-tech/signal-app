@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 export interface OnboardingShellProps {
   step: number;
@@ -12,9 +14,6 @@ export interface OnboardingShellProps {
   continueLabel?: string;
   onContinue: () => void | Promise<void>;
   onSkip?: () => void | Promise<void>;
-  // Optional override so the page can emit `screen_back` telemetry
-  // alongside the navigation. When omitted, the shell falls back to
-  // its own `router.push(previous-step)` behavior (no event).
   onBack?: () => void | Promise<void>;
   error?: string | null;
   children: ReactNode;
@@ -23,14 +22,11 @@ export interface OnboardingShellProps {
 const TOTAL_STEPS = 7;
 
 /**
- * Shared chrome for every onboarding screen: progress bar, title,
- * description, Back / Skip / Continue nav row. Screens plug their
- * content in via `children` and wire their step-specific validation
- * via `canContinue`.
- *
- * Back goes to `/onboarding/${step - 1}` except on step 1, where the
- * button is disabled (the user signed up — there's nowhere sensible
- * to go "back" to).
+ * Phase 12j — restyled shell. Same prop API, design-token visual
+ * layer. Progress is "Step N of M" in mono + a full-width accent
+ * progress bar above the title. The card body uses the Card
+ * primitive (drops the legacy shadcn `bg-card` semantics in favor of
+ * `bg-surface`).
  */
 export function OnboardingShell({
   step,
@@ -57,71 +53,71 @@ export function OnboardingShell({
 
   return (
     <>
-      <header className="space-y-2 text-center">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+      <header className="space-y-4 text-center">
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
           Step {step} of {TOTAL_STEPS}
         </p>
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
         <div
-          className="mx-auto h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted"
+          className="mx-auto h-1 w-full max-w-sm overflow-hidden rounded-full bg-line"
           role="progressbar"
           aria-valuemin={1}
           aria-valuemax={TOTAL_STEPS}
           aria-valuenow={step}
         >
           <div
-            className="h-full bg-primary transition-all"
+            className="h-full bg-accent transition-all duration-300 ease-soft-out"
             style={{ width: `${(step / TOTAL_STEPS) * 100}%` }}
           />
         </div>
+        <h1 className="font-display text-[32px] font-semibold leading-tight tracking-tight text-ink">
+          {title}
+        </h1>
+        {description && (
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-ink-muted">
+            {description}
+          </p>
+        )}
       </header>
 
-      <section className="rounded-lg border bg-card p-6 shadow-sm">
+      <Card className="p-6">
         {children}
         {error && (
-          <p role="alert" className="mt-4 text-sm text-destructive">
+          <p role="alert" className="mt-4 text-sm text-err">
             {error}
           </p>
         )}
-      </section>
+      </Card>
 
       <div className="flex items-center justify-between">
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={back}
           disabled={step <= 1 || isSubmitting}
-          className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-40"
         >
           Back
-        </button>
+        </Button>
         <div className="flex items-center gap-3">
           {onSkip && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
               onClick={() => {
                 void onSkip();
               }}
               disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
             >
               Skip
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
             onClick={() => {
               void onContinue();
             }}
             disabled={!canContinue || isSubmitting}
-            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {isSubmitting
               ? "Saving…"
               : (continueLabel ?? (step === TOTAL_STEPS ? "Finish" : "Continue"))}
-          </button>
+          </Button>
         </div>
       </div>
     </>
