@@ -2,28 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { MessageSquare, ExternalLink } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
-import { PersonalizationBox } from "./PersonalizationBox";
-import { Commentary } from "./Commentary";
+import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
+import { timeAgo } from "@/lib/timeAgo";
 import { isGatePayload, type Story } from "@/types/story";
-
-function formatDate(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-interface StoryCardProps {
-  story: Story;
-}
 
 // Phase 12c — each card self-manages when to fire its commentary
 // fetch via IntersectionObserver with a rootMargin that provides
@@ -34,28 +19,41 @@ interface StoryCardProps {
 //     resolve as soon as the first wave returns.
 //   - scrolling: newly-visible cards (and ~5 more below them) flip
 //     to enabled; queue absorbs the spike.
-//
-// Card height is ~200-240px; 1200px of rootMargin ≈ 5-6 cards of
-// scroll-ahead, which matches the "5-story prefetch" product spec.
-// We use only vertical margin (0px horizontal) — the feed is a
-// single column.
 const VISIBILITY_ROOT_MARGIN = "1200px 0px";
 
-export function StoryCard({ story }: StoryCardProps): JSX.Element {
-  const date = formatDate(story.published_at ?? story.created_at);
+interface StoryCardProps {
+  story: Story;
+  // Phase 12j — stagger entrance animation. Cards are mounted at the
+  // same time on a fresh feed load; we want them to fade in with a
+  // small per-card delay so the eye reads them sequentially. Passed
+  // by the feed page based on within-page index.
+  index?: number;
+}
 
-  // Once a card has been "close enough" to the viewport to prefetch,
-  // we latch that state — scrolling away must NOT cancel an in-flight
-  // request (StrictMode would already double-fire; canceling would
-  // waste the slot and churn TanStack Query's cache).
+function sectorAccentFor(sector: string): CardSectorAccent {
+  if (sector === "ai") return "ai";
+  if (sector === "finance") return "finance";
+  if (sector === "semiconductors") return "semis";
+  return null;
+}
+
+function primaryParagraph(text: string): string {
+  // The commentary thesis can be a paragraph or two; on the feed we
+  // show the first paragraph as a preview, line-clamped to ~3 lines
+  // via CSS. Pre-trim on the input to avoid trailing whitespace
+  // confusing the clamp.
+  return text.trim();
+}
+
+export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
+  const stamp = timeAgo(story.published_at ?? story.created_at);
+
   const [shouldLoad, setShouldLoad] = useState(false);
-  const cardRef = useRef<HTMLElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const el = cardRef.current;
     if (!el || shouldLoad) return;
-    // If the browser doesn't support IntersectionObserver, fall back
-    // to enabling immediately. The 8-slot semaphore still caps fanout.
     if (typeof IntersectionObserver === "undefined") {
       setShouldLoad(true);
       return;
@@ -75,18 +73,6 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
 
   const commentaryQuery = useStoryCommentary(story.id, { enabled: shouldLoad });
 
-  // 12d — commentary is now `{thesis, support}` from the endpoint.
-  // Resolution priority (unchanged):
-  //   1. freshly-loaded commentary from the endpoint
-  //   2. commentary pre-loaded on the story (server-side hydration path)
-  //   3. the 12b why_it_matters_to_you personalization (last-resort string)
-  // (3) renders through PersonalizationBox (string-only); (1) and (2)
-  // render through Commentary (structured).
-  // Phase 12g — commentaryQuery.data is `CommentaryEnvelope` (gate-
-  // capable). The gated branch shouldn't normally fire on the feed
-  // card (the feed itself is gated at the row level so this card
-  // wouldn't render), but defensively unwrap with isGatePayload so
-  // we never read .commentary off a GatePayload.
   const apiCommentary =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
       ? commentaryQuery.data.commentary
@@ -95,64 +81,71 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
   const isCommentaryLoading =
     shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
 
-  return (
-    <article
-      ref={cardRef}
-      className="group rounded-lg border border-slate-200 bg-white p-6 transition-shadow hover:shadow-md"
-    >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <SectorBadge sector={story.sector} />
-          {date && <span className="text-xs text-slate-500">{date}</span>}
-        </div>
-        <StorySaveButton story={story} />
-      </div>
+  // 12j — feed preview shows the commentary thesis when we have one,
+  // or the why_it_matters_to_you template body as the fallback. The
+  // tail of the card always has the sector badge + timestamp; the
+  // source attribution moves to a small subtitle directly under the
+  // headline (per the brief: "via Bloomberg" / "via SemiAnalysis,
+  // Bloomberg, +3 more").
+  const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
+  const sourceCount = story.sources.length;
+  const primarySource = story.source_name ?? story.sources[0]?.name ?? null;
+  const sourceLabel =
+    sourceCount > 1 && primarySource
+      ? `via ${primarySource}, +${sourceCount - 1} more`
+      : primarySource
+        ? `via ${primarySource}`
+        : null;
 
-      <Link href={`/stories/${story.id}`} className="block">
-        <h2 className="mb-2 text-xl font-semibold leading-tight text-slate-900 group-hover:text-violet-700">
+  // Stagger only the first ~10 cards so later scroll-loads don't get
+  // a perceptible delay before they paint.
+  const staggerDelay = index < 10 ? `${index * 40}ms` : "0ms";
+
+  return (
+    <Card
+      ref={cardRef}
+      interactive
+      sectorAccent={sectorAccentFor(story.sector)}
+      className="animate-fade-up p-6"
+      style={{ animationDelay: staggerDelay }}
+    >
+      <Link href={`/stories/${story.id}`} className="block hover:no-underline">
+        <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink group-hover:text-accent">
           {story.headline}
         </h2>
-        <p className="mb-4 line-clamp-3 text-sm leading-relaxed text-slate-600">
-          {story.context}
+        {sourceLabel && (
+          <p className="mb-3 text-xs text-ink-muted">{sourceLabel}</p>
+        )}
+        <p
+          className="mb-4 text-sm leading-relaxed text-ink-muted"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {isCommentaryLoading
+            ? "Generating your briefing…"
+            : primaryParagraph(previewText)}
         </p>
       </Link>
 
-      {resolvedCommentary ? (
-        <Commentary commentary={resolvedCommentary} />
-      ) : (
-        <PersonalizationBox
-          text={story.why_it_matters_to_you}
-          loading={isCommentaryLoading}
-        />
-      )}
-
-      <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-        <div className="flex items-center gap-4">
-          {story.author?.name && <span>By {story.author.name}</span>}
-          <span className="inline-flex items-center gap-1">
-            <MessageSquare className="h-3.5 w-3.5" />
-            {story.comment_count}
-          </span>
+      <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">
+        <div className="flex items-center gap-3">
+          <SectorBadge sector={story.sector} />
+          {stamp && (
+            <span className="font-mono text-[11px] tracking-tight">{stamp}</span>
+          )}
+          {story.comment_count > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <MessageSquare className="h-3.5 w-3.5" />
+              {story.comment_count}
+            </span>
+          )}
         </div>
-        {story.source_url && (
-          <div className="inline-flex items-center gap-1">
-            <a
-              href={story.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-slate-500 hover:text-violet-700"
-            >
-              {story.source_name ?? "Source"}
-              <ExternalLink className="h-3 w-3" />
-            </a>
-            {story.sources.length > 1 && (
-              <span className="text-slate-400">
-                +{story.sources.length - 1} more
-              </span>
-            )}
-          </div>
-        )}
+        <StorySaveButton story={story} />
       </div>
-    </article>
+    </Card>
   );
 }
