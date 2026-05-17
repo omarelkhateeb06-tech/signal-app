@@ -28,15 +28,21 @@ describe("email endpoints", () => {
   });
 
   describe("POST /api/v1/emails/unsubscribe", () => {
-    it("marks the user unsubscribed with a valid token", async () => {
+    it("marks the user unsubscribed with a valid token (sets email_frequency='never')", async () => {
       const token = signUnsubscribeToken("user-1");
       mock.queueSelect([{ id: "user-1", email: "a@b.com" }]);
-      mock.queueInsert([{ userId: "user-1", emailUnsubscribed: true }]);
+      mock.queueInsert([{ userId: "user-1", emailFrequency: "never" }]);
       const res = await request(app)
         .post("/api/v1/emails/unsubscribe")
         .send({ token });
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual({ email: "a@b.com", unsubscribed: true });
+      // Phase 12i — the unsubscribe path writes email_frequency='never',
+      // not email_unsubscribed=true (latter is the global kill, reserved
+      // for admin / compliance use).
+      const inserted = mock.state.insertedValues[0] as Record<string, unknown>;
+      expect(inserted.emailFrequency).toBe("never");
+      expect(inserted.emailUnsubscribed).toBeUndefined();
     });
 
     it("rejects an invalid token", async () => {
@@ -65,7 +71,7 @@ describe("email endpoints", () => {
     it("supports GET with the token as a query param", async () => {
       const token = signUnsubscribeToken("user-1");
       mock.queueSelect([{ id: "user-1", email: "a@b.com" }]);
-      mock.queueInsert([{ userId: "user-1", emailUnsubscribed: true }]);
+      mock.queueInsert([{ userId: "user-1", emailFrequency: "never" }]);
       const res = await request(app)
         .get(`/api/v1/emails/unsubscribe?token=${encodeURIComponent(token)}`);
       expect(res.status).toBe(200);

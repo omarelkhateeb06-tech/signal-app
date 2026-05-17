@@ -1,7 +1,11 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { sendWeeklyDigests } from "./digestJob";
+import { sendDailyDigests } from "./digestJob";
 
-const WEEKLY_DIGEST_CRON = process.env.WEEKLY_DIGEST_CRON ?? "0 8 * * 1";
+// Phase 12i — cadence flipped from weekly to daily. The Pro-only tier
+// gate happens in sendDailyDigests; the scheduler stays cadence-only.
+// Default fires at 11:00 UTC (07:00 ET); override with DAILY_DIGEST_CRON
+// for ops experimentation.
+const DAILY_DIGEST_CRON = process.env.DAILY_DIGEST_CRON ?? "0 11 * * *";
 
 let cachedTask: ScheduledTask | null = null;
 
@@ -12,24 +16,24 @@ export function startEmailScheduler(): ScheduledTask | null {
     console.warn("[signal-backend] email scheduler disabled via DISABLE_EMAIL_SCHEDULER");
     return null;
   }
-  if (!cron.validate(WEEKLY_DIGEST_CRON)) {
+  if (!cron.validate(DAILY_DIGEST_CRON)) {
     // eslint-disable-next-line no-console
-    console.error(`[signal-backend] invalid WEEKLY_DIGEST_CRON: ${WEEKLY_DIGEST_CRON}`);
+    console.error(`[signal-backend] invalid DAILY_DIGEST_CRON: ${DAILY_DIGEST_CRON}`);
     return null;
   }
 
   cachedTask = cron.schedule(
-    WEEKLY_DIGEST_CRON,
+    DAILY_DIGEST_CRON,
     async () => {
       try {
-        const result = await sendWeeklyDigests();
+        const result = await sendDailyDigests();
         // eslint-disable-next-line no-console
         console.log(
-          `[signal-backend] [scheduler] weekly digest run: enqueued=${result.enqueued} skipped=${result.skipped}`,
+          `[signal-backend] [scheduler] daily digest run: enqueued=${result.enqueued} skipped=${result.skipped} failed=${result.failed} window=${result.window.label}`,
         );
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.error("[signal-backend] [scheduler] weekly digest failed:", err);
+        console.error("[signal-backend] [scheduler] daily digest failed:", err);
       }
     },
     { timezone: "UTC" },
@@ -37,7 +41,7 @@ export function startEmailScheduler(): ScheduledTask | null {
 
   // eslint-disable-next-line no-console
   console.log(
-    `[signal-backend] email scheduler started (cron="${WEEKLY_DIGEST_CRON}" tz=UTC)`,
+    `[signal-backend] email scheduler started (cron="${DAILY_DIGEST_CRON}" tz=UTC)`,
   );
   return cachedTask;
 }

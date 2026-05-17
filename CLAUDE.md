@@ -61,7 +61,7 @@ Deviation requires an explicit decision recorded somewhere durable (commit messa
 - **Drizzle ORM** on **PostgreSQL** (`pg` driver). **NOT Prisma** — do not introduce a second ORM.
 - **ioredis** for Redis (rate limits, BullMQ backing store). Fail-open pattern is intentional: a Redis outage degrades gracefully rather than taking the API down.
 - **BullMQ** for durable queues (emails, aggregation rollups).
-- **node-cron** for in-process scheduling (the weekly-digest trigger lives here).
+- **node-cron** for in-process scheduling (the daily-digest trigger lives here).
 - **jsonwebtoken** + **bcryptjs** for user auth.
 - **@anthropic-ai/sdk** — Claude Haiku for commentary generation. Two call sites, two model pins: the Phase 12a offline depth-variant regeneration script uses the alias `claude-haiku-4-5` (via `DEPTH_VARIANT_MODEL` in `services/depthVariantGenerator.ts`); the Phase 12c per-user, per-story commentary path uses the **dated** string **`claude-haiku-4-5-20251001`** (via `COMMENTARY_MODEL` in `services/haikuCommentaryClient.ts`). The dated pin is deliberate — request-path behavior must not shift silently when Anthropic advances the alias.
 - **@sendgrid/mail** for transactional email.
@@ -172,7 +172,8 @@ signal-app/
 │   │   │   │   ├── 0015_phase12e1_events_and_candidates.sql
 │   │   │   │   ├── 0016–0028 (12e.2 → 12ex sub-session migrations)
 │   │   │   │   ├── 0029_phase12g_user_tier.sql
-│   │   │   │   └── 0030_phase12g_generic_commentary.sql
+│   │   │   │   ├── 0030_phase12g_generic_commentary.sql
+│   │   │   │   └── 0031_phase12i_email_frequency_daily.sql
 │   │   │   ├── seed.ts
 │   │   │   ├── helpers.ts
 │   │   │   └── verify.ts
@@ -239,7 +240,7 @@ signal-app/
 5. `app.listen(PORT)`
 6. In parallel:
    - `startEmailWorker()` — BullMQ consumer for `signal-email`
-   - `startEmailScheduler()` — node-cron (default `0 8 * * 1`, Monday 08:00 UTC)
+   - `startEmailScheduler()` — node-cron (default `0 11 * * *`, daily 11:00 UTC = 07:00 ET; fires the Pro-only daily digest)
    - `startAggregationWorker()` — BullMQ consumer for `signal-aggregation`
    - `scheduleAggregationRepeatable()` — enqueues daily rollup at `0 2 * * *` UTC
 
@@ -417,18 +418,18 @@ Four BullMQ queues, all backed by the shared Redis connection:
 
 | queue                     | producer                              | worker                  | cadence                  |
 |---------------------------|---------------------------------------|-------------------------|--------------------------|
-| `signal-email`            | `emailQueue.enqueue()`                | `emailWorker`           | on-demand + weekly trigger |
+| `signal-email`            | `emailQueue.enqueue()`                | `emailWorker`           | on-demand + daily digest trigger |
 | `signal-aggregation`      | `scheduleAggregationRepeatable()`     | `aggregationWorker`     | `0 2 * * *` UTC, configurable via `AGGREGATION_CRON` |
 | `signal-ingestion-poll`   | `scheduleSourcePollRepeatable()` + `enqueueSourcePoll()` (ad-hoc) | `sourcePollWorker`      | per-source `every: fetch_interval_seconds * 1000`, scheduled at boot from `ingestion_sources` rows (12e.5c) |
 | `signal-ingestion-enrich` | `enqueueEnrichment()` from poll-job tail + manual `runIngestionEnrich.ts` CLI | `enrichmentWorker`      | on-demand (one job per surviving candidate) |
 
 Plus one **in-process** scheduler:
 
-- `emailScheduler` — node-cron, default `0 8 * * 1` (Monday 08:00 UTC), overridable via `WEEKLY_DIGEST_CRON`; disable with `DISABLE_EMAIL_SCHEDULER=1` for local dev.
+- `emailScheduler` — node-cron, default `0 11 * * *` (daily 11:00 UTC = 07:00 ET), overridable via `DAILY_DIGEST_CRON`; disable with `DISABLE_EMAIL_SCHEDULER=1` for local dev. Fires `sendDailyDigests` — Pro-only (see §11 "Daily digest eligibility").
 
 Manual triggers for ops:
 
-- `npm run send-digest-now --workspace=backend` — run the weekly digest immediately
+- `npm run send-digest-now --workspace=backend` — run the daily digest immediately
 - `npm run run-aggregation --workspace=backend [-- --period=2026-W17]` — one-off rollup
 - `npm run regenerate-depth-variants --workspace=backend` — Phase 12a one-time batch (see §8)
 
@@ -674,7 +675,7 @@ UNSUBSCRIBE_SECRET=<generate: openssl rand -hex 32>
 SENDGRID_API_KEY=
 SENDER_EMAIL=noreply@signal.so
 FRONTEND_URL=http://localhost:3000
-WEEKLY_DIGEST_CRON=0 8 * * 1
+DAILY_DIGEST_CRON=0 11 * * *
 DISABLE_EMAIL_SCHEDULER=
 EMAIL_WORKER_CONCURRENCY=5
 ANTHROPIC_API_KEY=
@@ -767,7 +768,7 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 
 **Numbering hygiene.** Before writing any `Closes #N` line in a PR body, referencing `#N` in chat, or running `gh issue close N`, run `gh issue view N` (or `gh pr view N`) to confirm the artifact at that number is the one you mean. A wrong-issue closure shipped on a merged PR in 12c when a session-internal title-number ("GH #25") was treated as a real GH reference — caught and corrected post-merge. Title-numbers and GH numbers do not converge; only `gh`-confirmed numbers go in commit messages, PR bodies, or close actions.
 
-### Shipped (0 through 12g)
+### Shipped (0 through 12i)
 
 | phase | ships                                                                      |
 |-------|----------------------------------------------------------------------------|
@@ -791,6 +792,7 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 | 12e   | **ingestion pipeline** — multi-source adapters (RSS, arXiv, SEC EDGAR, HN), chain orchestration with per-stage Sentry tags, embedding seam + cluster check (pgvector), source priority + re-enrichment, admin status route + seed guard |
 | 12f   | rules-based feed ranking v1 — effective_score with cluster amplification, freshness bonus, EDGAR penalty; disabled-source filter |
 | 12g   | **paywall + 2-tier model** — user tier model with lazy trial downgrade, story cap (15/day) + soft-block, depth gate (free → accessible only) with inline upgrade, search cap (3/day) modal, generic_commentary pre-gen + free-tier read path, /upgrade page + trial badge, /me/tier endpoint |
+| 12i   | **daily digest email** (Pro-only) — replaces the Phase 7 weekly digest. `sendDailyDigests` cron at `0 11 * * *` UTC, 24h-trailing window, top-10 stories ranked via the 12f effective_score, sector-grouped layout, `generic_commentary` body text. Unsubscribe link writes `email_frequency='never'`. Pro / active-trial only — SQL-level trial-expiry check replicates `resolveEffectiveTier` without the side-effecting downgrade UPDATE. |
 
 Phase 10 (learning paths) was abandoned. Do not resurrect.
 
@@ -808,9 +810,9 @@ The 12-series is the push to public launch — every sub-phase is load-bearing f
 | **12f** (shipped) | rules-based feed ranking v1 + disabled-source filter                            |
 | **12g** (shipped) | paywall + 2-tier model — see §9. Replaced the prior 3-tier (Free/Standard/Premium) plan with Free / Pro + 7-day pro_trial bridge. |
 | **12h**   | **Stripe / billing wiring** — replaces /upgrade's "Coming soon" button with the real payment flow; activates `tier='pro'` post-checkout. |
-| **12i**   | **Daily digest email** — pro-only surface; tier gate already in place via `resolveEffectiveTier`. |
+| **12i** (shipped) | daily digest email (Pro-only) — replaces the weekly. See §15 shipped table for mechanics. |
 
-Ordering through 12g is fixed history. 12h is the immediate next major slot; 12i can land in parallel since it doesn't share surfaces.
+Ordering through 12i is fixed history. 12h (Stripe) is the remaining major slot before launch.
 
 Known 12c / 12g follow-ups (tracked inline as TODO comments, not blockers):
 - **12c.1** — `last_accessed_at` on `commentary_cache` is written on every cache hit; consider opportunistic/throttled writes if the row-update rate becomes a hot spot (comment in `commentaryService.ts`).
