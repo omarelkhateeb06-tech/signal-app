@@ -36,7 +36,7 @@ import {
 export type HeuristicSeamResult = {
   pass: boolean;
   reason?: HeuristicReason;
-  body?: { text: string; truncated: boolean };
+  body?: { text: string; truncated: boolean; imageUrl: string | null };
 };
 
 export interface HeuristicSeamDeps {
@@ -148,6 +148,10 @@ export async function runHeuristicSeam(
 
   return {
     pass: true,
-    body: { text: fetchResult.text, truncated: fetchResult.truncated },
+    body: {
+      text: fetchResult.text,
+      truncated: fetchResult.truncated,
+      imageUrl: fetchResult.imageUrl,
+    },
   };
 }

@@ -97,6 +97,10 @@ export interface Story {
   // so the wire shape is uniform across legacy and ingestion items.
   primary_source_url: string | null;
   sources: Array<{ url: string; name: string | null; role: "primary" | "alternate" }>;
+  // Phase 12k — og:image URL extracted from the source page during
+  // enrichment. Null when no og:image / twitter:image was found; the UI
+  // renders no thumbnail / hero in that case (no placeholder).
+  image_url: string | null;
   published_at: string | null;
   created_at: string;
   author: StoryAuthor | null;

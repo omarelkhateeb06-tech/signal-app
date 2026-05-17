@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
@@ -110,25 +111,45 @@ export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
       style={{ animationDelay: staggerDelay }}
     >
       <Link href={`/stories/${story.id}`} className="group block hover:no-underline">
-        <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink transition-colors duration-150 group-hover:text-accent">
-          {story.headline}
-        </h2>
-        {sourceLabel && (
-          <p className="mb-3 text-xs text-ink-muted">{sourceLabel}</p>
-        )}
-        <p
-          className="mb-4 text-sm leading-relaxed text-ink-muted"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {isCommentaryLoading
-            ? "Generating your briefing…"
-            : primaryParagraph(previewText)}
-        </p>
+        {/* Phase 12k — right-aligned supplemental thumbnail. The headline +
+            commentary stay primary; thumbnail is rendered to the right at
+            a fixed compact size. When story.image_url is null, no slot is
+            reserved (the card lays out exactly as it did pre-12k). */}
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink transition-colors duration-150 group-hover:text-accent">
+              {story.headline}
+            </h2>
+            {sourceLabel && (
+              <p className="mb-3 text-xs text-ink-muted">{sourceLabel}</p>
+            )}
+            <p
+              className="mb-4 text-sm leading-relaxed text-ink-muted"
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {isCommentaryLoading
+                ? "Generating your briefing…"
+                : primaryParagraph(previewText)}
+            </p>
+          </div>
+          {story.image_url && (
+            <Image
+              src={story.image_url}
+              alt=""
+              width={120}
+              height={80}
+              unoptimized
+              loading="lazy"
+              className="flex-none rounded-md object-cover"
+              style={{ width: 120, height: 80 }}
+            />
+          )}
+        </div>
       </Link>
 
       <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">

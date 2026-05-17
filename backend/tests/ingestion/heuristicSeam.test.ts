@@ -28,11 +28,16 @@ function makeRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function fetchOk(text: string, truncated = false): jest.Mock {
+function fetchOk(
+  text: string,
+  truncated = false,
+  imageUrl: string | null = null,
+): jest.Mock {
   return jest.fn().mockResolvedValue({
     success: true,
     text,
     truncated,
+    imageUrl,
   } satisfies BodyExtractionResult);
 }
 
@@ -186,6 +191,24 @@ describe("runHeuristicSeam", () => {
       const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
       expect(result.pass).toBe(true);
       expect(result.body?.truncated).toBe(true);
+    });
+
+    it("propagates imageUrl from fetchBody onto the body shape (12k)", async () => {
+      mock.queueSelect([makeRow()]);
+      const longBody = "x".repeat(800);
+      const fetchBody = fetchOk(longBody, false, "https://cdn.example.com/og.jpg");
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(result.pass).toBe(true);
+      expect(result.body?.imageUrl).toBe("https://cdn.example.com/og.jpg");
+    });
+
+    it("propagates imageUrl=null when fetchBody found no og:image (12k)", async () => {
+      mock.queueSelect([makeRow()]);
+      const longBody = "x".repeat(800);
+      const fetchBody = fetchOk(longBody, false, null);
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(result.pass).toBe(true);
+      expect(result.body?.imageUrl).toBeNull();
     });
   });
 

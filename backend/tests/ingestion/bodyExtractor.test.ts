@@ -260,4 +260,101 @@ describe("fetchAndExtractBody", () => {
       });
     });
   });
+
+  describe("og:image extraction (12k)", () => {
+    it("populates imageUrl from <meta property=\"og:image\">", async () => {
+      const html =
+        '<!doctype html><html><head>' +
+        '<meta property="og:image" content="https://cdn.example.com/og.jpg">' +
+        '</head><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/a", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBe("https://cdn.example.com/og.jpg");
+    });
+
+    it("falls back to twitter:image when og:image is absent", async () => {
+      const html =
+        '<!doctype html><html><head>' +
+        '<meta name="twitter:image" content="https://cdn.example.com/tw.png">' +
+        '</head><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/a", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBe("https://cdn.example.com/tw.png");
+    });
+
+    it("returns imageUrl=null when neither meta tag is present (no error)", async () => {
+      const html =
+        '<!doctype html><html><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/a", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBeNull();
+    });
+
+    it("resolves a relative og:image against the page URL", async () => {
+      const html =
+        '<!doctype html><html><head>' +
+        '<meta property="og:image" content="/static/og.jpg">' +
+        '</head><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/path/article", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBe("https://example.com/static/og.jpg");
+    });
+
+    it("rejects a data: URI og:image and returns null", async () => {
+      const html =
+        '<!doctype html><html><head>' +
+        '<meta property="og:image" content="data:image/png;base64,iVBOR">' +
+        '</head><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/a", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBeNull();
+    });
+
+    it("prefers og:image when both og:image and twitter:image are present", async () => {
+      const html =
+        '<!doctype html><html><head>' +
+        '<meta property="og:image" content="https://cdn.example.com/og.jpg">' +
+        '<meta name="twitter:image" content="https://cdn.example.com/tw.png">' +
+        '</head><body><article><h1>X</h1><p>' +
+        "lorem ipsum ".repeat(200) +
+        "</p></article></body></html>";
+      mockHtml(html);
+      const result = await fetchAndExtractBody("https://example.com/a", {
+        userAgent: DEFAULT_BODY_USER_AGENT,
+      });
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.imageUrl).toBe("https://cdn.example.com/og.jpg");
+    });
+  });
 });
