@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { searchStoriesRequest, type SearchParams } from "@/lib/api";
-import type { SearchResponse, SearchSort } from "@/types/story";
+import type { SearchEnvelope, SearchSort } from "@/types/story";
 
 const DEBOUNCE_MS = 300;
 const MIN_QUERY_LENGTH = 2;
@@ -29,7 +29,7 @@ export function useDebounced<T>(value: T, delay = DEBOUNCE_MS): T {
 
 export interface UseSearchResult {
   debouncedQuery: string;
-  query: UseQueryResult<SearchResponse, Error>;
+  query: UseQueryResult<SearchEnvelope, Error>;
   enabled: boolean;
 }
 
@@ -51,7 +51,7 @@ export function useSearch(input: UseSearchInput): UseSearchResult {
     offset: input.offset,
   };
 
-  const query = useQuery<SearchResponse, Error>({
+  const query = useQuery<SearchEnvelope, Error>({
     queryKey: [
       "search",
       debouncedQuery,

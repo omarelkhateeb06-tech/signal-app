@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { TeamSwitcher } from "@/components/layout/TeamSwitcher";
+import { TrialBadge } from "@/components/layout/TrialBadge";
 
 function initials(name: string | null | undefined, email: string): string {
   const source = name?.trim() || email;
@@ -56,6 +57,7 @@ export function Header(): JSX.Element {
           <Link href="/feed" className="text-muted-foreground hover:text-foreground">
             Feed
           </Link>
+          {user && <TrialBadge />}
           {user && <TeamSwitcher />}
           <button
             type="button"

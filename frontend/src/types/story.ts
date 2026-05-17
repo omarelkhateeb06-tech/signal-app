@@ -22,7 +22,10 @@ export type CommentarySource =
   | "haiku"
   | "fallback_tier1"
   | "fallback_tier2"
-  | "fallback_tier3";
+  | "fallback_tier3"
+  // Phase 12g — free-tier path returns pre-generated role-neutral
+  // commentary directly from the row, skipping Haiku and the cache.
+  | "generic";
 
 // Phase 12d — commentary is structured: thesis renders by default,
 // support reveals via a "Go deeper" affordance. Same shape across
@@ -33,12 +36,47 @@ export interface CommentaryShape {
   support: string;
 }
 
+// Phase 12g — gate envelope shape. Returned in place of the full
+// story / commentary / search payloads when the server applies a
+// paywall gate (story cap, depth restriction, search cap). The
+// frontend discriminates on the `gated` boolean.
+export type GateReason = "story_limit" | "depth" | "search_limit";
+
+export interface GateUpgradeCta {
+  trial_available: boolean;
+  message: string;
+}
+
+export interface GatePayload {
+  gated: true;
+  gate_reason: GateReason;
+  teaser: { headline: string; first_line: string };
+  upgrade_cta: GateUpgradeCta;
+}
+
+// Feed-list gate item. Carries id + sector at the top so list
+// consumers stay correlatable.
+export interface FeedGatedStory extends GatePayload {
+  id: string;
+  sector: Sector | string;
+  gate_reason: "story_limit";
+}
+
+export type FeedItem = (Story & { gated: false }) | FeedGatedStory;
+
+export function isGatedFeedItem(item: FeedItem): item is FeedGatedStory {
+  return item.gated === true;
+}
+
 export interface Story {
   id: string;
   sector: Sector | string;
   headline: string;
   context: string;
   why_it_matters: string;
+  // Phase 12g — discriminant. Full Story payload always carries
+  // `gated: false`; the gated branch is a separate envelope.
+  gated: false;
   // Phase 12b personalization output. Kept on the payload through the
   // 12c rollout so any surface that hasn't been migrated to the
   // lazy-commentary hook still has something to render. Removed in 12d.
@@ -75,14 +113,33 @@ export interface CommentaryResponse {
   depth: "accessible" | "briefed" | "technical";
   profile_version: number;
   source: CommentarySource;
+  gated?: false;
 }
 
 export interface FeedResponse {
-  stories: Story[];
+  stories: FeedItem[];
   total: number;
   has_more: boolean;
   limit: number;
   offset: number;
+}
+
+// Phase 12g — the story detail endpoint returns either the full Story
+// shape (gated:false) or a GatePayload (gated:true, reason:"story_limit").
+export type StoryDetailPayload = Story | GatePayload;
+
+// Commentary endpoint can return either the normal response or a
+// gate envelope (gated:true, reason:"depth").
+export type CommentaryEnvelope = CommentaryResponse | GatePayload;
+
+// Search endpoint returns either results or a gate envelope
+// (gated:true, reason:"search_limit").
+export type SearchEnvelope = SearchResponse | GatePayload;
+
+export function isGatePayload(
+  value: { gated?: boolean } | null | undefined,
+): value is GatePayload {
+  return !!value && value.gated === true;
 }
 
 export interface SavedStory extends Story {
@@ -115,4 +172,7 @@ export interface SearchResponse {
   limit: number;
   offset: number;
   query: string;
+  // Phase 12g discriminant. Present on the wire shape for narrowing
+  // against the SearchEnvelope union; the gated branch is GatePayload.
+  gated?: false;
 }

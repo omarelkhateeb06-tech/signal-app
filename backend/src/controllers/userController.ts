@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { userProfiles, userTopicInterests, users } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
+import { resolveEffectiveTier } from "../middleware/requireTier";
 import {
   ROLES,
   SECTORS,
@@ -361,6 +362,29 @@ export async function updateMe(
     }
 
     res.json({ data: { user } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Phase 12g — tier snapshot for the trial badge / upgrade-CTA copy.
+// Resolves the effective tier (also lazy-downgrades expired pro_trial
+// → free in the same call) and projects the wire fields the UI uses.
+export async function getMyTier(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const result = await resolveEffectiveTier(userId);
+    res.json({
+      data: {
+        tier: result.tier,
+        trial_days_remaining: result.trialDaysRemaining,
+        trial_available: !result.trialStartedAt,
+      },
+    });
   } catch (error) {
     next(error);
   }

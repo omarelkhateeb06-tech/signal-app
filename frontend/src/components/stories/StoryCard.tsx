@@ -8,7 +8,7 @@ import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
 import { Commentary } from "./Commentary";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
-import type { Story } from "@/types/story";
+import { isGatePayload, type Story } from "@/types/story";
 
 function formatDate(value: string | null): string {
   if (!value) return "";
@@ -82,8 +82,16 @@ export function StoryCard({ story }: StoryCardProps): JSX.Element {
   //   3. the 12b why_it_matters_to_you personalization (last-resort string)
   // (3) renders through PersonalizationBox (string-only); (1) and (2)
   // render through Commentary (structured).
-  const resolvedCommentary =
-    commentaryQuery.data?.commentary ?? story.commentary ?? null;
+  // Phase 12g — commentaryQuery.data is `CommentaryEnvelope` (gate-
+  // capable). The gated branch shouldn't normally fire on the feed
+  // card (the feed itself is gated at the row level so this card
+  // wouldn't render), but defensively unwrap with isGatePayload so
+  // we never read .commentary off a GatePayload.
+  const apiCommentary =
+    commentaryQuery.data && !isGatePayload(commentaryQuery.data)
+      ? commentaryQuery.data.commentary
+      : null;
+  const resolvedCommentary = apiCommentary ?? story.commentary ?? null;
   const isCommentaryLoading =
     shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
 

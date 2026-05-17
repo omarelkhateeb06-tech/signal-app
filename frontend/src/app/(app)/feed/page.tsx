@@ -8,8 +8,10 @@ import { useStories } from "@/hooks/useStories";
 import { useTeams } from "@/hooks/useTeams";
 import { useTeamsStore } from "@/store/teamsStore";
 import { StoryCard } from "@/components/stories/StoryCard";
+import { GatedStoryCard } from "@/components/stories/GatedStoryCard";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { extractApiError } from "@/lib/api";
+import { isGatedFeedItem } from "@/types/story";
 
 export default function FeedPage(): JSX.Element {
   const router = useRouter();
@@ -112,9 +114,13 @@ export default function FeedPage(): JSX.Element {
       )}
 
       <div className="space-y-4">
-        {stories.map((story) => (
-          <StoryCard key={story.id} story={story} />
-        ))}
+        {stories.map((story) =>
+          isGatedFeedItem(story) ? (
+            <GatedStoryCard key={story.id} story={story} />
+          ) : (
+            <StoryCard key={story.id} story={story} />
+          ),
+        )}
       </div>
 
       <div ref={sentinelRef} className="h-8" />
