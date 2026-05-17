@@ -3,50 +3,54 @@
 import Link from "next/link";
 import { useTier } from "@/hooks/useTier";
 
-// Phase 12g — header chip for the trial / free-tier status.
+// Phase 12j — trial-state chip in the top nav.
 //
-//   pro_trial → "Pro Trial — X days left". Visually urgent (amber)
-//               when ≤1 day remains, neutral otherwise.
-//   free      → "Free Plan" with an inline "Upgrade" link.
-//   pro       → no chip rendered.
-//   loading   → no chip rendered (chrome shouldn't flash a partial
-//               state on every page load).
+//   pro_trial      → "{N} days left on Pro" pill, accent tint by
+//                    default; amber + breathe animation when ≤1 day.
+//   free           → subtle "Upgrade to Pro" text link (not a banner).
+//   pro / loading  → nothing rendered.
+//
+// "loading" returns null so the chrome doesn't flash a partial state
+// during the initial useTier fetch.
+
 export function TrialBadge(): JSX.Element | null {
   const tierQuery = useTier();
   const data = tierQuery.data;
   if (!data) return null;
-
   if (data.tier === "pro") return null;
 
   if (data.tier === "pro_trial") {
     const days = data.trial_days_remaining ?? 0;
     const urgent = days <= 1;
+    const baseClasses =
+      "inline-flex items-center rounded-pill px-2.5 py-1 text-xs font-medium transition-colors";
+    const toneClasses = urgent
+      ? "border border-warn/40 bg-warn/10 text-warn animate-breathe"
+      : "border border-accent/30 text-accent";
     return (
       <Link
         href="/upgrade"
         data-testid="trial-badge"
-        className={
-          "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium " +
-          (urgent
-            ? "border-amber-300 bg-amber-50 text-amber-900"
-            : "border-violet-200 bg-violet-50 text-violet-900")
+        className={`${baseClasses} ${toneClasses}`}
+        style={
+          urgent
+            ? undefined
+            : { backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)" }
         }
       >
-        Pro Trial — {days} day{days === 1 ? "" : "s"} left
+        {days} day{days === 1 ? "" : "s"} left on Pro
       </Link>
     );
   }
 
   // tier === "free"
   return (
-    <span
-      data-testid="free-plan-badge"
-      className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs text-slate-600"
+    <Link
+      href="/upgrade"
+      data-testid="free-upgrade-link"
+      className="text-sm font-medium text-accent hover:underline"
     >
-      Free Plan
-      <Link href="/upgrade" className="font-medium text-violet-700 hover:underline">
-        Upgrade
-      </Link>
-    </span>
+      Upgrade to Pro
+    </Link>
   );
 }
