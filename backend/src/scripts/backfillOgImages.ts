@@ -26,7 +26,7 @@
 //   npm run backfill-og-images -- --table=events
 
 import "dotenv/config";
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import { eq, isNull } from "drizzle-orm";
 
 import { db } from "../db";
@@ -112,7 +112,14 @@ async function fetchOgImage(url: string): Promise<FetchOgImageResult> {
     }
     let imageUrl: string | null;
     try {
-      const dom = new JSDOM(html, { url });
+      // Silent VirtualConsole — by default jsdom forwards CSS parse
+      // warnings, resource-load errors, and other internal noise from
+      // the parsed page to Node's console. That's the source of the
+      // raw HTML/CSS dump that pollutes the backfill log. A fresh
+      // VirtualConsole with no `sendTo()` swallows it all; the
+      // backfill only cares about extracted meta tags.
+      const virtualConsole = new VirtualConsole();
+      const dom = new JSDOM(html, { url, virtualConsole });
       imageUrl = extractOgImage(dom.window.document, url);
     } catch {
       return { imageUrl: null, reason: "parse_error" };
