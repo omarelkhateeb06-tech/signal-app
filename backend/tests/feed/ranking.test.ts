@@ -183,6 +183,8 @@ describe("getFeed — sector filter (Phase 12f)", () => {
 
     // requireProfile lookup — return a completed profile with NO sectors.
     mock.queueSelect([{ completedAt: new Date("2026-04-01T00:00:00Z") }]);
+    // Phase 12g — tier resolution (defaults to pro to skip gating).
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     // getFeed profile lookup — sectors=[], role=null.
     mock.queueSelect([{ sectors: [], role: null }]);
     // stories query (chronological).
@@ -255,6 +257,8 @@ describe("getFeed — sector filter (Phase 12f)", () => {
   it("ranks the higher-effective_score event above the lower one in the merged page", async () => {
     const token = generateToken(userId, "user@example.com");
     mock.queueSelect([{ completedAt: new Date("2026-04-01T00:00:00Z") }]);
+    // Phase 12g — tier resolution (defaults to pro to skip gating).
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     mock.queueSelect([{ sectors: ["ai"], role: null }]);
     mock.queueSelect([]);
     // Two events with different effectiveScore — verify the merge
@@ -349,6 +353,8 @@ describe("eventHasEnabledSourceExpr — disabled-source filter (hotfix #88)", ()
     // the regression.
     const token = generateToken(userId, "user@example.com");
     mock.queueSelect([{ completedAt: new Date("2026-04-01T00:00:00Z") }]);
+    // Phase 12g — tier resolution (defaults to pro to skip gating).
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     mock.queueSelect([{ sectors: ["ai"], role: null }]);
     mock.queueSelect([]); // stories
     // events: the SQL filter would have excluded any disabled-source
