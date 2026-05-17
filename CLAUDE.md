@@ -20,15 +20,17 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 - Commentary ("why it matters") is authored / generated with three **depth variants** per story — `accessible` (plain-English, free-tier default), `briefed` (working-professional), `technical` (insider). See §8.
 - Personalization in 12b+ layers on top of depth variants — the pipeline is depth → role → (optional) company.
 
-**Pricing (post-12 launch):**
+**Pricing (post-12g launch):** two tiers with a 7-day pro_trial bridge.
 
-| tier     | price        | consumption cap        | depth access                   |
-|----------|--------------|------------------------|--------------------------------|
-| Free     | $0           | **10 stories / day**   | `accessible` only              |
-| Standard | **$10 / mo** | **100 stories / day**  | caller picks any of 3 depths   |
-| Premium  | **$30 / mo** | unlimited              | all depths + Phase 12 extras   |
+| tier        | price        | story cap            | depth access                | commentary path                   |
+|-------------|--------------|----------------------|-----------------------------|-----------------------------------|
+| Free        | $0           | **15 stories / day** | `accessible` only           | pre-generated `generic_commentary` (zero Haiku call) |
+| Pro Trial   | $0 / 7 days  | unlimited            | all three depths            | personalized (12c Haiku pipeline) |
+| Pro         | **$10 / mo** | unlimited            | all three depths            | personalized (12c Haiku pipeline) |
 
-Paywall gating is enforced at the API boundary. Specifics (which endpoints count toward the cap, how resets work, how depth access is signaled) are being designed as part of the 12-series — see §15.
+New signups land in `pro_trial`. After 7 days the trial lazy-downgrades to `free` on the first request past expiry (no cron — see `middleware/requireTier.ts`). A `premium` tier is not in scope for the 12-series; it returns at V3 when there's a real differentiator (a courses library).
+
+Paywall gating is enforced at the API boundary on v1 (12g, current). The v2 public Intelligence API (`/api/v2/*`) is API-key authed with its own per-key rate limit and is **not** subject to user-tier gating — see §9.
 
 **NOT in the product:**
 - **Learning paths are dead.** The Phase 10 checkbox-tracker concept was abandoned. Do not add learning-path code, routes, UI, or references. Some orphan tables exist in the Drizzle schema from an earlier phase — leave them; a future cleanup migration drops them.
@@ -167,7 +169,10 @@ signal-app/
 │   │   │   │   ├── 0012_deprecate_drizzle_migrations_table.sql
 │   │   │   │   ├── 0013_rename_standard_tier.sql
 │   │   │   │   ├── 0014_phase12e1_ingestion_sources.sql
-│   │   │   │   └── 0015_phase12e1_events_and_candidates.sql
+│   │   │   │   ├── 0015_phase12e1_events_and_candidates.sql
+│   │   │   │   ├── 0016–0028 (12e.2 → 12ex sub-session migrations)
+│   │   │   │   ├── 0029_phase12g_user_tier.sql
+│   │   │   │   └── 0030_phase12g_generic_commentary.sql
 │   │   │   ├── seed.ts
 │   │   │   ├── helpers.ts
 │   │   │   └── verify.ts
@@ -529,17 +534,70 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 
 ## 9. PAYWALL & CONSUMPTION
 
-**Status:** designed, not yet enforced in code. The 12-series will wire this up.
+**Status:** enforced as of Phase 12g. Wire is live across v1 endpoints; v2 stays on its own API-key rate limit and is not subject to user-tier gating.
 
-**Policy (product decision, not negotiable without a product call):**
-- Daily consumption counter keyed by user (web) or API key (v2).
-- Resets at 00:00 UTC.
-- A "consumption" is counted on story-detail reads and on API `GET /stories` list responses (per row returned). Feed browsing is free.
-- Free: 10/day, locked to `accessible` depth.
-- Standard ($10/mo): 100/day, free choice of depth.
-- Premium ($30/mo): unlimited, all depths.
+### Tier model
 
-When building a feature that reads stories, ask: does this increment the counter? If unclear, treat it as "yes" and add a TODO linking the 12-series phase that finalizes the rule.
+Backed by three columns on `users` (migration 0029): `tier` (CHECK over `{free, pro_trial, pro}`), `trial_started_at`, `tier_changed_at`. New signups land in `pro_trial` with `trial_started_at = now()`. Trial expiry is **lazy** — the first request past `trial_started_at + 7d` flips `tier` to `'free'` in a single guarded UPDATE inside `resolveEffectiveTier()` (see `backend/src/middleware/requireTier.ts`). No cron.
+
+`resolveEffectiveTier(userId)` is the single point of truth and returns `{tier, trialDaysRemaining, trialStartedAt}`. Controllers call it inline near the top; pro / pro_trial users skip the rest of the paywall code path entirely.
+
+### Limits (v1, free tier)
+
+| surface                   | cap                       | reset    | gate `gate_reason` |
+|---------------------------|---------------------------|----------|--------------------|
+| Story detail / commentary | **15 unique views / UTC day** | 00:00 UTC | `story_limit`      |
+| Depth tiers               | `accessible` only         | n/a      | `depth`            |
+| Search                    | **3 searches / UTC day**  | 00:00 UTC | `search_limit`     |
+| Saved stories             | unlimited                 | n/a      | (no gating)        |
+| Daily digest (12i)        | pro-only                  | n/a      | (gated at the producer) |
+
+A story view counts only on `GET /api/v1/stories/:id` (the detail endpoint). The feed list `GET /api/v1/stories/feed` does **not** burn a view — it returns every row, and rows beyond the cap are replaced inline with a `FeedGatedItem` envelope so the frontend can render a soft-block in place. Re-reading a story already viewed today is free. Saved stories (`row.isSaved`) bypass the cap entirely.
+
+### Storage
+
+Counters live in Redis (`paywall:stories:viewed:<userId>:<utc-date>` is a SET of viewed story IDs; `paywall:searches:<userId>:<utc-date>` is an INCR counter). TTL anchored to next UTC midnight on the first write of the day. Redis-down → **fail-open** (free users get unlimited until Redis comes back; documented in `paywallService.ts` and matches the rate-limiter pattern from §4).
+
+The story-cap path uses SISMEMBER → SCARD → SADD; the three-op sequence is not atomic, so a +1 over-cap race is possible under sustained per-user parallelism. Bounded and accepted (same tolerance as `apiKeyRateLimit`). A Lua script would close the race but the win does not pay for the complexity at 15/day.
+
+### Gate response shape
+
+Wire-uniform across all three reasons:
+
+```json
+{
+  "gated": true,
+  "gate_reason": "story_limit" | "depth" | "search_limit",
+  "teaser": { "headline": "...", "first_line": "..." },
+  "upgrade_cta": { "trial_available": true | false, "message": "..." }
+}
+```
+
+`trial_available` is `true` iff `users.trial_started_at IS NULL` (the user never had a trial). CTA copy branches:
+- `trial_available: true` → `"Get commentary tailored to your role. Try Pro free for 7 days."`
+- `trial_available: false` → `"Upgrade to Pro — $10/month"`
+
+The teaser is the headline + the first sentence of `generic_commentary` (preferred) or `why_it_matters` (fallback). For `search_limit` the teaser is static (`"Search limit reached"` / `"You've used 3 of 3 free searches today."`) — no story context.
+
+### Generic commentary (free-tier read path)
+
+Migration 0030 adds `generic_commentary text` to both `stories` and `events`. Pre-generation:
+- New events: `writeEvent.ts` writes the column at insert time from `tier_outputs.accessible.thesis + " " + tier_outputs.accessible.support`.
+- Existing rows: backfilled via `npm run backfill-generic-commentary` (idempotent — only touches rows where the column is null; derives from the existing accessible variant, falls back to `why_it_matters`).
+
+Free users hitting `GET /api/v1/stories/:id/commentary` skip the Haiku pipeline entirely and read the column directly (`source: "generic"`). Pro / pro_trial users keep the personalized 12c path. The commentary endpoint is the only place where the wire shape differs by tier; feed / detail / search return the same row data for everyone, with the gate envelope replacing it when the cap fires.
+
+### Endpoints touched by paywall
+
+| endpoint | gate behavior |
+|----------|---------------|
+| `GET /api/v1/stories/feed`               | adds per-row `gated` flag for free users; no counter increment |
+| `GET /api/v1/stories/:id`                | increments view set for free users; returns gate envelope when over cap (saved bypass) |
+| `GET /api/v1/stories/:id/commentary`     | depth gate (`?depth=briefed|technical` → gate); free users get generic commentary |
+| `GET /api/v1/stories/search`             | increments search counter for free users; gate envelope on 4th+ search |
+| `GET /api/v1/users/me/tier`              | tier snapshot for the frontend trial badge / CTA copy (12g endpoint) |
+
+When building a new feature that reads stories, ask: does this surface need to gate? If the answer is "yes, free users should be capped here," follow the inline-`resolveEffectiveTier` + `recordOrCheckStoryView` / `recordOrCheckSearch` pattern from the existing call sites.
 
 ---
 
@@ -709,7 +767,7 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 
 **Numbering hygiene.** Before writing any `Closes #N` line in a PR body, referencing `#N` in chat, or running `gh issue close N`, run `gh issue view N` (or `gh pr view N`) to confirm the artifact at that number is the one you mean. A wrong-issue closure shipped on a merged PR in 12c when a session-internal title-number ("GH #25") was treated as a real GH reference — caught and corrected post-merge. Title-numbers and GH numbers do not converge; only `gh`-confirmed numbers go in commit messages, PR bodies, or close actions.
 
-### Shipped (0 through 12c)
+### Shipped (0 through 12g)
 
 | phase | ships                                                                      |
 |-------|----------------------------------------------------------------------------|
@@ -730,27 +788,33 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 | 12a   | depth-variant commentary — schema, parser, regeneration script, v2 projection fix |
 | 12b   | rewritten onboarding questionnaire (7 screens) + `why_it_matters_to_you` rollout-floor template personalization |
 | 12c   | **per-user, per-story commentary** — dated-model Haiku client, `commentary_cache` with `profile_version` invalidation, tiered fallback + banned-phrase enforcement, Settings-side bump on commentary-relevant edits, feed/detail lazy hydration with 8-slot semaphore |
+| 12e   | **ingestion pipeline** — multi-source adapters (RSS, arXiv, SEC EDGAR, HN), chain orchestration with per-stage Sentry tags, embedding seam + cluster check (pgvector), source priority + re-enrichment, admin status route + seed guard |
+| 12f   | rules-based feed ranking v1 — effective_score with cluster amplification, freshness bonus, EDGAR penalty; disabled-source filter |
+| 12g   | **paywall + 2-tier model** — user tier model with lazy trial downgrade, story cap (15/day) + soft-block, depth gate (free → accessible only) with inline upgrade, search cap (3/day) modal, generic_commentary pre-gen + free-tier read path, /upgrade page + trial badge, /me/tier endpoint |
 
 Phase 10 (learning paths) was abandoned. Do not resurrect.
 
 ### Current roadmap — Phase 12 series (through launch)
 
-The 12-series is the push to public launch — every sub-phase is load-bearing for "can a stranger sign up and pay." Early slots (12a–12d) are the personalized-commentary surface area. **12e is the ingestion pipeline — the load-bearing infrastructure item that replaces hand-curated `stories.json` as the content source.** Later slots wire up paywall, billing, digest personalization, and launch polish.
+The 12-series is the push to public launch — every sub-phase is load-bearing for "can a stranger sign up and pay." Early slots (12a–12d) layer personalized commentary; 12e is the ingestion pipeline; 12f–12g layer ranking and paywall on top; 12h–12i bring billing and digest.
 
 | sub-phase | scope                                                                                   |
 |-----------|-----------------------------------------------------------------------------------------|
 | **12a** (shipped) | depth-variant schema + offline regeneration                                     |
 | **12b** (shipped) | 7-screen onboarding questionnaire + `why_it_matters_to_you` template floor      |
 | **12c** (shipped) | per-user, per-story commentary — Haiku request path, cache with `profile_version`, Settings bump, feed/detail hydration (see §8 "Phase 12c") |
-| 12d       | depth-selector UI on story detail + feed (pick depth per-view, backed by the 12c cache entry for that (user, story, depth, profile_version)) |
-| **12e**   | **ingestion pipeline — raw-source crawl → editorial-review queue → published stories.** Replaces `seed-data/stories.json` as the sole content source. Launch blocker. |
-| 12f–12i   | paywall enforcement, Stripe/billing, depth-aware digest, launch polish (marketing/pricing pages, onboarding redesign, support inbox). Interior ordering not yet pinned — decide at the start of each session. |
+| 12d       | depth-selector UI on story detail + feed (pick depth per-view). **Partially shipped** in 12g — `DepthToggle` component lives in the frontend with free-tier lock + inline upgrade; the explicit ?depth= override path was already in 12c. Outstanding: 12d would add depth as a non-paywall surface concern (e.g. feed-level depth pick for pro users). |
+| **12e** (shipped) | ingestion pipeline — multi-source adapters, chain orchestration, pgvector clustering, source priority |
+| **12f** (shipped) | rules-based feed ranking v1 + disabled-source filter                            |
+| **12g** (shipped) | paywall + 2-tier model — see §9. Replaced the prior 3-tier (Free/Standard/Premium) plan with Free / Pro + 7-day pro_trial bridge. |
+| **12h**   | **Stripe / billing wiring** — replaces /upgrade's "Coming soon" button with the real payment flow; activates `tier='pro'` post-checkout. |
+| **12i**   | **Daily digest email** — pro-only surface; tier gate already in place via `resolveEffectiveTier`. |
 
-Ordering 12a→12e is fixed. Do not pull 12f–12i work ahead of 12e; the ingestion pipeline is the dependency that makes the paywall economics real.
+Ordering through 12g is fixed history. 12h is the immediate next major slot; 12i can land in parallel since it doesn't share surfaces.
 
-Known 12c follow-ups (tracked inline as TODO comments, not blockers):
+Known 12c / 12g follow-ups (tracked inline as TODO comments, not blockers):
 - **12c.1** — `last_accessed_at` on `commentary_cache` is written on every cache hit; consider opportunistic/throttled writes if the row-update rate becomes a hot spot (comment in `commentaryService.ts`).
-- **12d** — ship the depth-selector UI; the endpoint already honors an explicit `?depth=` query and maintains separate cache entries per depth via the composite key.
+- **12g.1** — backfill `generic_commentary` for production stories + events. Run `npm run backfill-generic-commentary` (idempotent) once after migration 0030 deploys. Pre-12g rows fall back to `why_it_matters` until the script runs.
 
 `docs/ROADMAP.md` is stale (last updated during Phase 11c kickoff) — refresh it in a dedicated cleanup pass; treat CLAUDE.md as authoritative for 12-series state today.
 

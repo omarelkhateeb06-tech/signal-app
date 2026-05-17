@@ -1,6 +1,8 @@
 # SIGNAL — v2 API Reference
 
-Authoritative reference for the `/api/v2/*` Intelligence API. All endpoints require a self-service API key (`X-API-Key: sgnl_live_...`) and are subject to per-key rate limiting (60 req/min, fail-open on Redis outage).
+Authoritative reference for the `/api/v2/*` Intelligence API. All endpoints require a self-service API key (`X-API-Key: sgnl_live_...`) and are subject to per-key rate limiting (300 req/min, fail-open on Redis outage).
+
+**Scope note (Phase 12g+):** The user-facing paywall (Free / Pro tiers, daily caps, depth gates, search caps) is a v1 concern only. The v2 Intelligence API stays API-key-authed with its own per-key rate limit and is NOT subject to user-tier gating — mixing them is a different problem (an API key isn't a user). v1 paywall details: see CLAUDE.md §9 and §11 "Endpoints touched by paywall." The v1 `/me/tier` snapshot endpoint is documented in CLAUDE.md §9, not here.
 
 Error envelope (all endpoints):
 
