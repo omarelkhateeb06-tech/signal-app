@@ -11,7 +11,7 @@
 // User-Agent: caller provides. Falls back to a per-stage default if
 // the source's config.userAgent is unset upstream.
 
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import { Readability } from "@mozilla/readability";
 
 import { BODY_SIZE_CAP_BYTES, HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
@@ -181,10 +181,19 @@ export async function fetchAndExtractBody(
 
   // Parse with jsdom and run readability. The same parsed document also
   // feeds the og:image extractor — single DOM parse, two consumers.
+  //
+  // Silent VirtualConsole: by default jsdom forwards every CSS parse
+  // warning, resource-load error, and script-runtime message from the
+  // parsed page to Node's `console`. In the worker that's a stream of
+  // junk into Railway logs (and into local-test stdout) on every
+  // enrichment. A fresh VirtualConsole with no sendTo() drops it all;
+  // bodyExtractor only consumes the DOM via querySelector + readability,
+  // neither of which depends on those events.
   let textContent: string;
   let imageUrl: string | null = null;
   try {
-    const dom = new JSDOM(html, { url });
+    const virtualConsole = new VirtualConsole();
+    const dom = new JSDOM(html, { url, virtualConsole });
     // Pull og:image first — readability's parse() can mutate document
     // structure (or, on some pages, throw). Doing meta-tag extraction
     // before readability isolates the cheap, reliable pass from the
