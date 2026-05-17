@@ -11,13 +11,14 @@ import type {
   UserProfile,
 } from "@/types/auth";
 import type {
-  CommentaryResponse,
+  CommentaryEnvelope,
   FeedResponse,
   SaveToggleResponse,
   SavedStoriesResponse,
-  SearchResponse,
+  SearchEnvelope,
   SearchSort,
   Story,
+  StoryDetailPayload,
 } from "@/types/story";
 import type { Comment, CommentList } from "@/types/comment";
 import type {
@@ -160,6 +161,24 @@ export async function updateMeRequest(input: UpdateUserInput): Promise<AuthUser>
   return res.data.data.user;
 }
 
+// Phase 12g — tier snapshot for the trial badge / upgrade-CTA copy.
+// `tier` is the effective tier (server lazy-downgrades expired
+// pro_trial → free in this call). `trial_days_remaining` is non-null
+// only for `pro_trial`. `trial_available` is true iff the user has
+// never started a trial (drives "Start Free Trial" vs "Upgrade to
+// Pro" copy).
+export type ApiTier = "free" | "pro_trial" | "pro";
+export interface TierSnapshot {
+  tier: ApiTier;
+  trial_days_remaining: number | null;
+  trial_available: boolean;
+}
+
+export async function getMyTierRequest(): Promise<TierSnapshot> {
+  const res = await api.get<{ data: TierSnapshot }>("/api/v1/users/me/tier");
+  return res.data.data;
+}
+
 export interface EmailPreferencesInput {
   email_frequency?: EmailFrequency;
   email_unsubscribed?: boolean;
@@ -210,8 +229,10 @@ export async function getFeedRequest(params: FeedParams = {}): Promise<FeedRespo
   return res.data.data;
 }
 
-export async function getStoryRequest(id: string): Promise<Story> {
-  const res = await api.get<{ data: { story: Story } }>(`/api/v1/stories/${id}`);
+export async function getStoryRequest(id: string): Promise<StoryDetailPayload> {
+  const res = await api.get<{ data: { story: StoryDetailPayload } }>(
+    `/api/v1/stories/${id}`,
+  );
   return res.data.data.story;
 }
 
@@ -223,8 +244,8 @@ export async function getStoryRequest(id: string): Promise<Story> {
 export async function getStoryCommentaryRequest(
   id: string,
   depth?: "accessible" | "briefed" | "technical",
-): Promise<CommentaryResponse> {
-  const res = await api.get<{ data: CommentaryResponse }>(
+): Promise<CommentaryEnvelope> {
+  const res = await api.get<{ data: CommentaryEnvelope }>(
     `/api/v1/stories/${id}/commentary`,
     { params: depth ? { depth } : undefined },
   );
@@ -282,7 +303,7 @@ export interface SearchParams {
 
 export async function searchStoriesRequest(
   params: SearchParams,
-): Promise<SearchResponse> {
+): Promise<SearchEnvelope> {
   const query: Record<string, string> = { q: params.q };
   if (params.sector) query.sector = params.sector;
   if (params.from_date) query.from_date = params.from_date;
@@ -290,7 +311,7 @@ export async function searchStoriesRequest(
   if (params.sort) query.sort = params.sort;
   if (params.limit !== undefined) query.limit = String(params.limit);
   if (params.offset !== undefined) query.offset = String(params.offset);
-  const res = await api.get<{ data: SearchResponse }>(
+  const res = await api.get<{ data: SearchEnvelope }>(
     "/api/v1/stories/search",
     { params: query },
   );

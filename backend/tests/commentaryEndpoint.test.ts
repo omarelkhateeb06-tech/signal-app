@@ -71,6 +71,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
   });
 
   it("returns 400 when the user has no profile row (pre-onboarding direct link)", async () => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]); // Phase 12g tier resolution
     mock.queueSelect([]); // empty profile lookup
 
     const res = await request(app)
@@ -83,6 +84,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
   });
 
   it("happy path: passes stored depth_preference + profileVersion to the service and returns the JSON envelope", async () => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]); // tier
     mock.queueSelect([
       { depthPreference: "technical", profileVersion: 4 },
     ]);
@@ -117,6 +119,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
   it("explicit ?depth= query override beats the stored preference", async () => {
     // User's stored preference is "accessible" but they're asking for
     // "technical" (e.g. Premium depth selector on story detail).
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]); // tier
     mock.queueSelect([
       { depthPreference: "accessible", profileVersion: 1 },
     ]);
@@ -136,6 +139,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
   });
 
   it("falls back to 'accessible' when the user has no depth preference stored", async () => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]); // tier
     mock.queueSelect([
       { depthPreference: null, profileVersion: 1 },
     ]);
@@ -165,6 +169,7 @@ describe("GET /api/v1/stories/:id/commentary", () => {
   });
 
   it("maps 'story not found' from the service layer to a proper 404", async () => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]); // tier
     mock.queueSelect([
       { depthPreference: "briefed", profileVersion: 1 },
     ]);
@@ -178,5 +183,189 @@ describe("GET /api/v1/stories/:id/commentary", () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+  });
+
+  describe("Phase 12g depth gating", () => {
+    it("returns the depth gate envelope when a free user requests ?depth=briefed", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: new Date("2026-04-01T00:00:00Z") }]);
+      // Gate path: story fetch for teaser. Stories table hit.
+      mock.queueSelect([
+        { headline: "Frontier model release", whyItMatters: "Compute costs fall. Then they rise." },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=briefed`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        gated: true,
+        gate_reason: "depth",
+        teaser: {
+          headline: "Frontier model release",
+          first_line: "Compute costs fall.",
+        },
+        upgrade_cta: {
+          trial_available: false, // trial_started_at is set
+          message: expect.stringContaining("$10/month"),
+        },
+      });
+      expect(getOrGenerateCommentaryMock).not.toHaveBeenCalled();
+    });
+
+    it("returns the depth gate envelope when a free user requests ?depth=technical", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]); // never trialed
+      mock.queueSelect([
+        { headline: "Wafer demand", whyItMatters: "Supply tightens." },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=technical`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.gated).toBe(true);
+      expect(res.body.data.gate_reason).toBe("depth");
+      // trial_started_at is null → trial_available is true → trial CTA.
+      expect(res.body.data.upgrade_cta.trial_available).toBe(true);
+      expect(res.body.data.upgrade_cta.message).toContain("free for 7 days");
+    });
+
+    it("falls back to events table for the teaser when story lookup misses", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([]); // stories miss
+      mock.queueSelect([
+        { headline: "Event headline", whyItMatters: "Event impact." },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=briefed`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.teaser.headline).toBe("Event headline");
+    });
+
+    it("returns 404 from the depth gate path when neither stories nor events have the id", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([]); // stories miss
+      mock.queueSelect([]); // events miss
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=briefed`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    it("free user with stored depth_preference=briefed gets generic_commentary (no Haiku call)", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: new Date("2026-04-01T00:00:00Z") }]);
+      // Phase 12g free-user path: SELECT on stories for the generic
+      // commentary text. profile lookup is skipped.
+      mock.queueSelect([
+        {
+          whyItMatters: "Fallback role-neutral text.",
+          genericCommentary: "Compute is cheaper. Models are everywhere.",
+        },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.depth).toBe("accessible");
+      expect(res.body.data.source).toBe("generic");
+      expect(res.body.data.commentary.thesis).toBe(
+        "Compute is cheaper. Models are everywhere.",
+      );
+      expect(res.body.data.commentary.support).toBe("");
+      expect(getOrGenerateCommentaryMock).not.toHaveBeenCalled();
+    });
+
+    it("admits a free user requesting ?depth=accessible explicitly with generic commentary", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([
+        {
+          whyItMatters: "Fallback.",
+          genericCommentary: "Generic body for free users.",
+        },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=accessible`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.gated).toBeUndefined();
+      expect(res.body.data.source).toBe("generic");
+      expect(res.body.data.commentary.thesis).toBe(
+        "Generic body for free users.",
+      );
+      expect(getOrGenerateCommentaryMock).not.toHaveBeenCalled();
+    });
+
+    it("free user falls back to why_it_matters when generic_commentary is null", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([
+        { whyItMatters: "Role-neutral fallback text.", genericCommentary: null },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.commentary.thesis).toBe(
+        "Role-neutral fallback text.",
+      );
+    });
+
+    it("free user falls through to events table when stories miss", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([]); // stories miss
+      mock.queueSelect([
+        { whyItMatters: "Event neutral.", genericCommentary: "Event generic." },
+      ]);
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.commentary.thesis).toBe("Event generic.");
+    });
+
+    it("free user returns 404 when neither stories nor events have the id", async () => {
+      mock.queueSelect([{ tier: "free", trialStartedAt: null }]);
+      mock.queueSelect([]); // stories miss
+      mock.queueSelect([]); // events miss
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("STORY_NOT_FOUND");
+    });
+
+    it("pro_trial user is NOT gated on ?depth=technical", async () => {
+      mock.queueSelect([{ tier: "pro_trial", trialStartedAt: new Date(Date.now() - 86_400_000) }]);
+      mock.queueSelect([{ depthPreference: "accessible", profileVersion: 1 }]);
+      getOrGenerateCommentaryMock.mockResolvedValueOnce({
+        commentary: { thesis: "…", support: "…" },
+        depth: "technical",
+        profileVersion: 1,
+        source: "haiku",
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${storyId}/commentary?depth=technical`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(getOrGenerateCommentaryMock.mock.calls[0][0].depth).toBe("technical");
+    });
   });
 });

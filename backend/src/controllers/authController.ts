@@ -50,9 +50,19 @@ export async function signup(req: Request, res: Response, next: NextFunction): P
     const passwordHash = await hashPassword(password);
 
     const inserted = await db.transaction(async (tx) => {
+      // Phase 12g — new signups land in `pro_trial` with the 7-day
+      // window anchored to signup time. `tier` has a DB-level DEFAULT
+      // of 'pro_trial' (migration 0029) so the value is set
+      // explicitly here for read-clarity, not for correctness.
       const [user] = await tx
         .insert(users)
-        .values({ email, passwordHash, name })
+        .values({
+          email,
+          passwordHash,
+          name,
+          tier: "pro_trial",
+          trialStartedAt: new Date(),
+        })
         .returning({ id: users.id, email: users.email, name: users.name });
       if (!user) {
         throw new AppError("SIGNUP_FAILED", "Failed to create user", 500);

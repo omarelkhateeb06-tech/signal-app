@@ -1,12 +1,19 @@
 "use client";
 
-import { ExternalLink, MessageSquare } from "lucide-react";
+import { useState } from "react";
+import { ExternalLink, Lock, MessageSquare } from "lucide-react";
 import { SectorBadge } from "./SectorBadge";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
 import { Commentary } from "./Commentary";
-import { useStoryCommentary } from "@/hooks/useStoryCommentary";
-import type { Story } from "@/types/story";
+import { DepthToggle } from "./DepthToggle";
+import { UpgradeCtaButton } from "./UpgradeCta";
+import {
+  useStoryCommentary,
+  type DepthOverride,
+} from "@/hooks/useStoryCommentary";
+import { useTier } from "@/hooks/useTier";
+import { isGatePayload, type Story } from "@/types/story";
 
 function formatDate(value: string | null): string {
   if (!value) return "";
@@ -26,17 +33,37 @@ interface StoryDetailProps {
 export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
   const date = formatDate(story.published_at ?? story.created_at);
 
-  // Detail is a single-story surface — fire the commentary fetch
-  // immediately rather than gating on IntersectionObserver. The
-  // 8-slot semaphore still protects against an unlikely burst (e.g. a
-  // user rapidly cmd-clicking multiple story links into new tabs,
-  // each of which wakes a detail page that mounts this hook).
-  const commentaryQuery = useStoryCommentary(story.id, { enabled: true });
+  // Phase 12g — tier drives the depth-toggle lock + the inline upgrade
+  // prompt for free users who click a locked tier.
+  const tierQuery = useTier();
+  const isFree = tierQuery.data?.tier === "free";
+  const trialAvailable = tierQuery.data?.trial_available ?? false;
+
+  // Depth toggle state — defaults to accessible. Free users tapping
+  // briefed/technical never reach onSelect; they go through
+  // onLockedClick which sets a sticky inline-upgrade flag instead.
+  const [depth, setDepth] = useState<DepthOverride>("accessible");
+  const [lockedAttempt, setLockedAttempt] = useState<DepthOverride | null>(null);
+
+  const commentaryQuery = useStoryCommentary(story.id, {
+    enabled: true,
+    depth,
+  });
+
+  // Defensive: if the server ever returns a depth-gate envelope on
+  // this path (shouldn't if the toggle blocks free clicks, but a
+  // direct API caller or an out-of-sync client could trigger it), we
+  // surface the inline prompt rather than rendering empty commentary.
+  const serverGate = isGatePayload(commentaryQuery.data) ? commentaryQuery.data : null;
 
   const resolvedCommentary =
-    commentaryQuery.data?.commentary ?? story.commentary ?? null;
+    commentaryQuery.data && !isGatePayload(commentaryQuery.data)
+      ? commentaryQuery.data.commentary
+      : (story.commentary ?? null);
   const isCommentaryLoading =
-    resolvedCommentary === null && commentaryQuery.isFetching;
+    !serverGate &&
+    resolvedCommentary === null &&
+    commentaryQuery.isFetching;
 
   return (
     <article className="space-y-6">
@@ -53,14 +80,50 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </div>
       </header>
 
-      {resolvedCommentary ? (
-        <Commentary commentary={resolvedCommentary} />
-      ) : (
-        <PersonalizationBox
-          text={story.why_it_matters_to_you}
-          loading={isCommentaryLoading}
+      <div className="space-y-3">
+        <DepthToggle
+          value={depth}
+          onSelect={(d) => {
+            setLockedAttempt(null);
+            setDepth(d);
+          }}
+          lockHigherTiers={isFree}
+          onLockedClick={(d) => setLockedAttempt(d)}
         />
-      )}
+
+        {/* Phase 12g — inline upgrade prompt when a free user clicks a
+            locked depth tier OR if a server-side depth gate envelope
+            slips through (defensive). Falls through to the normal
+            commentary render otherwise. */}
+        {lockedAttempt || serverGate ? (
+          <div className="rounded-md border border-violet-200 bg-violet-50 p-4">
+            <div className="mb-3 flex items-start gap-2 text-sm text-violet-900">
+              <Lock className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
+              <span>
+                {serverGate?.upgrade_cta.message ??
+                  (trialAvailable
+                    ? "Get commentary tailored to your role. Try Pro free for 7 days."
+                    : "Upgrade to Pro — $10/month")}
+              </span>
+            </div>
+            <UpgradeCtaButton
+              cta={
+                serverGate?.upgrade_cta ?? {
+                  trial_available: trialAvailable,
+                  message: "",
+                }
+              }
+            />
+          </div>
+        ) : resolvedCommentary ? (
+          <Commentary commentary={resolvedCommentary} />
+        ) : (
+          <PersonalizationBox
+            text={story.why_it_matters_to_you}
+            loading={isCommentaryLoading}
+          />
+        )}
+      </div>
 
       {/*
         Phase 12e.7b — discrete coverage list for multi-source events.

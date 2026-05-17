@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getMyProfile,
+  getMyTier,
   updateMe,
   updateMyProfile,
 } from "../controllers/userController";
@@ -14,4 +15,5 @@ usersRouter.use(requireAuth);
 usersRouter.get("/me/profile", getMyProfile);
 usersRouter.put("/me/profile", updateMyProfile);
 usersRouter.get("/me/saves", listMySaves);
+usersRouter.get("/me/tier", getMyTier);
 usersRouter.put("/me", updateMe);

@@ -11,7 +11,19 @@ import {
   writers,
 } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
+import { resolveEffectiveTier } from "../middleware/requireTier";
 import { personalizeStory } from "../services/personalizationService";
+import {
+  buildGatePayload,
+  buildSearchLimitGate,
+  buildUpgradeCta,
+  FREE_TIER_STORY_CAP,
+  getViewedStoryIds,
+  recordOrCheckSearch,
+  recordOrCheckStoryView,
+  teaserFirstLine,
+  type GatePayload,
+} from "../services/paywallService";
 import {
   EDGAR_PENALTY,
   EDGAR_SOURCE_SLUGS,
@@ -59,6 +71,7 @@ interface StoryRow {
   context: string;
   whyItMatters: string;
   whyItMattersTemplate: string | null;
+  genericCommentary: string | null;
   sourceUrl: string;
   sourceName: string | null;
   publishedAt: Date | null;
@@ -78,6 +91,11 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     headline: row.headline,
     context: row.context,
     why_it_matters: row.whyItMatters,
+    // Phase 12g — gating discriminant. Full story shape carries
+    // `gated: false`; the gated branch returns a different envelope
+    // entirely (see GatePayload). Wire-level TypeScript consumers
+    // discriminate on this field.
+    gated: false as const,
     // Phase 12b personalization output — kept on the payload for
     // backward compatibility through the 12c rollout. The 12c client
     // prefers `commentary` once it arrives; the 12b field will be
@@ -129,6 +147,7 @@ interface EventRow {
   context: string;
   whyItMatters: string;
   whyItMattersTemplate: string | null;
+  genericCommentary: string | null;
   primarySourceUrl: string;
   primarySourceName: string | null;
   publishedAt: Date | null;
@@ -162,6 +181,7 @@ function shapeEvent(
     headline: row.headline,
     context: row.context,
     why_it_matters: row.whyItMatters,
+    gated: false as const,
     why_it_matters_to_you: personalizeStory({
       whyItMatters: row.whyItMatters,
       whyItMattersTemplate: row.whyItMattersTemplate,
@@ -362,6 +382,7 @@ const baseStoryColumns = {
   context: stories.context,
   whyItMatters: stories.whyItMatters,
   whyItMattersTemplate: stories.whyItMattersTemplate,
+  genericCommentary: stories.genericCommentary,
   sourceUrl: stories.sourceUrl,
   sourceName: stories.sourceName,
   publishedAt: stories.publishedAt,
@@ -371,10 +392,53 @@ const baseStoryColumns = {
   authorBio: writers.bio,
 };
 
+// Phase 12g — gate envelope shape returned in `data.stories[]` for free
+// users when a row is over the daily cap. Carries id + sector so the
+// frontend's array consumers stay correlatable; the detail-endpoint
+// equivalent (no id/sector) is in services/paywallService.ts.
+interface FeedGatedItem {
+  id: string;
+  sector: string;
+  gated: true;
+  gate_reason: "story_limit";
+  teaser: { headline: string; first_line: string };
+  upgrade_cta: { trial_available: boolean; message: string };
+}
+
+function gatedFeedItem(
+  id: string,
+  sector: string,
+  headline: string,
+  whyItMatters: string,
+  genericCommentary: string | null,
+  trialAvailable: boolean,
+): FeedGatedItem {
+  return {
+    id,
+    sector,
+    gated: true,
+    gate_reason: "story_limit",
+    teaser: {
+      headline,
+      first_line: teaserFirstLine(whyItMatters, genericCommentary),
+    },
+    upgrade_cta: buildUpgradeCta(trialAvailable),
+  };
+}
+
 export async function getFeed(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = requireUserId(req);
     const { sectors: requestedSectors, limit, offset } = feedQuerySchema.parse(req.query);
+
+    // Phase 12g — resolve tier first so the rest of the controller can
+    // branch on it. The DB read also handles lazy-downgrade of expired
+    // pro_trial → free (see middleware/requireTier.ts). For pro /
+    // pro_trial users this is the only paywall-related work; no Redis
+    // call, no per-row gate flags.
+    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
+    const isFree = tier === "free";
+    const trialAvailable = !trialStartedAt;
 
     const [profile] = await db
       .select({ sectors: userProfiles.sectors, role: userProfiles.role })
@@ -430,6 +494,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         context: events.context,
         whyItMatters: events.whyItMatters,
         whyItMattersTemplate: events.whyItMattersTemplate,
+        genericCommentary: events.genericCommentary,
         primarySourceUrl: events.primarySourceUrl,
         primarySourceName: events.primarySourceName,
         publishedAt: events.publishedAt,
@@ -516,15 +581,39 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     const total =
       Number(storiesCountRow?.count ?? 0) + Number(eventsCountRow?.count ?? 0);
 
-    const shaped = pageItems.map((m) =>
-      m._type === "story"
+    // Phase 12g — free-tier per-row gate flagging. The feed always
+    // returns every row (headlines stay visible per spec; the frontend
+    // renders a soft-block over the gated cards). One SMEMBERS read
+    // for the viewed-today set; rows whose id is NOT in the set AND
+    // the user is already at cap get the gate envelope. Saved rows
+    // (row.isSaved) bypass the cap entirely. Redis-down fail-open:
+    // snapshot.available=false → no rows gated this turn.
+    const viewedSnapshot = isFree
+      ? await getViewedStoryIds(userId)
+      : { ids: new Set<string>(), count: 0, available: false };
+    const overCap =
+      isFree && viewedSnapshot.available && viewedSnapshot.count >= FREE_TIER_STORY_CAP;
+
+    const shaped = pageItems.map((m): Record<string, unknown> | FeedGatedItem => {
+      const row = m.row;
+      if (overCap && !row.isSaved && !viewedSnapshot.ids.has(row.id)) {
+        return gatedFeedItem(
+          row.id,
+          row.sector,
+          row.headline,
+          row.whyItMatters,
+          row.genericCommentary,
+          trialAvailable,
+        );
+      }
+      return m._type === "story"
         ? shapeStory(m.row, profile?.role ?? null)
         : shapeEvent(
             m.row,
             profile?.role ?? null,
             sourcesByEventId.get(m.row.id) ?? [],
-          ),
-    );
+          );
+    });
 
     res.json({
       data: {
@@ -540,6 +629,36 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
   }
 }
 
+/**
+ * Phase 12g — shared cap-gate decision for the detail endpoint. For a
+ * free user, increments the daily viewed-set and returns the gate
+ * envelope if the user is over cap on a story they haven't already
+ * viewed today. Saved-story bypass: `row.isSaved` short-circuits the
+ * gating per the spec ("Saved stories: Available on all tiers"). Pro
+ * and pro_trial users always return null. Redis-down returns null
+ * (fail-open).
+ */
+async function maybeGateDetail(args: {
+  userId: string;
+  tier: "free" | "pro_trial" | "pro";
+  trialAvailable: boolean;
+  id: string;
+  isSaved: boolean;
+  headline: string;
+  whyItMatters: string;
+  genericCommentary: string | null;
+}): Promise<GatePayload | null> {
+  if (args.tier !== "free" || args.isSaved) return null;
+  const decision = await recordOrCheckStoryView(args.userId, args.id);
+  if (!decision.gated) return null;
+  return buildGatePayload(
+    "story_limit",
+    args.headline,
+    teaserFirstLine(args.whyItMatters, args.genericCommentary),
+    args.trialAvailable,
+  );
+}
+
 export async function getStoryById(
   req: Request,
   res: Response,
@@ -548,6 +667,10 @@ export async function getStoryById(
   try {
     const userId = requireUserId(req);
     const { id } = idParamSchema.parse(req.params);
+
+    // Phase 12g — same lazy-downgrade-on-read pattern as getFeed.
+    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
+    const trialAvailable = !trialStartedAt;
 
     const [profile] = await db
       .select({ role: userProfiles.role })
@@ -598,6 +721,21 @@ export async function getStoryById(
         throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
       }
 
+      const gate = await maybeGateDetail({
+        userId,
+        tier,
+        trialAvailable,
+        id: eventRow.id,
+        isSaved: eventRow.isSaved,
+        headline: eventRow.headline,
+        whyItMatters: eventRow.whyItMatters,
+        genericCommentary: eventRow.genericCommentary,
+      });
+      if (gate) {
+        res.json({ data: { story: gate } });
+        return;
+      }
+
       const sources = await db
         .select({
           url: eventSources.url,
@@ -610,6 +748,21 @@ export async function getStoryById(
       res.json({
         data: { story: shapeEvent(eventRow, profile?.role ?? null, sources) },
       });
+      return;
+    }
+
+    const gate = await maybeGateDetail({
+      userId,
+      tier,
+      trialAvailable,
+      id: row.id,
+      isSaved: row.isSaved,
+      headline: row.headline,
+      whyItMatters: row.whyItMatters,
+      genericCommentary: row.genericCommentary,
+    });
+    if (gate) {
+      res.json({ data: { story: gate } });
       return;
     }
 
@@ -802,6 +955,18 @@ export async function searchStories(
   try {
     const userId = requireUserId(req);
     const parsed = searchQuerySchema.parse(req.query);
+
+    // Phase 12g — free-tier search cap (3/day). Tier resolved before
+    // any expensive search work; the counter only fires for free
+    // users, so pro / pro_trial pay only the users-row SELECT.
+    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
+    if (tier === "free") {
+      const decision = await recordOrCheckSearch(userId);
+      if (decision.gated) {
+        res.json({ data: buildSearchLimitGate(!trialStartedAt) });
+        return;
+      }
+    }
 
     const fromDate = parsed.from_date
       ? parseBoundaryDate(parsed.from_date, false)

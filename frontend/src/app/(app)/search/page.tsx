@@ -11,10 +11,11 @@ import {
 } from "@/hooks/useSearch";
 import { SearchFilters } from "@/components/search/SearchFilters";
 import { SearchResultCard } from "@/components/search/SearchResultCard";
+import { SearchLimitModal } from "@/components/search/SearchLimitModal";
 import { extractApiError } from "@/lib/api";
 import { extractHighlightTerms } from "@/lib/highlight";
 import { SECTORS } from "@/lib/onboarding";
-import type { SearchSort } from "@/types/story";
+import { isGatePayload, type SearchSort } from "@/types/story";
 
 const PAGE_SIZE = 20;
 
@@ -63,15 +64,28 @@ export default function SearchPage(): JSX.Element {
     offset,
   });
 
+  // Phase 12g — search-limit gate envelope from a free user's 4th
+  // query. Surfaced as a dismissable modal; the modal can be closed
+  // (dismiss handler clears `dismissedGate`) but the search results
+  // stay empty until the day's counter rolls.
+  const gate = isGatePayload(searchQuery.data) ? searchQuery.data : null;
+  const [dismissedGate, setDismissedGate] = useState(false);
   useEffect(() => {
-    if (!enabled) return;
-    if (searchQuery.isSuccess && searchQuery.data?.query) {
-      setRecent(saveRecentSearch(searchQuery.data.query));
+    // Re-show the modal on each fresh gated response.
+    if (gate) setDismissedGate(false);
+  }, [gate]);
+
+  useEffect(() => {
+    if (!enabled || gate) return;
+    const data = searchQuery.data;
+    if (searchQuery.isSuccess && data && !isGatePayload(data) && data.query) {
+      setRecent(saveRecentSearch(data.query));
     }
-  }, [enabled, searchQuery.isSuccess, searchQuery.data?.query]);
+  }, [enabled, searchQuery.isSuccess, searchQuery.data, gate]);
 
   const terms = useMemo(() => extractHighlightTerms(debouncedQuery), [debouncedQuery]);
-  const results = searchQuery.data;
+  const results =
+    searchQuery.data && !isGatePayload(searchQuery.data) ? searchQuery.data : null;
   const total = results?.total ?? 0;
   const hasMore = results?.has_more ?? false;
 
@@ -278,6 +292,10 @@ export default function SearchPage(): JSX.Element {
           )}
         </section>
       </div>
+
+      {gate && !dismissedGate && (
+        <SearchLimitModal gate={gate} onDismiss={() => setDismissedGate(true)} />
+      )}
     </div>
   );
 }

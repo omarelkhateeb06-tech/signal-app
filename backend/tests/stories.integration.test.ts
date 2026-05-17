@@ -63,6 +63,15 @@ describe("stories endpoints", () => {
     mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
   };
 
+  // Phase 12g: getFeed and getStoryById both resolve the effective
+  // tier via a users-row SELECT immediately after requireProfile (feed)
+  // or as the first DB call (detail). Tests that don't exercise the
+  // free-tier gating default to `pro` so the paywall path is skipped —
+  // pro users never call Redis or the gate builder.
+  const queueTierPro = (): void => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
+  };
+
   describe("GET /api/v1/stories/feed", () => {
     it("returns 401 without a token", async () => {
       const res = await request(app).get("/api/v1/stories/feed");
@@ -71,6 +80,7 @@ describe("stories endpoints", () => {
 
     it("returns empty feed when user has no sectors and none are requested", async () => {
       queueOnboarded();
+      queueTierPro();
       mock.queueSelect([{ sectors: [], role: "engineer" }]);
 
       const res = await request(app)
@@ -85,6 +95,7 @@ describe("stories endpoints", () => {
 
     it("uses the user's profile sectors when query is empty", async () => {
       queueOnboarded();
+      queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow()]);
       // Phase 12e.7a — getFeed does a dual-read across stories + events,
@@ -111,6 +122,7 @@ describe("stories endpoints", () => {
 
     it("filters by query sectors when provided", async () => {
       queueOnboarded();
+      queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "vc" }]);
       mock.queueSelect([makeRow({ sector: "finance" })]);
       mock.queueSelect([]); // events query — empty
@@ -130,6 +142,7 @@ describe("stories endpoints", () => {
 
     it("reports has_more when offset+rows < total", async () => {
       queueOnboarded();
+      queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       mock.queueSelect([makeRow(), makeRow({ id: "22222222-2222-2222-2222-222222222222" })]);
       mock.queueSelect([]); // events query — empty
@@ -156,6 +169,7 @@ describe("stories endpoints", () => {
     // legacy story items.
     it("merges stories + events sorted by effective_score DESC and attaches sources", async () => {
       queueOnboarded();
+      queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
       // stories: one row — legacy stories sort against the
       // STORY_BASELINE_EFFECTIVE_SCORE constant (currently 7).
@@ -264,6 +278,7 @@ describe("stories endpoints", () => {
     });
 
     it("returns 404 when story is missing (and events fallback also misses)", async () => {
+      queueTierPro();
       mock.queueSelect([{ role: "engineer" }]);
       mock.queueSelect([]); // story lookup miss
       mock.queueSelect([]); // Phase 12e.7a — events fallback miss
@@ -282,6 +297,7 @@ describe("stories endpoints", () => {
     // with its event_sources array.
     it("returns event from the fallback path with multi-source attribution", async () => {
       const eventId = "44444444-4444-4444-4444-444444444444";
+      queueTierPro();
       mock.queueSelect([{ role: "engineer" }]);
       mock.queueSelect([]); // story lookup miss
       mock.queueSelect([
@@ -334,6 +350,7 @@ describe("stories endpoints", () => {
     });
 
     it("returns the story with personalized why_it_matters_to_you", async () => {
+      queueTierPro();
       mock.queueSelect([{ role: "founder" }]);
       mock.queueSelect([
         makeRow({

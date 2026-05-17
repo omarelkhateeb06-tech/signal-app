@@ -21,7 +21,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getStoryCommentaryRequest } from "@/lib/api";
 import { withCommentarySlot } from "@/lib/commentaryQueue";
-import type { CommentaryResponse } from "@/types/story";
+import type { CommentaryEnvelope } from "@/types/story";
 
 export type DepthOverride = "accessible" | "briefed" | "technical";
 
@@ -30,21 +30,25 @@ interface UseStoryCommentaryOptions {
   depth?: DepthOverride;
 }
 
+// Phase 12g — return type widened to CommentaryEnvelope so callers
+// can branch on `gated` (depth-gate envelope for free users who
+// request briefed/technical). Consumers that don't care about the
+// gate path can read `data.commentary` directly; the gate envelope
+// has no `commentary` field so the existing falsy-check fall-through
+// still works.
 export function useStoryCommentary(
   storyId: string,
   options: UseStoryCommentaryOptions = {},
-): UseQueryResult<CommentaryResponse, Error> {
+): UseQueryResult<CommentaryEnvelope, Error> {
   const enabled = options.enabled ?? true;
   const depth = options.depth;
 
   return useQuery({
-    // depth is part of the key so an explicit override maintains a
-    // separate cache entry from the server-default-depth result.
     queryKey: ["commentary", storyId, depth ?? null],
     queryFn: () => withCommentarySlot(() => getStoryCommentaryRequest(storyId, depth)),
     enabled: Boolean(storyId) && enabled,
     staleTime: Infinity,
-    gcTime: 10 * 60 * 1000, // 10 min — keep across feed⇄detail navigation
-    retry: 1, // the server always returns a result (fallback tiers); one retry covers a transient network blip
+    gcTime: 10 * 60 * 1000,
+    retry: 1,
   });
 }

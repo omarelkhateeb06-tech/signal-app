@@ -62,6 +62,13 @@ describe("GET /api/v1/stories/search", () => {
   const queueOnboarded = (): void => {
     mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
   };
+  // Phase 12g: searchStories now resolves the user's tier between
+  // requireProfile and its profile lookup. Pro skips the search-cap
+  // path entirely; free tests below set up the Redis mock and queue
+  // tier=free explicitly.
+  const queueTierPro = (): void => {
+    mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
+  };
 
   it("returns 401 without a token", async () => {
     const res = await request(app).get("/api/v1/stories/search?q=models");
@@ -88,6 +95,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("returns relevant stories with personalized why_it_matters_to_you", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId, rank: 0.2 })]);
     mock.queueSelect([{ count: 2 }]);
@@ -109,6 +117,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("accepts sector, date, and sort filters", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "vc" }]);
     mock.queueSelect([makeRow({ sector: "finance" })]);
     mock.queueSelect([{ count: 1 }]);
@@ -129,6 +138,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("supports most_saved sort", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "analyst" }]);
     mock.queueSelect([makeRow()]);
     mock.queueSelect([{ count: 1 }]);
@@ -143,6 +153,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("handles phrase queries with quoted input", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow()]);
     mock.queueSelect([{ count: 1 }]);
@@ -158,6 +169,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("paginates and reports has_more correctly", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId })]);
     mock.queueSelect([{ count: 12 }]);
@@ -184,6 +196,7 @@ describe("GET /api/v1/stories/search", () => {
 
   it("returns an empty result set without erroring", async () => {
     queueOnboarded();
+    queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([]);
     mock.queueSelect([{ count: 0 }]);

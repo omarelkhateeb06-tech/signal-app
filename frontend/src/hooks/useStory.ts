@@ -2,9 +2,11 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getStoryRequest, getRelatedStoriesRequest } from "@/lib/api";
-import type { Story } from "@/types/story";
+import type { Story, StoryDetailPayload } from "@/types/story";
 
-export function useStory(id: string | null): UseQueryResult<Story, Error> {
+export function useStory(
+  id: string | null,
+): UseQueryResult<StoryDetailPayload, Error> {
   return useQuery({
     queryKey: ["story", id],
     queryFn: () => getStoryRequest(id as string),
