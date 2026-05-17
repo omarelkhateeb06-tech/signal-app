@@ -85,6 +85,17 @@ export type EventSourceRole = (typeof EVENT_SOURCE_ROLES)[number];
 
 // ---------- Users ----------
 
+// Phase 12g tier model. Two-tier system (Free / Pro) with a 7-day
+// `pro_trial` bridge state on signup. Backed by a CHECK constraint at
+// the DB layer (see migration 0029), not a pgEnum — V3 will reinstate
+// a `premium` value for the course library, and CHECK is cheap to
+// evolve. Effective-tier resolution and lazy trial-expiry downgrade
+// live in `src/middleware/requireTier.ts`.
+export const USER_TIERS = ["free", "pro_trial", "pro"] as const;
+export type UserTier = (typeof USER_TIERS)[number];
+
+export const TRIAL_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -92,6 +103,9 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 255 }),
   profilePictureUrl: text("profile_picture_url"),
   status: userStatusEnum("status").notNull().default("active"),
+  tier: text("tier").$type<UserTier>().notNull().default("pro_trial"),
+  trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
+  tierChangedAt: timestamp("tier_changed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
