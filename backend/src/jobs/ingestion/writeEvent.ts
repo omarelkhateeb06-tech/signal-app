@@ -280,6 +280,24 @@ export function computeWhyItMattersTemplate(
   return JSON.stringify(validated);
 }
 
+// Phase 12g — pre-computed role-neutral commentary for Free users.
+// Concatenates accessible.thesis + accessible.support from the same
+// validated TierTemplate that computeWhyItMattersTemplate produces.
+// Free-tier reads land on this column directly (zero Haiku call, zero
+// latency); pro reads continue through the 12c personalized pipeline.
+// Defensive trim + single-space join — both fields are NOT NULL on
+// TierOutputSchema but we don't want a stray empty string to bleed an
+// extra space onto the wire.
+export function computeGenericCommentary(
+  candidate: CandidateRowForWrite,
+): string {
+  const validated = assertTierTemplate(candidate.tierOutputs);
+  const parts = [validated.accessible.thesis, validated.accessible.support]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.join(" ");
+}
+
 async function writeEventOnce(
   candidateId: string,
   deps: WriteEventDeps,
@@ -305,6 +323,7 @@ async function writeEventOnce(
   const context = computeContext(candidate);
   const whyItMatters = computeWhyItMatters(candidate);
   const whyItMattersTemplate = computeWhyItMattersTemplate(candidate);
+  const genericCommentary = computeGenericCommentary(candidate);
 
   // Validated facts blob (jsonb NOT NULL on events with default '{}').
   // We pass through whatever upstream wrote to candidate.facts — the
@@ -321,6 +340,7 @@ async function writeEventOnce(
         context,
         whyItMatters,
         whyItMattersTemplate,
+        genericCommentary,
         primarySourceUrl: candidate.url,
         primarySourceName: candidate.sourceDisplayName,
         authorId: candidate.sourcePairedWriterId,

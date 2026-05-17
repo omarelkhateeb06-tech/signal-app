@@ -247,6 +247,11 @@ export const stories = pgTable(
     // `parseWhyItMattersTemplate()` from `src/utils/depthVariants.ts` at
     // read time; never consume the raw string in controllers.
     whyItMattersTemplate: text("why_it_matters_template"),
+    // Phase 12g — pre-generated role-neutral commentary served to free
+    // users (no Haiku call, no personalization). Backfilled from the
+    // accessible variant of why_it_matters_template; nullable so pre-
+    // 12g rows simply fall back to why_it_matters.
+    genericCommentary: text("generic_commentary"),
     sourceUrl: text("source_url").notNull(),
     sourceName: varchar("source_name", { length: 255 }),
     authorId: uuid("author_id").references(() => writers.id, { onDelete: "set null" }),
@@ -618,6 +623,10 @@ export const events = pgTable(
     context: text("context").notNull(),
     whyItMatters: text("why_it_matters").notNull(),
     whyItMattersTemplate: text("why_it_matters_template"),
+    // Phase 12g — see stories.generic_commentary. For events the source
+    // is `tier_outputs.accessible` (thesis + support concatenated),
+    // populated at write time by writeEvent.ts.
+    genericCommentary: text("generic_commentary"),
     primarySourceUrl: text("primary_source_url").notNull(),
     primarySourceName: varchar("primary_source_name", { length: 255 }),
     authorId: uuid("author_id").references(() => writers.id, { onDelete: "set null" }),

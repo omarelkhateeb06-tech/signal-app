@@ -71,6 +71,7 @@ interface StoryRow {
   context: string;
   whyItMatters: string;
   whyItMattersTemplate: string | null;
+  genericCommentary: string | null;
   sourceUrl: string;
   sourceName: string | null;
   publishedAt: Date | null;
@@ -146,6 +147,7 @@ interface EventRow {
   context: string;
   whyItMatters: string;
   whyItMattersTemplate: string | null;
+  genericCommentary: string | null;
   primarySourceUrl: string;
   primarySourceName: string | null;
   publishedAt: Date | null;
@@ -380,6 +382,7 @@ const baseStoryColumns = {
   context: stories.context,
   whyItMatters: stories.whyItMatters,
   whyItMattersTemplate: stories.whyItMattersTemplate,
+  genericCommentary: stories.genericCommentary,
   sourceUrl: stories.sourceUrl,
   sourceName: stories.sourceName,
   publishedAt: stories.publishedAt,
@@ -407,6 +410,7 @@ function gatedFeedItem(
   sector: string,
   headline: string,
   whyItMatters: string,
+  genericCommentary: string | null,
   trialAvailable: boolean,
 ): FeedGatedItem {
   return {
@@ -414,7 +418,10 @@ function gatedFeedItem(
     sector,
     gated: true,
     gate_reason: "story_limit",
-    teaser: { headline, first_line: teaserFirstLine(whyItMatters) },
+    teaser: {
+      headline,
+      first_line: teaserFirstLine(whyItMatters, genericCommentary),
+    },
     upgrade_cta: buildUpgradeCta(trialAvailable),
   };
 }
@@ -487,6 +494,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         context: events.context,
         whyItMatters: events.whyItMatters,
         whyItMattersTemplate: events.whyItMattersTemplate,
+        genericCommentary: events.genericCommentary,
         primarySourceUrl: events.primarySourceUrl,
         primarySourceName: events.primarySourceName,
         publishedAt: events.publishedAt,
@@ -594,6 +602,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
           row.sector,
           row.headline,
           row.whyItMatters,
+          row.genericCommentary,
           trialAvailable,
         );
       }
@@ -637,6 +646,7 @@ async function maybeGateDetail(args: {
   isSaved: boolean;
   headline: string;
   whyItMatters: string;
+  genericCommentary: string | null;
 }): Promise<GatePayload | null> {
   if (args.tier !== "free" || args.isSaved) return null;
   const decision = await recordOrCheckStoryView(args.userId, args.id);
@@ -644,7 +654,7 @@ async function maybeGateDetail(args: {
   return buildGatePayload(
     "story_limit",
     args.headline,
-    teaserFirstLine(args.whyItMatters),
+    teaserFirstLine(args.whyItMatters, args.genericCommentary),
     args.trialAvailable,
   );
 }
@@ -719,6 +729,7 @@ export async function getStoryById(
         isSaved: eventRow.isSaved,
         headline: eventRow.headline,
         whyItMatters: eventRow.whyItMatters,
+        genericCommentary: eventRow.genericCommentary,
       });
       if (gate) {
         res.json({ data: { story: gate } });
@@ -748,6 +759,7 @@ export async function getStoryById(
       isSaved: row.isSaved,
       headline: row.headline,
       whyItMatters: row.whyItMatters,
+      genericCommentary: row.genericCommentary,
     });
     if (gate) {
       res.json({ data: { story: gate } });

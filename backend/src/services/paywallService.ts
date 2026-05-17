@@ -256,16 +256,21 @@ export function buildSearchLimitGate(trialAvailable: boolean): GatePayload {
 }
 
 /**
- * Extract a teaser first-line from a story's `why_it_matters`. The
- * 12g spec specifies "first line of generic commentary"; chunk 5
- * adds a dedicated `generic_commentary` column. Until that lands,
- * `why_it_matters` is the role-neutral text we already have on every
- * row — same audience framing, so the swap will be a one-field
- * change.
+ * Extract a teaser first-line from generic commentary if available,
+ * falling back to `why_it_matters`. Pre-12g rows (and any post-12g
+ * row whose backfill hasn't run / failed) have null
+ * generic_commentary; they fall back to the role-neutral
+ * why_it_matters that has always been on every row.
+ *
+ * Both inputs are role-neutral by design — the gate teaser must not
+ * leak personalized commentary to a free user who is being blocked.
  */
-export function teaserFirstLine(whyItMatters: string): string {
-  const trimmed = whyItMatters.trim();
-  const breakIdx = trimmed.search(/[.!?\n]/);
-  const slice = breakIdx > 0 ? trimmed.slice(0, breakIdx + 1) : trimmed;
+export function teaserFirstLine(
+  whyItMatters: string,
+  genericCommentary?: string | null,
+): string {
+  const source = (genericCommentary?.trim() || whyItMatters).trim();
+  const breakIdx = source.search(/[.!?\n]/);
+  const slice = breakIdx > 0 ? source.slice(0, breakIdx + 1) : source;
   return slice.slice(0, 200).trim();
 }

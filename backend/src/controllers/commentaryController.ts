@@ -70,18 +70,28 @@ export async function getCommentary(
       // pattern of getStoryById). A missing story still emits 404 —
       // the gate is only meaningful for an existing story.
       const [storyRow] = await db
-        .select({ headline: stories.headline, whyItMatters: stories.whyItMatters })
+        .select({
+          headline: stories.headline,
+          whyItMatters: stories.whyItMatters,
+          genericCommentary: stories.genericCommentary,
+        })
         .from(stories)
         .where(eq(stories.id, storyId))
         .limit(1);
       let headline: string;
       let whyItMatters: string;
+      let genericCommentary: string | null;
       if (storyRow) {
         headline = storyRow.headline;
         whyItMatters = storyRow.whyItMatters;
+        genericCommentary = storyRow.genericCommentary;
       } else {
         const [eventRow] = await db
-          .select({ headline: events.headline, whyItMatters: events.whyItMatters })
+          .select({
+            headline: events.headline,
+            whyItMatters: events.whyItMatters,
+            genericCommentary: events.genericCommentary,
+          })
           .from(events)
           .where(eq(events.id, storyId))
           .limit(1);
@@ -90,14 +100,62 @@ export async function getCommentary(
         }
         headline = eventRow.headline;
         whyItMatters = eventRow.whyItMatters;
+        genericCommentary = eventRow.genericCommentary;
       }
       const payload = buildGatePayload(
         "depth",
         headline,
-        teaserFirstLine(whyItMatters),
+        teaserFirstLine(whyItMatters, genericCommentary),
         trialAvailable,
       );
       res.json({ data: payload });
+      return;
+    }
+
+    // Phase 12g — free users skip the personalized Haiku path entirely
+    // and read the pre-generated role-neutral commentary from the row.
+    // This makes the free-tier path zero-latency, zero-cost, and (since
+    // the column is the same content all free users see) hits no per-
+    // user cache. Falls back to why_it_matters when the column is null
+    // (pre-12g rows that the backfill hasn't filled).
+    if (tier === "free") {
+      const [storyTextRow] = await db
+        .select({
+          whyItMatters: stories.whyItMatters,
+          genericCommentary: stories.genericCommentary,
+        })
+        .from(stories)
+        .where(eq(stories.id, storyId))
+        .limit(1);
+      let whyItMatters: string | undefined;
+      let genericCommentary: string | null = null;
+      if (storyTextRow) {
+        whyItMatters = storyTextRow.whyItMatters;
+        genericCommentary = storyTextRow.genericCommentary;
+      } else {
+        const [eventTextRow] = await db
+          .select({
+            whyItMatters: events.whyItMatters,
+            genericCommentary: events.genericCommentary,
+          })
+          .from(events)
+          .where(eq(events.id, storyId))
+          .limit(1);
+        if (!eventTextRow) {
+          throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+        }
+        whyItMatters = eventTextRow.whyItMatters;
+        genericCommentary = eventTextRow.genericCommentary;
+      }
+      const text = genericCommentary?.trim() || whyItMatters;
+      res.json({
+        data: {
+          commentary: { thesis: text, support: "" },
+          depth: "accessible" as const,
+          profile_version: 0,
+          source: "generic" as const,
+        },
+      });
       return;
     }
 
@@ -132,18 +190,10 @@ export async function getCommentary(
     // because early-onboarding users may not have saved a depth yet;
     // the onboarding flow makes it mandatory but a direct API caller
     // could bypass. See §9 of CLAUDE.md — "accessible" is the free-tier
-    // default and the right floor here.
-    //
-    // Phase 12g — for free users, the precedence is clamped to
-    // `accessible` regardless of stored preference. The explicit-
-    // override case above already short-circuited briefed / technical
-    // requests with a 200 gate response; this clamp covers the
-    // implicit case where a user's stored preference is higher than
-    // their tier allows (e.g. they paid, lost their trial, but never
-    // re-onboarded their depth pick).
-    const baseDepth: DepthLevel =
+    // default and the right floor here. (Free users branched off above
+    // — this code only runs for pro / pro_trial.)
+    const depth: DepthLevel =
       depthOverride ?? profile.depthPreference ?? "accessible";
-    const depth: DepthLevel = tier === "free" ? "accessible" : baseDepth;
 
     const result = await getOrGenerateCommentary(
       {
