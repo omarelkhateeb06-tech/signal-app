@@ -10,6 +10,19 @@ jest.mock("../../src/db", () => ({
   },
 }));
 
+// Stub bodyExtractor so loading heuristicSeam does not pull in jsdom.
+// The seam tests inject their own `fetchBody`, so the real module's
+// fetchAndExtractBody is never invoked here. Mocking it out keeps
+// parse5's ESM-only entry from breaking the suite under jest-cjs.
+// DEFAULT_BODY_USER_AGENT is mirrored verbatim because the
+// "uses default UA when source.config.userAgent is unset" test below
+// asserts this exact string.
+jest.mock("../../src/jobs/ingestion/bodyExtractor", () => ({
+  fetchAndExtractBody: jest.fn(),
+  DEFAULT_BODY_USER_AGENT: "SIGNAL/12e.3 (+contact@signal.so)",
+  DEFAULT_BODY_TIMEOUT_MS: 15_000,
+}));
+
 // Import after mock so module bindings resolve to mocked db.
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const { runHeuristicSeam } = require("../../src/jobs/ingestion/heuristicSeam");
@@ -186,6 +199,36 @@ describe("runHeuristicSeam", () => {
       const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
       expect(result.pass).toBe(true);
       expect(result.body?.truncated).toBe(true);
+    });
+  });
+
+  describe("pre-fetched body (adapter-supplied bodyText)", () => {
+    it("skips fetchBody and passes when pre-fetched body meets length floor", async () => {
+      const preFetched = "y".repeat(800);
+      mock.queueSelect([makeRow({ bodyText: preFetched })]);
+      const fetchBody = fetchOk("should not be called");
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(fetchBody).not.toHaveBeenCalled();
+      expect(result.pass).toBe(true);
+      expect(result.body?.text).toBe(preFetched);
+      expect(result.body?.truncated).toBe(false);
+    });
+
+    it("skips fetchBody and rejects when pre-fetched body is below length floor", async () => {
+      mock.queueSelect([makeRow({ bodyText: "too short" })]);
+      const fetchBody = fetchOk("should not be called");
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(fetchBody).not.toHaveBeenCalled();
+      expect(result.pass).toBe(false);
+      expect(result.reason).toBe(HEURISTIC_REASONS.BODY_TOO_SHORT);
+    });
+
+    it("falls through to fetchBody when bodyText is empty string", async () => {
+      mock.queueSelect([makeRow({ bodyText: "" })]);
+      const fetchBody = fetchOk("z".repeat(800));
+      const result = await runHeuristicSeam(CANDIDATE_ID, { fetchBody });
+      expect(fetchBody).toHaveBeenCalledTimes(1);
+      expect(result.pass).toBe(true);
     });
   });
 

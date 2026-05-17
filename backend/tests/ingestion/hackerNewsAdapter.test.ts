@@ -20,6 +20,7 @@ interface HnItemFixture {
   type?: string;
   title?: string;
   url?: string;
+  text?: string;
   score?: number;
   time?: number;
   dead?: boolean;
@@ -152,8 +153,14 @@ describe("hackerNewsAdapter", () => {
       expect(result.candidates).toEqual([]);
     });
 
-    it("excludes items with no url (Ask HN / Show HN with no link)", async () => {
-      mockHn({ topIds: [1], items: { 1: story(1, { url: undefined }) } });
+    it("excludes items with neither url nor text (deleted self-posts, empty markers)", async () => {
+      mockHn({ topIds: [1], items: { 1: story(1, { url: undefined, text: undefined }) } });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates).toEqual([]);
+    });
+
+    it("excludes items with empty url and empty text", async () => {
+      mockHn({ topIds: [1], items: { 1: story(1, { url: "", text: "" }) } });
       const result = await hackerNewsAdapter(makeCtx());
       expect(result.candidates).toEqual([]);
     });
@@ -168,6 +175,125 @@ describe("hackerNewsAdapter", () => {
       mockHn({ topIds: [1], items: { 1: story(1, { score: 100 }) } });
       const result = await hackerNewsAdapter(makeCtx());
       expect(result.candidates.length).toBe(1);
+    });
+  });
+
+  describe("self-posts (Ask HN / Show HN)", () => {
+    it("accepts a self-post when url is missing but text is present", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Ask HN: How do you debug X?",
+            text: "<p>We've been seeing Y when we try Z.</p>",
+            score: 150,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates.length).toBe(1);
+    });
+
+    it("sets source_url to the HN thread URL for self-posts", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Show HN: A small thing",
+            text: "<p>Built a small thing this weekend, here's how it works.</p>",
+            score: 200,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates[0]!.url).toBe("https://news.ycombinator.com/item?id=42");
+    });
+
+    it("passes self-post text as pre-fetched bodyText (HTML stripped)", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Ask HN: Help with X",
+            text: "<p>First paragraph.</p><p>Second paragraph with <i>emphasis</i> &amp; an entity.</p>",
+            score: 150,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates[0]!.bodyText).toBe(
+        "First paragraph.\n\nSecond paragraph with emphasis & an entity.",
+      );
+    });
+
+    it("tags self-posts with is_community_post=true on rawPayload", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Show HN: thing",
+            text: "<p>body</p>",
+            score: 200,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates[0]!.rawPayload.is_community_post).toBe(true);
+    });
+
+    it("respects score floor for self-posts", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Ask HN",
+            text: "<p>some text</p>",
+            score: 99,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates).toEqual([]);
+    });
+
+    it("leaves external-link candidates with bodyText=null and no is_community_post flag", async () => {
+      mockHn({ topIds: [1], items: { 1: story(1) } });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates[0]!.bodyText).toBeNull();
+      expect(result.candidates[0]!.rawPayload.is_community_post).toBeUndefined();
+    });
+
+    it("treats <br> as a newline in self-post text", async () => {
+      mockHn({
+        topIds: [42],
+        items: {
+          42: {
+            id: 42,
+            type: "story",
+            title: "Ask HN",
+            text: "line one<br>line two<br/>line three",
+            score: 150,
+            time: 1714000000,
+          },
+        },
+      });
+      const result = await hackerNewsAdapter(makeCtx());
+      expect(result.candidates[0]!.bodyText).toBe("line one\nline two\nline three");
     });
   });
 
