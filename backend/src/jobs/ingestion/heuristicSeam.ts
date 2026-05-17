@@ -55,6 +55,11 @@ interface CandidateRow {
   rawTitle: string | null;
   rawSummary: string | null;
   rawPublishedAt: Date | null;
+  // Pre-fetched body text written by the poll worker when the adapter
+  // supplied one (e.g. HN self-posts). Non-empty → skip the URL fetch
+  // and use this as the body directly. See Candidate.bodyText in
+  // types.ts.
+  bodyText: string | null;
   sourceUserAgent: string | null;
 }
 
@@ -69,6 +74,7 @@ async function loadCandidate(
       rawTitle: ingestionCandidates.rawTitle,
       rawSummary: ingestionCandidates.rawSummary,
       rawPublishedAt: ingestionCandidates.rawPublishedAt,
+      bodyText: ingestionCandidates.bodyText,
       sourceConfig: ingestionSources.config,
     })
     .from(ingestionCandidates)
@@ -88,6 +94,7 @@ async function loadCandidate(
     rawTitle: row.rawTitle,
     rawSummary: row.rawSummary,
     rawPublishedAt: row.rawPublishedAt,
+    bodyText: row.bodyText ?? null,
     sourceUserAgent: ua,
   };
 }
@@ -134,20 +141,35 @@ export async function runHeuristicSeam(
     return { pass: false, reason: HEURISTIC_REASONS.FILTERED_VIDEO_URL };
   }
 
-  // 4. Body fetch.
-  const userAgent = candidate.sourceUserAgent ?? DEFAULT_BODY_USER_AGENT;
-  const fetchResult: BodyExtractionResult = await fetchBody(candidate.url, { userAgent });
-  if (!fetchResult.success) {
-    return { pass: false, reason: fetchResult.reason };
+  // 4. Body resolution. Adapter-supplied body short-circuits the fetch:
+  // the source format already carries the article body inline (e.g. HN
+  // self-posts where the post body is the article, and the URL would
+  // otherwise resolve to the HN thread page's nav chrome). For these
+  // candidates we run the length floor against the pre-fetched text and
+  // skip the network call entirely. URL-based candidates fall through
+  // to fetchAndExtractBody as before.
+  let bodyText: string;
+  let truncated: boolean;
+  if (candidate.bodyText && candidate.bodyText.length > 0) {
+    bodyText = candidate.bodyText;
+    truncated = false;
+  } else {
+    const userAgent = candidate.sourceUserAgent ?? DEFAULT_BODY_USER_AGENT;
+    const fetchResult: BodyExtractionResult = await fetchBody(candidate.url, { userAgent });
+    if (!fetchResult.success) {
+      return { pass: false, reason: fetchResult.reason };
+    }
+    bodyText = fetchResult.text;
+    truncated = fetchResult.truncated;
   }
 
-  // 5. Length floor (post-extraction).
-  if (!meetsLengthFloor(fetchResult.text)) {
+  // 5. Length floor (post-resolution).
+  if (!meetsLengthFloor(bodyText)) {
     return { pass: false, reason: HEURISTIC_REASONS.BODY_TOO_SHORT };
   }
 
   return {
     pass: true,
-    body: { text: fetchResult.text, truncated: fetchResult.truncated },
+    body: { text: bodyText, truncated },
   };
 }

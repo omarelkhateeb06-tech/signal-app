@@ -23,6 +23,14 @@ export interface Candidate {
   // to 32 chars. Persisted to ingestion_candidates.content_hash for the
   // event-clustering layer (12e.6) to use as a cross-source dedup signal.
   contentHash: string;
+  // Pre-fetched body text. When set, the heuristic seam writes it through
+  // to ingestion_candidates.body_text and skips the per-URL fetch +
+  // readability extraction. Used by adapters whose source format already
+  // carries the article body (e.g. HN self-posts / Ask HN / Show HN, where
+  // the `text` field is the post itself and the canonical "source_url" is
+  // the HN thread page, not an external article). Plain text — strip HTML
+  // before setting.
+  bodyText?: string | null;
   // Adapter-specific raw payload preserved for replay / debugging.
   // Persisted to ingestion_candidates.raw_payload as JSONB.
   rawPayload: Record<string, unknown>;
