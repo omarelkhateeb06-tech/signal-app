@@ -1,31 +1,34 @@
 "use client";
 
 import { Lock } from "lucide-react";
+import { useMemo } from "react";
 import type { DepthOverride } from "@/hooks/useStoryCommentary";
 
-const DEPTH_OPTIONS: ReadonlyArray<{ value: DepthOverride; label: string }> = [
+// Phase 12j — depth toggle with a sliding active indicator. Three
+// segments (Accessible / Briefed / Technical) on a single rail; the
+// active background is a single absolutely-positioned element whose
+// `left` and `width` animate between the segment slots via CSS
+// transition. Free-tier users see a lock icon on Briefed + Technical;
+// clicking a locked segment short-circuits the onSelect callback and
+// fires onLockedClick instead (parent renders the inline upgrade
+// card — see StoryDetail).
+
+const DEPTH_OPTIONS: ReadonlyArray<{
+  value: DepthOverride;
+  label: string;
+}> = [
   { value: "accessible", label: "Accessible" },
   { value: "briefed", label: "Briefed" },
   { value: "technical", label: "Technical" },
 ];
 
-// Phase 12g — depth toggle with free-tier visual lock. Briefed and
-// technical render with a lock icon for free users; clicking a locked
-// option does NOT fire a commentary request — the parent surfaces an
-// inline upgrade prompt instead (see StoryDetail).
-//
-// Pro / pro_trial users see no locks; clicks pass through to the
-// `onSelect` handler which the parent maps onto useStoryCommentary's
-// `depth` option.
+const SEGMENT_COUNT = DEPTH_OPTIONS.length;
+const SEGMENT_PCT = 100 / SEGMENT_COUNT;
+
 export interface DepthToggleProps {
   value: DepthOverride;
   onSelect: (depth: DepthOverride) => void;
-  // When true (free tier), briefed + technical are locked. The
-  // toggle still surfaces the click so the parent can show the
-  // inline upgrade prompt.
   lockHigherTiers: boolean;
-  // Forwarded to lock click — parent decides what to do (typically
-  // open the inline upgrade card).
   onLockedClick?: (attempted: DepthOverride) => void;
 }
 
@@ -35,15 +38,35 @@ export function DepthToggle({
   lockHigherTiers,
   onLockedClick,
 }: DepthToggleProps): JSX.Element {
+  const activeIndex = useMemo(
+    () => Math.max(0, DEPTH_OPTIONS.findIndex((o) => o.value === value)),
+    [value],
+  );
+
+  // The active slot lives in the inner padding rail (2px on each
+  // side). Translating by activeIndex * segment width inside the
+  // rail keeps the indicator pixel-aligned with the segment hit area.
+  const indicatorStyle: React.CSSProperties = {
+    width: `calc(${SEGMENT_PCT}% - 4px)`,
+    transform: `translateX(${activeIndex * 100}%)`,
+  };
+
   return (
     <div
-      className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-1 text-sm"
       role="tablist"
       aria-label="Commentary depth"
+      className="relative inline-flex w-full max-w-[420px] items-stretch rounded-md border border-line bg-bg p-1"
     >
+      {/* Sliding active indicator */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1 top-1 bottom-1 rounded-[6px] bg-surface shadow-card transition-transform duration-200 ease-soft-out"
+        style={indicatorStyle}
+      />
       {DEPTH_OPTIONS.map((opt) => {
         const isLocked =
-          lockHigherTiers && (opt.value === "briefed" || opt.value === "technical");
+          lockHigherTiers &&
+          (opt.value === "briefed" || opt.value === "technical");
         const isActive = value === opt.value;
         return (
           <button
@@ -60,11 +83,13 @@ export function DepthToggle({
               onSelect(opt.value);
             }}
             className={[
-              "inline-flex items-center gap-1 rounded px-3 py-1.5 transition-colors",
+              "relative z-10 flex flex-1 items-center justify-center gap-1.5",
+              "rounded-[6px] px-3 py-1.5 text-sm font-medium",
+              "transition-colors duration-200 ease-soft-out",
               isActive
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900",
-              isLocked ? "opacity-70" : "",
+                ? "text-ink"
+                : "text-ink-muted hover:text-ink",
+              isLocked ? "opacity-90" : "",
             ].join(" ")}
           >
             {isLocked && <Lock className="h-3 w-3" aria-hidden />}
