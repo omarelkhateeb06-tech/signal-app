@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { motion } from "framer-motion";
 import { ArrowLeft, Lock } from "lucide-react";
 import { useRelatedStories, useStory } from "@/hooks/useStory";
 import { StoryDetail } from "@/components/stories/StoryDetail";
@@ -9,6 +11,7 @@ import { StoryCard } from "@/components/stories/StoryCard";
 import { UpgradeCtaButton } from "@/components/stories/UpgradeCta";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { Card } from "@/components/ui/Card";
+import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { extractApiError } from "@/lib/api";
 import { isGatePayload } from "@/types/story";
 
@@ -28,6 +31,16 @@ export default function StoryPage(): JSX.Element {
   const id = params?.id ?? null;
   const storyQuery = useStory(id);
   const relatedQuery = useRelatedStories(id);
+  const markRead = useReadStoriesStore((s) => s.markRead);
+
+  // Mark the story read on open so the feed dims its headline. Client-
+  // side only (localStorage) — never blocks render and ignores gates.
+  const storyData = storyQuery.data;
+  useEffect(() => {
+    if (id && storyData && !isGatePayload(storyData)) {
+      markRead(id);
+    }
+  }, [id, storyData, markRead]);
 
   if (storyQuery.isLoading) {
     return (
@@ -37,7 +50,7 @@ export default function StoryPage(): JSX.Element {
 
   if (storyQuery.error || !storyQuery.data) {
     return (
-      <div className="space-y-6 py-6">
+      <div className="mx-auto max-w-3xl space-y-6 py-6">
         <BackLink />
         <div className="rounded-md border border-err/40 bg-err/5 p-4 text-sm text-err">
           {extractApiError(storyQuery.error, "Story not found.")}
@@ -53,7 +66,7 @@ export default function StoryPage(): JSX.Element {
   if (isGatePayload(storyQuery.data)) {
     const gate = storyQuery.data;
     return (
-      <div className="space-y-6 py-6">
+      <div className="mx-auto max-w-3xl space-y-6 py-6">
         <BackLink />
         <Card className="p-8">
           <h1 className="mb-3 font-display text-[28px] font-semibold leading-tight text-ink">
@@ -84,7 +97,7 @@ export default function StoryPage(): JSX.Element {
   const related = relatedQuery.data ?? [];
 
   return (
-    <div className="space-y-10 py-6">
+    <div className="mx-auto max-w-3xl space-y-10 py-6">
       <BackLink />
 
       <StoryDetail story={story} />
@@ -94,15 +107,24 @@ export default function StoryPage(): JSX.Element {
       </section>
 
       {related.length > 0 && (
-        <section className="space-y-4 border-t border-line pt-8">
-          <h2 className="font-display text-lg font-semibold text-ink">
-            Related stories
-          </h2>
-          <div className="space-y-4">
-            {related.map((s, i) => (
-              <StoryCard key={s.id} story={s} index={i} />
-            ))}
+        <section className="space-y-5 border-t border-line pt-8">
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
+            <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
+              Related stories
+            </h2>
+            <span className="h-px flex-1 bg-line" aria-hidden />
           </div>
+          <motion.div
+            className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.06 } } }}
+            initial="hidden"
+            animate="visible"
+          >
+            {related.map((s, i) => (
+              <StoryCard key={s.id} story={s} index={i} animated />
+            ))}
+          </motion.div>
         </section>
       )}
     </div>

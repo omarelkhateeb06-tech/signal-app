@@ -1,12 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { useSavedStories } from "@/hooks/useSavedStories";
 import { StoryCard } from "@/components/stories/StoryCard";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { Button } from "@/components/ui/Button";
 import { extractApiError } from "@/lib/api";
 import type { SavedStory } from "@/types/story";
+
+const RIVER_STAGGER = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06 } },
+};
 
 type SortMode = "saved_at" | "published_at";
 
@@ -44,11 +50,20 @@ export default function SavedPage(): JSX.Element {
   const total = data?.pages[0]?.total ?? 0;
 
   return (
-    <div className="space-y-8 py-6">
+    <div className="space-y-8 pb-12 pt-2">
       <header className="space-y-4">
-        <h1 className="font-display text-[36px] font-semibold leading-tight tracking-tight text-ink">
-          Saved
-        </h1>
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b-2 border-line pb-4">
+          <div>
+            <h1 className="font-display text-[26px] font-semibold leading-none tracking-tight text-ink md:text-[30px]">
+              Saved
+            </h1>
+            {!isLoading && (
+              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
+                {total} saved {total === 1 ? "story" : "stories"}
+              </p>
+            )}
+          </div>
+        </div>
         <SectorFilter selected={sectors} onChange={setSectors} />
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-ink-muted">Sort by:</span>
@@ -73,11 +88,6 @@ export default function SavedPage(): JSX.Element {
             </button>
           ))}
         </div>
-        {!isLoading && (
-          <p className="font-mono text-[11px] uppercase tracking-wider text-ink-muted">
-            {total} saved {total === 1 ? "story" : "stories"}
-          </p>
-        )}
       </header>
 
       {isLoading && (
@@ -105,11 +115,16 @@ export default function SavedPage(): JSX.Element {
         </div>
       )}
 
-      <div className="space-y-4">
+      <motion.div
+        className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6"
+        variants={RIVER_STAGGER}
+        initial="hidden"
+        animate="visible"
+      >
         {stories.map((story, i) => (
-          <StoryCard key={story.id} story={story} index={i} />
+          <StoryCard key={story.id} story={story} index={i} animated />
         ))}
-      </div>
+      </motion.div>
 
       {hasNextPage && (
         <div className="flex justify-center">
