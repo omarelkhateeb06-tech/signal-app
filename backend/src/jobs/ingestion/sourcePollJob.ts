@@ -123,6 +123,21 @@ export async function processSourcePollJob(
     throw new Error(`source not found: ${input.sourceId}`);
   }
 
+  if (!source.enabled) {
+    // Stale BullMQ repeatables can outlive a source being disabled: the
+    // boot scheduler skips disabled rows but never removes an already-
+    // registered repeat:poll:<slug> job, so it keeps firing. Short-
+    // circuit before the network fetch so a disabled source stops
+    // burning requests and climbing consecutive_failure_count. Counters
+    // and last_polled_at are left untouched — this isn't a fetch outcome.
+    return {
+      sourceId: source.id,
+      candidatesDiscovered: 0,
+      candidatesPersisted: 0,
+      failureReason: "source_disabled",
+    };
+  }
+
   const adapter = getAdapter(source.adapterType);
   if (!adapter) {
     // Don't touch counters / last_polled_at — this isn't a fetch outcome,

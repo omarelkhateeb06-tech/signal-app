@@ -34,6 +34,7 @@ const SOURCE_ROW = {
   adapterType: "rss",
   endpoint: "https://importai.substack.com/feed",
   config: {},
+  enabled: true,
   lastPolledAt: null,
   consecutiveFailureCount: 0,
 };
@@ -64,6 +65,30 @@ describe("processSourcePollJob", () => {
         processSourcePollJob({ sourceId: "missing" }),
       ).rejects.toThrow("source not found: missing");
       expect(mock.state.updatedRows.length).toBe(0);
+    });
+  });
+
+  describe("source disabled", () => {
+    it("short-circuits before fetch when enabled=false, leaving counters untouched", async () => {
+      mock.queueSelect([{ ...SOURCE_ROW, enabled: false }]);
+      const adapterSpy = jest.fn(
+        async (): Promise<AdapterResult> => ({ candidates: [] }),
+      );
+      currentAdapter = adapterSpy;
+
+      const result = await processSourcePollJob({ sourceId: SOURCE_ROW.id });
+
+      expect(result).toEqual({
+        sourceId: SOURCE_ROW.id,
+        candidatesDiscovered: 0,
+        candidatesPersisted: 0,
+        failureReason: "source_disabled",
+      });
+      // No adapter fetch, no source-row mutation (counter must not climb),
+      // no enrichment enqueue.
+      expect(adapterSpy).not.toHaveBeenCalled();
+      expect(mock.state.updatedRows.length).toBe(0);
+      expect(enqueueMock).not.toHaveBeenCalled();
     });
   });
 
