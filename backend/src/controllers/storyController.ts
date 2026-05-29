@@ -85,6 +85,12 @@ interface StoryRow {
   commentCount: number;
 }
 
+function readingTimeMinutes(context: string): number {
+  const text = context.replace(/<[^>]*>/g, " ").trim();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(wordCount / 200));
+}
+
 function shapeStory(row: StoryRow, role: string | null): Record<string, unknown> {
   return {
     id: row.id,
@@ -136,6 +142,7 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     is_saved: Boolean(row.isSaved),
     save_count: Number(row.saveCount ?? 0),
     comment_count: Number(row.commentCount ?? 0),
+    reading_time_minutes: readingTimeMinutes(row.context),
   };
 }
 
@@ -212,6 +219,7 @@ function shapeEvent(
     is_saved: Boolean(row.isSaved),
     save_count: Number(row.saveCount ?? 0),
     comment_count: Number(row.commentCount ?? 0),
+    reading_time_minutes: readingTimeMinutes(row.context),
   };
 }
 
