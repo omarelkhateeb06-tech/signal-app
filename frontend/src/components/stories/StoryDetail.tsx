@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { ExternalLink, Lock, MessageSquare } from "lucide-react";
-import { SectorBadge } from "./SectorBadge";
+import { AnimatePresence, motion } from "framer-motion";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
 import { Commentary } from "./Commentary";
@@ -23,23 +23,25 @@ interface StoryDetailProps {
   story: Story;
 }
 
-// Phase 12j — story detail surface restyle. Header → meta row →
-// depth toggle → commentary (with inline depth-gate prompt) →
-// optional coverage section → "From the source" body → footer with
-// source link + comment-count.
+const SECTOR_VAR: Record<string, string> = {
+  ai: "var(--ai)",
+  finance: "var(--finance)",
+  semiconductors: "var(--semis)",
+};
+
+const SECTOR_LABEL: Record<string, string> = {
+  ai: "Artificial Intelligence",
+  finance: "Finance",
+  semiconductors: "Semiconductors",
+};
 
 export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
-  // Phase 12g — tier drives the depth-toggle lock + the inline upgrade
-  // prompt for free users who click a locked tier.
   const tierQuery = useTier();
   const isFree = tierQuery.data?.tier === "free";
   const trialAvailable = tierQuery.data?.trial_available ?? false;
 
-  // Depth toggle state — defaults to accessible. Free users tapping
-  // briefed/technical never reach onSelect; they go through
-  // onLockedClick which sets a sticky inline-upgrade flag instead.
   const [depth, setDepth] = useState<DepthOverride>("accessible");
   const [lockedAttempt, setLockedAttempt] = useState<DepthOverride | null>(null);
 
@@ -48,10 +50,6 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
     depth,
   });
 
-  // Defensive: if the server ever returns a depth-gate envelope on
-  // this path (shouldn't if the toggle blocks free clicks, but a
-  // direct API caller or an out-of-sync client could trigger it), we
-  // surface the inline prompt rather than rendering empty commentary.
   const serverGate = isGatePayload(commentaryQuery.data)
     ? commentaryQuery.data
     : null;
@@ -65,12 +63,11 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
     resolvedCommentary === null &&
     commentaryQuery.isFetching;
 
+  // Key for AnimatePresence — changes whenever visible content changes.
+  const commentaryKey = resolvedCommentary?.thesis?.slice(0, 30) ?? `${depth}-loading`;
+
   return (
     <article className="space-y-7">
-      {/* Phase 12k — hero image above the headline when an og:image is
-          available. Full-width, capped at ~300px tall, object-cover. No
-          placeholder when image_url is null — the article opens with the
-          headline as it did pre-12k. */}
       {story.image_url && (
         <div className="relative -mx-1 overflow-hidden rounded-lg" style={{ maxHeight: 300 }}>
           <Image
@@ -86,16 +83,40 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </div>
       )}
       <header className="space-y-4">
-        <h1 className="font-display text-[28px] font-semibold leading-tight text-ink md:text-[30px]">
+        {/* Sector kicker + source dateline — same editorial language as
+            the feed lead, so the click-through feels continuous. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em]"
+            style={{ color: SECTOR_VAR[story.sector] ?? "var(--ink-muted)" }}
+          >
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: SECTOR_VAR[story.sector] ?? "var(--ink-muted)" }}
+            />
+            {SECTOR_LABEL[story.sector] ?? story.sector}
+          </span>
+          {(story.source_name ?? story.sources[0]?.name) && (
+            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+              via {story.source_name ?? story.sources[0]?.name}
+            </span>
+          )}
+        </div>
+
+        <h1 className="font-display text-[32px] font-semibold leading-[1.12] tracking-tight text-ink md:text-[38px]">
           {story.headline}
         </h1>
-        {/* Meta row: sector · timestamp · save. Same bottom-row pattern
-            as the feed card so the user re-orients fast. */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-muted">
-          <div className="flex items-center gap-3">
-            <SectorBadge sector={story.sector} />
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-xs text-ink-muted">
+          <div className="flex items-center gap-4">
             {stamp && (
-              <span className="font-mono text-[11px] tracking-tight">{stamp}</span>
+              <span className="font-mono text-[11px] uppercase tracking-wide">{stamp}</span>
+            )}
+            {story.reading_time_minutes != null && (
+              <span className="font-mono text-[11px] uppercase tracking-wide">
+                {story.reading_time_minutes} min read
+              </span>
             )}
             {story.comment_count > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -109,64 +130,70 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
       </header>
 
       <div className="space-y-4">
-        <DepthToggle
-          value={depth}
-          onSelect={(d) => {
-            setLockedAttempt(null);
-            setDepth(d);
-          }}
-          lockHigherTiers={isFree}
-          onLockedClick={(d) => setLockedAttempt(d)}
-        />
-
-        {/* Phase 12g — inline upgrade prompt when a free user clicks a
-            locked depth tier OR if a server-side depth gate envelope
-            slips through (defensive). Falls through to the normal
-            commentary render otherwise. The prompt uses an accent-
-            tinted Card body so the spatial context stays intact —
-            commentary renders here on the un-gated path. */}
-        {lockedAttempt || serverGate ? (
-          <Card
-            flat
-            className="p-5"
-            style={{
-              backgroundColor:
-                "color-mix(in srgb, var(--accent) 6%, var(--surface))",
-              borderColor:
-                "color-mix(in srgb, var(--accent) 25%, var(--line))",
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+            Why it matters to you
+          </p>
+          <DepthToggle
+            value={depth}
+            onSelect={(d) => {
+              setLockedAttempt(null);
+              setDepth(d);
             }}
-          >
-            <div className="mb-3 flex items-start gap-2 text-sm text-ink">
-              <Lock className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden />
-              <span>
-                {serverGate?.upgrade_cta.message ??
-                  (trialAvailable
-                    ? "Get commentary tailored to your role. Try Pro free for 7 days."
-                    : "Upgrade to Pro — $10/month")}
-              </span>
-            </div>
-            <UpgradeCtaButton
-              cta={
-                serverGate?.upgrade_cta ?? {
-                  trial_available: trialAvailable,
-                  message: "",
-                }
-              }
-            />
-          </Card>
-        ) : resolvedCommentary ? (
-          <Commentary commentary={resolvedCommentary} />
-        ) : (
-          <PersonalizationBox
-            text={story.why_it_matters_to_you}
-            loading={isCommentaryLoading}
+            lockHigherTiers={isFree}
+            onLockedClick={(d) => setLockedAttempt(d)}
           />
-        )}
+        </div>
+
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={lockedAttempt ?? serverGate ? "gate" : commentaryKey}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeInOut" }}
+          >
+            {lockedAttempt || serverGate ? (
+              <Card
+                flat
+                className="p-5"
+                style={{
+                  backgroundColor:
+                    "color-mix(in srgb, var(--accent) 6%, var(--surface))",
+                  borderColor:
+                    "color-mix(in srgb, var(--accent) 25%, var(--line))",
+                }}
+              >
+                <div className="mb-3 flex items-start gap-2 text-sm text-ink">
+                  <Lock className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden />
+                  <span>
+                    {serverGate?.upgrade_cta.message ??
+                      (trialAvailable
+                        ? "Get commentary tailored to your role. Try Pro free for 7 days."
+                        : "Upgrade to Pro — $10/month")}
+                  </span>
+                </div>
+                <UpgradeCtaButton
+                  cta={
+                    serverGate?.upgrade_cta ?? {
+                      trial_available: trialAvailable,
+                      message: "",
+                    }
+                  }
+                />
+              </Card>
+            ) : resolvedCommentary ? (
+              <Commentary commentary={resolvedCommentary} />
+            ) : (
+              <PersonalizationBox
+                text={story.why_it_matters_to_you}
+                loading={isCommentaryLoading}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {/* Phase 12e.7b — coverage list for multi-source events. Single-
-          source stories keep the existing footer attribution; only
-          multi-source items render this section. */}
       {story.sources.length > 1 && (
         <section className="space-y-2">
           <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
@@ -204,12 +231,6 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
           From the source
         </h2>
-        {/* Phase 12e.x fix cluster — body extractor stores readability-
-            parsed HTML. SourceBody runs the content through DOMPurify
-            with a tight tag allowlist + .source-body styling so the
-            prose reads as editorial content. Feed previews keep using
-            plain text (commentary thesis) — only the detail surface
-            renders structured HTML. */}
         <SourceBody html={story.context} />
       </section>
 

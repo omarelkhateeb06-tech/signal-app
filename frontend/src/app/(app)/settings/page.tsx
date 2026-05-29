@@ -258,10 +258,16 @@ export default function SettingsPage(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8 pb-12 pt-2">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your profile and preferences.</p>
+        <div className="border-b-2 border-line pb-4">
+          <h1 className="font-display text-[26px] font-semibold leading-none tracking-tight text-ink md:text-[30px]">
+            Settings
+          </h1>
+          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
+            Profile &amp; preferences
+          </p>
+        </div>
       </header>
 
       <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">

@@ -116,11 +116,16 @@ export default function SearchPage(): JSX.Element {
   };
 
   return (
-    <div className="space-y-6 py-6">
+    <div className="space-y-6 pb-12 pt-2">
       <header className="space-y-3">
-        <h1 className="font-display text-[36px] font-semibold leading-tight tracking-tight text-ink">
-          Search
-        </h1>
+        <div className="border-b-2 border-line pb-4">
+          <h1 className="font-display text-[26px] font-semibold leading-none tracking-tight text-ink md:text-[30px]">
+            Search
+          </h1>
+          <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
+            Across your briefing
+          </p>
+        </div>
         <Input
           ref={inputRef}
           inputSize="lg"

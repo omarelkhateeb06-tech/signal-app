@@ -15,8 +15,8 @@ const NAV: Array<{ href: string; label: string; icon: typeof Home }> = [
 export function Sidebar(): JSX.Element {
   const pathname = usePathname();
   return (
-    <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white md:block">
-      <nav className="sticky top-16 space-y-1 p-4">
+    <aside className="hidden w-56 shrink-0 border-r border-line bg-bg md:block">
+      <nav className="sticky top-14 space-y-0.5 p-4">
         {NAV.map((item) => {
           const active =
             pathname === item.href || pathname?.startsWith(`${item.href}/`);
@@ -25,14 +25,29 @@ export function Sidebar(): JSX.Element {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={clsx(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 active
-                  ? "bg-violet-50 text-violet-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                  ? "bg-surface font-semibold text-ink shadow-card"
+                  : "font-medium text-ink-muted hover:bg-line/40 hover:text-ink",
               )}
             >
-              <Icon className="h-4 w-4" />
+              {/* Active accent bar — the only place the teal accent marks
+                  location, matching the landing-page nav language. */}
+              <span
+                aria-hidden
+                className={clsx(
+                  "absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent transition-opacity",
+                  active ? "opacity-100" : "opacity-0",
+                )}
+              />
+              <Icon
+                className={clsx(
+                  "h-4 w-4 transition-colors",
+                  active ? "text-accent" : "text-ink-muted group-hover:text-ink",
+                )}
+              />
               {item.label}
             </Link>
           );

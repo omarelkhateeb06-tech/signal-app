@@ -107,6 +107,7 @@ export interface Story {
   is_saved: boolean;
   save_count: number;
   comment_count: number;
+  reading_time_minutes?: number;
 }
 
 // Response envelope for GET /api/v1/stories/:id/commentary. The

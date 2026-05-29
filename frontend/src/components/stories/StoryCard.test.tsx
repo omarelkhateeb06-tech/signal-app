@@ -81,26 +81,25 @@ function renderCard(story: Story): { container: HTMLElement } {
   return render(<StoryCard story={story} />, { wrapper: Wrapper });
 }
 
-describe("StoryCard og:image thumbnail", () => {
+describe("StoryCard imagery (text-forward river card)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("renders the thumbnail when story.image_url is non-null", () => {
+  // Editorial redesign: the river card is deliberately text-forward —
+  // imagery is reserved for the feed lead (FeedLead) so the river reads
+  // as a dense, scannable column. The card therefore renders NO <img>
+  // regardless of whether the story carries an og:image.
+  it("does not render a thumbnail even when story.image_url is set", () => {
     const { container } = renderCard(
       baseStory({ image_url: "https://cdn.example.com/og.jpg" }),
     );
-    // Use querySelector — the thumbnail is decorative (alt=""), so it
-    // has no "img" ARIA role and getByRole("img") wouldn't find it.
-    const img = container.querySelector("img[src=\"https://cdn.example.com/og.jpg\"]");
-    expect(img).not.toBeNull();
+    const imgs = container.querySelectorAll("img");
+    expect(imgs.length).toBe(0);
   });
 
-  it("does not render any img element when story.image_url is null", () => {
+  it("renders no img element when story.image_url is null", () => {
     const { container } = renderCard(baseStory({ image_url: null }));
-    // The card has no other <img> elements when image_url is null —
-    // the SaveButton uses lucide-react SVGs, not raster images, and
-    // the SectorBadge is text.
     const imgs = container.querySelectorAll("img");
     expect(imgs.length).toBe(0);
   });

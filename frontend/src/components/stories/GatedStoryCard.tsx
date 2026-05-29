@@ -1,17 +1,25 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import { SectorBadge } from "./SectorBadge";
+import { motion } from "framer-motion";
 import { UpgradeCtaButton } from "./UpgradeCta";
 import { Card, type CardSectorAccent } from "@/components/ui/Card";
+import { storyCardVariants } from "./StoryCard";
 import type { FeedGatedStory } from "@/types/story";
 
-// Phase 12j — gated story card. Same outer footprint as a normal
-// StoryCard so the feed has a uniform rhythm (cards don't collapse
-// or jump). Headline + first line stay visible at full opacity; the
-// body region under them blurs into a CSS gradient mask, with the
-// upgrade CTA centered over the blurred zone. The card stays
-// scrollable past — no modal, no eject.
+const EASE: [number, number, number, number] = [0.2, 0.8, 0.2, 1];
+
+const SECTOR_VAR: Record<string, string> = {
+  ai: "var(--ai)",
+  finance: "var(--finance)",
+  semiconductors: "var(--semis)",
+};
+
+const SECTOR_SHORT: Record<string, string> = {
+  ai: "AI",
+  finance: "Finance",
+  semiconductors: "Semiconductors",
+};
 
 function sectorAccentFor(sector: string): CardSectorAccent {
   if (sector === "ai") return "ai";
@@ -22,68 +30,80 @@ function sectorAccentFor(sector: string): CardSectorAccent {
 
 export function GatedStoryCard({
   story,
-  index = 0,
+  animated = false,
 }: {
   story: FeedGatedStory;
   index?: number;
+  animated?: boolean;
 }): JSX.Element {
-  const staggerDelay = index < 10 ? `${index * 40}ms` : "0ms";
+  const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
+
   return (
-    <Card
-      data-testid="gated-story-card"
-      sectorAccent={sectorAccentFor(story.sector)}
-      className="relative overflow-hidden p-6 animate-fade-up"
-      style={{ animationDelay: staggerDelay }}
+    <motion.div
+      variants={animated ? storyCardVariants : undefined}
+      whileHover={{ y: -2, transition: { duration: 0.15, ease: EASE } }}
+      className="h-full"
     >
-      {/* Visible region: sector badge + headline + first line. */}
-      <div className="mb-3">
-        <SectorBadge sector={story.sector} />
-      </div>
-      <h2 className="mb-2 font-display text-[20px] font-semibold leading-snug text-ink">
-        {story.teaser.headline}
-      </h2>
-      <p className="text-sm leading-relaxed text-ink-muted">
-        {story.teaser.first_line}
-      </p>
-
-      {/* Blurred region: card-shaped placeholder content under a
-          backdrop blur. The CSS gradient mask fades from solid at the
-          top to transparent at the bottom so the blur feels like the
-          rest of the card is still there, just out of focus. */}
-      <div
-        aria-hidden
-        className="mt-4 space-y-2 gate-blur"
-        style={{
-          maskImage:
-            "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.25) 90%)",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.25) 90%)",
-        }}
+      <Card
+        data-testid="gated-story-card"
+        sectorAccent={sectorAccentFor(story.sector)}
+        className="relative flex h-full flex-col overflow-hidden p-5"
       >
-        <div className="h-3 rounded bg-line" />
-        <div className="h-3 w-11/12 rounded bg-line" />
-        <div className="h-3 w-10/12 rounded bg-line" />
-        <div className="h-3 w-8/12 rounded bg-line" />
-      </div>
-
-      {/* Upgrade overlay — sits over the blurred region, integrated
-          with the card rather than as a modal. Warm semi-transparent
-          backdrop using color-mix() against the surface color so it
-          looks like a natural extension of the card. */}
-      <div
-        className="absolute inset-x-6 bottom-6 flex flex-col items-start gap-3 rounded-md border border-line p-4"
-        style={{
-          backgroundColor: "color-mix(in srgb, var(--surface) 92%, transparent)",
-          backdropFilter: "blur(4px)",
-          WebkitBackdropFilter: "blur(4px)",
-        }}
-      >
-        <div className="flex items-start gap-2 text-sm text-ink">
-          <Lock className="mt-0.5 h-4 w-4 flex-none text-accent" aria-hidden />
-          <span>{story.upgrade_cta.message}</span>
+        {/* Sector kicker — same editorial dateline as every other card */}
+        <div className="mb-2 flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
+            style={{ color: sectorColor }}
+          >
+            <span
+              aria-hidden
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: sectorColor }}
+            />
+            {SECTOR_SHORT[story.sector] ?? story.sector}
+          </span>
         </div>
-        <UpgradeCtaButton cta={story.upgrade_cta} size="sm" />
-      </div>
-    </Card>
+
+        <h2 className="mb-2 font-display text-[19px] font-semibold leading-snug text-ink">
+          {story.teaser.headline}
+        </h2>
+        <p className="text-sm leading-relaxed text-ink-muted">
+          {story.teaser.first_line}
+        </p>
+
+        {/* Locked region — blurred placeholder lines fading out, with the
+            upgrade prompt integrated as a premium inline panel. */}
+        <div className="relative mt-3 flex-1">
+          <div
+            aria-hidden
+            className="space-y-2"
+            style={{
+              maskImage:
+                "linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 80%)",
+              WebkitMaskImage:
+                "linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 80%)",
+            }}
+          >
+            <div className="h-2.5 rounded bg-line" />
+            <div className="h-2.5 w-11/12 rounded bg-line" />
+            <div className="h-2.5 w-9/12 rounded bg-line" />
+          </div>
+        </div>
+
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-md border px-3 py-2.5"
+          style={{
+            backgroundColor: "color-mix(in srgb, var(--accent) 6%, var(--surface))",
+            borderColor: "color-mix(in srgb, var(--accent) 22%, var(--line))",
+          }}
+        >
+          <span className="inline-flex items-center gap-2 text-xs text-ink">
+            <Lock className="h-3.5 w-3.5 flex-none text-accent" aria-hidden />
+            <span className="line-clamp-2">{story.upgrade_cta.message}</span>
+          </span>
+          <UpgradeCtaButton cta={story.upgrade_cta} size="sm" />
+        </div>
+      </Card>
+    </motion.div>
   );
 }

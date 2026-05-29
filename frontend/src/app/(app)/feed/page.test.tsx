@@ -22,11 +22,15 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   getFeedRequest: vi.fn(),
   listTeamsRequest: vi.fn(),
+  getMyProfileRequest: vi.fn(),
   extractApiError: (_err: unknown, fallback: string) => fallback,
 }));
 
 import * as api from "@/lib/api";
+import type { MyProfileResponse } from "@/lib/api";
 import FeedPage from "./page";
+
+const emptyProfile = { profile: null } as unknown as MyProfileResponse;
 
 const emptyFeed: FeedResponse = {
   stories: [],
@@ -55,6 +59,7 @@ describe("FeedPage refresh button", () => {
     vi.clearAllMocks();
     vi.mocked(api.getFeedRequest).mockResolvedValue(emptyFeed);
     vi.mocked(api.listTeamsRequest).mockResolvedValue([]);
+    vi.mocked(api.getMyProfileRequest).mockResolvedValue(emptyProfile);
   });
 
   it("renders an accessible refresh affordance", async () => {

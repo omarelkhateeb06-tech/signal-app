@@ -1,34 +1,40 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
-import { SectorBadge } from "./SectorBadge";
+import { motion } from "framer-motion";
 import { StorySaveButton } from "./StorySaveButton";
 import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
+import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
 import { isGatePayload, type Story } from "@/types/story";
 
-// Phase 12c — each card self-manages when to fire its commentary
-// fetch via IntersectionObserver with a rootMargin that provides
-// roughly 5 cards of lookahead. Coupled with COMMENTARY_MAX_CONCURRENT
-// in lib/commentaryQueue, this produces:
-//   - first page: ~first 5-8 cards above-the-fold trigger immediately,
-//     saturating the 8-slot semaphore; the remaining 2-5 queue and
-//     resolve as soon as the first wave returns.
-//   - scrolling: newly-visible cards (and ~5 more below them) flip
-//     to enabled; queue absorbs the spike.
 const VISIBILITY_ROOT_MARGIN = "1200px 0px";
+const EASE: [number, number, number, number] = [0.2, 0.8, 0.2, 1];
+
+export const storyCardVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: EASE } },
+};
+
+const SECTOR_VAR: Record<string, string> = {
+  ai: "var(--ai)",
+  finance: "var(--finance)",
+  semiconductors: "var(--semis)",
+};
+
+const SECTOR_SHORT: Record<string, string> = {
+  ai: "AI",
+  finance: "Finance",
+  semiconductors: "Semiconductors",
+};
 
 interface StoryCardProps {
   story: Story;
-  // Phase 12j — stagger entrance animation. Cards are mounted at the
-  // same time on a fresh feed load; we want them to fade in with a
-  // small per-card delay so the eye reads them sequentially. Passed
-  // by the feed page based on within-page index.
   index?: number;
+  animated?: boolean;
 }
 
 function sectorAccentFor(sector: string): CardSectorAccent {
@@ -38,15 +44,11 @@ function sectorAccentFor(sector: string): CardSectorAccent {
   return null;
 }
 
-function primaryParagraph(text: string): string {
-  // The commentary thesis can be a paragraph or two; on the feed we
-  // show the first paragraph as a preview, line-clamped to ~3 lines
-  // via CSS. Pre-trim on the input to avoid trailing whitespace
-  // confusing the clamp.
-  return text.trim();
-}
-
-export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
+export function StoryCard({
+  story,
+  index = 0,
+  animated = false,
+}: StoryCardProps): JSX.Element {
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
   const [shouldLoad, setShouldLoad] = useState(false);
@@ -73,7 +75,6 @@ export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
   }, [shouldLoad]);
 
   const commentaryQuery = useStoryCommentary(story.id, { enabled: shouldLoad });
-
   const apiCommentary =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
       ? commentaryQuery.data.commentary
@@ -82,91 +83,97 @@ export function StoryCard({ story, index = 0 }: StoryCardProps): JSX.Element {
   const isCommentaryLoading =
     shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
 
-  // 12j — feed preview shows the commentary thesis when we have one,
-  // or the why_it_matters_to_you template body as the fallback. The
-  // tail of the card always has the sector badge + timestamp; the
-  // source attribution moves to a small subtitle directly under the
-  // headline (per the brief: "via Bloomberg" / "via SemiAnalysis,
-  // Bloomberg, +3 more").
   const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
   const sourceCount = story.sources.length;
   const primarySource = story.source_name ?? story.sources[0]?.name ?? null;
   const sourceLabel =
-    sourceCount > 1 && primarySource
-      ? `via ${primarySource}, +${sourceCount - 1} more`
-      : primarySource
-        ? `via ${primarySource}`
-        : null;
+    sourceCount > 1 ? `+${sourceCount - 1}` : null;
 
-  // Stagger only the first ~10 cards so later scroll-loads don't get
-  // a perceptible delay before they paint.
-  const staggerDelay = index < 10 ? `${index * 40}ms` : "0ms";
+  const isRead = useReadStoriesStore((s) => s.isRead(story.id));
+  const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
+
+  void index;
 
   return (
-    <Card
-      ref={cardRef}
-      interactive
-      sectorAccent={sectorAccentFor(story.sector)}
-      className="animate-fade-up p-6"
-      style={{ animationDelay: staggerDelay }}
+    <motion.div
+      variants={animated ? storyCardVariants : undefined}
+      whileHover={{ y: -2, transition: { duration: 0.15, ease: EASE } }}
+      className="h-full"
     >
-      <Link href={`/stories/${story.id}`} className="group block hover:no-underline">
-        {/* Phase 12k — right-aligned supplemental thumbnail. The headline +
-            commentary stay primary; thumbnail is rendered to the right at
-            a fixed compact size. When story.image_url is null, no slot is
-            reserved (the card lays out exactly as it did pre-12k). */}
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <h2 className="mb-1 font-display text-[20px] font-semibold leading-snug text-ink transition-colors duration-150 group-hover:text-accent">
-              {story.headline}
-            </h2>
-            {sourceLabel && (
-              <p className="mb-3 text-xs text-ink-muted">{sourceLabel}</p>
-            )}
-            <p
-              className="mb-4 text-sm leading-relaxed text-ink-muted"
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
+      <Card
+        ref={cardRef}
+        sectorAccent={sectorAccentFor(story.sector)}
+        className="flex h-full flex-col p-5"
+      >
+        <Link
+          href={`/stories/${story.id}`}
+          className="group flex flex-1 flex-col hover:no-underline"
+        >
+          {/* Sector kicker — unified editorial dateline language */}
+          <div className="mb-2 flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
+              style={{ color: sectorColor }}
             >
-              {isCommentaryLoading
-                ? "Generating your briefing…"
-                : primaryParagraph(previewText)}
-            </p>
-          </div>
-          {story.image_url && (
-            <Image
-              src={story.image_url}
-              alt=""
-              width={120}
-              height={80}
-              unoptimized
-              loading="lazy"
-              className="flex-none rounded-md object-cover"
-              style={{ width: 120, height: 80 }}
-            />
-          )}
-        </div>
-      </Link>
-
-      <div className="flex items-center justify-between gap-3 text-xs text-ink-muted">
-        <div className="flex items-center gap-3">
-          <SectorBadge sector={story.sector} />
-          {stamp && (
-            <span className="font-mono text-[11px] tracking-tight">{stamp}</span>
-          )}
-          {story.comment_count > 0 && (
-            <span className="inline-flex items-center gap-1">
-              <MessageSquare className="h-3.5 w-3.5" />
-              {story.comment_count}
+              <span
+                aria-hidden
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: sectorColor }}
+              />
+              {SECTOR_SHORT[story.sector] ?? story.sector}
             </span>
-          )}
+            {primarySource && (
+              <span className="truncate font-mono text-[10px] uppercase tracking-[0.1em] text-ink-muted">
+                · {primarySource}
+                {sourceLabel ? ` ${sourceLabel}` : ""}
+              </span>
+            )}
+          </div>
+
+          <h2
+            className={[
+              "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+              isRead ? "text-ink-muted" : "text-ink",
+            ].join(" ")}
+          >
+            {story.headline}
+          </h2>
+
+          <p
+            className="text-sm leading-relaxed text-ink-muted"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {isCommentaryLoading ? "Generating your briefing…" : previewText}
+          </p>
+        </Link>
+
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-muted">
+          <div className="flex items-center gap-3">
+            {stamp && (
+              <span className="font-mono text-[10px] uppercase tracking-wide">
+                {stamp}
+              </span>
+            )}
+            {story.reading_time_minutes != null && (
+              <span className="font-mono text-[10px] uppercase tracking-wide">
+                {story.reading_time_minutes} min
+              </span>
+            )}
+            {story.comment_count > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <MessageSquare className="h-3.5 w-3.5" />
+                {story.comment_count}
+              </span>
+            )}
+          </div>
+          <StorySaveButton story={story} />
         </div>
-        <StorySaveButton story={story} />
-      </div>
-    </Card>
+      </Card>
+    </motion.div>
   );
 }

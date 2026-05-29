@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { useRequireOnboarded } from "@/hooks/useRequireOnboarded";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -9,10 +11,8 @@ export default function AppShellLayout({
 }: {
   children: React.ReactNode;
 }): JSX.Element | null {
-  // Phase 12b: the app shell now gates on both auth AND completed
-  // onboarding. useRequireOnboarded redirects to /onboarding/1 when
-  // the profile's completed_at is null, otherwise returns ready=true.
   const { ready } = useRequireOnboarded();
+  const pathname = usePathname();
 
   if (!ready) {
     return (
@@ -23,12 +23,24 @@ export default function AppShellLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-bg">
       <Header />
       <div className="flex">
         <Sidebar />
         <main className="flex-1 px-4 py-8 md:px-8">
-          <div className="mx-auto max-w-3xl">{children}</div>
+          <div className="mx-auto max-w-6xl">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={pathname}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15, ease: "easeInOut" }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </main>
       </div>
     </div>
