@@ -9,13 +9,17 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy backend manifest + lockfile
-COPY package.json ./
-# Note: no package-lock.json in backend/ (it's at the monorepo root)
-# So we use npm install instead of npm ci here
+# Copy backend manifest + lockfile. backend/package-lock.json is a
+# STANDALONE lockfile committed specifically for this Docker build: the
+# build context is backend/, so the monorepo-root lockfile is out of
+# reach here. It must be regenerated whenever backend deps change — see
+# docs/DEPLOYMENT.md. Using npm ci (not npm install) makes the build
+# resolve from the lockfile deterministically instead of re-resolving
+# version ranges on every build.
+COPY package.json package-lock.json ./
 
 # Install all deps (including dev for TypeScript compilation)
-RUN npm install
+RUN npm ci
 
 # Copy source
 COPY . .
@@ -42,11 +46,11 @@ ARG BUILD_TIME=unknown
 ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
 ENV BUILD_TIME=$BUILD_TIME
 
-# Copy manifest
-COPY --from=builder --chown=signal:nodejs /app/package.json ./
+# Copy manifest + lockfile
+COPY --from=builder --chown=signal:nodejs /app/package.json /app/package-lock.json ./
 
-# Install production deps only
-RUN npm install --omit=dev && \
+# Install production deps only, deterministically from the lockfile
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Copy compiled code (includes migration runner + .sql migrations)

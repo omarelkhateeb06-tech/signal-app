@@ -7,6 +7,22 @@
 - **Database:** Railway Postgres. Schema managed via a homegrown migration runner (`backend/src/db/migrate.ts`) over SQL files under `backend/src/db/migrations/`.
 - **Cache/queue:** Railway Redis (BullMQ).
 
+## Backend lockfile (Docker / `npm ci`)
+
+The backend image (`backend/Dockerfile`) builds with the **`backend/` folder as the build context**, so the monorepo-root `package-lock.json` isn't reachable inside the image. To keep Railway builds deterministic, **`backend/package-lock.json` is committed as a standalone lockfile** and the Dockerfile installs with `npm ci` (not `npm install`). This is what prevents version drift between builds — e.g. the `ioredis`/`bullmq` type mismatch in PR #100, where lockfile-less `npm install` re-resolved version ranges on every build.
+
+**When you change `backend/package.json` dependencies, regenerate the standalone lockfile** in the same commit — otherwise the Docker `npm ci` fails on a lock/manifest mismatch:
+
+```bash
+# Generate in a scratch dir OUTSIDE the workspace, so npm doesn't fold it
+# into the monorepo root lockfile, then copy the standalone lock back in.
+tmp=$(mktemp -d) && cp backend/package.json "$tmp/" \
+  && (cd "$tmp" && npm install --package-lock-only) \
+  && cp "$tmp/package-lock.json" backend/package-lock.json
+```
+
+Then run `npm install` at the repo root as usual to update the workspace lockfile. Commit both `backend/package-lock.json` and the root `package-lock.json`.
+
 ## Deploy Runbook
 
 ### Standard deploys (no schema changes)
