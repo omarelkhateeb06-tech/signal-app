@@ -40,6 +40,7 @@ import {
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
+  W3,
 } from "../../src/feed/rankingConstants";
 
 const app = createApp();
@@ -169,6 +170,49 @@ describe("calculateEffectiveScore — Phase 12f ranking formula", () => {
       const fourAttached = calculateEffectiveScore({ ...base, sourcesAttachedCount: 4 });
       const delta = fourAttached - solo;
       expect(delta).toBeCloseTo(W1 * Math.log(1 + 4), 5);
+    });
+  });
+
+  describe("(e) save signal", () => {
+    const base = {
+      qualityScore: 7,
+      sourcesAttachedCount: 0,
+      ageHours: 1,
+      isEdgarSoleSource: false,
+      bodyTextPresent: true,
+    };
+
+    it("ranks an event with saves ABOVE an otherwise-identical event with zero saves", () => {
+      const noSaves = calculateEffectiveScore({ ...base, saveCount: 0 });
+      const saved = calculateEffectiveScore({ ...base, saveCount: 50 });
+      expect(saved).toBeGreaterThan(noSaves);
+    });
+
+    it("treats a missing saveCount as zero (graceful default, no error)", () => {
+      const omitted = calculateEffectiveScore({ ...base });
+      const explicitZero = calculateEffectiveScore({ ...base, saveCount: 0 });
+      expect(omitted).toBeCloseTo(explicitZero, 5);
+    });
+
+    it("strictly increases score as save_count grows", () => {
+      const zero = calculateEffectiveScore({ ...base, saveCount: 0 });
+      const ten = calculateEffectiveScore({ ...base, saveCount: 10 });
+      const hundred = calculateEffectiveScore({ ...base, saveCount: 100 });
+      expect(ten).toBeGreaterThan(zero);
+      expect(hundred).toBeGreaterThan(ten);
+    });
+
+    it("save-signal magnitude matches W3 * ln(1 + count) and is log-normalized (10x saves « 10x lift)", () => {
+      const zero = calculateEffectiveScore({ ...base, saveCount: 0 });
+      const fifty = calculateEffectiveScore({ ...base, saveCount: 50 });
+      const delta = fifty - zero;
+      expect(delta).toBeCloseTo(W3 * Math.log(1 + 50), 5);
+
+      // Log scaling: a 20x jump in saves (50 → 1000) yields well under a
+      // 20x jump in the signal contribution — the outlier is dampened.
+      const thousand = calculateEffectiveScore({ ...base, saveCount: 1000 });
+      const deltaThousand = thousand - zero;
+      expect(deltaThousand).toBeLessThan(delta * 2);
     });
   });
 });

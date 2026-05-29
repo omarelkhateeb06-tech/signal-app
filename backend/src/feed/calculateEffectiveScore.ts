@@ -13,6 +13,7 @@ import {
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
+  W3,
 } from "./rankingConstants";
 
 export interface EffectiveScoreInputs {
@@ -37,10 +38,18 @@ export interface EffectiveScoreInputs {
    * usable text, which is what gates the EDGAR penalty.
    */
   bodyTextPresent: boolean;
+  /**
+   * Absolute count of user_saves rows pointing at this event. Optional —
+   * omitted / undefined is treated as 0 saves (the graceful default:
+   * missing save data must not error or penalize, per the 12-series
+   * decision). Log-scaled by W3 so an outlier count doesn't dominate.
+   */
+  saveCount?: number;
 }
 
 export function calculateEffectiveScore(input: EffectiveScoreInputs): number {
   const clusterAmplification = W1 * Math.log(1 + input.sourcesAttachedCount);
+  const saveSignal = W3 * Math.log(1 + (input.saveCount ?? 0));
   const recencyDecay = W2 * input.ageHours;
   const freshnessBonus =
     input.qualityScore >= FRESHNESS_QUALITY_THRESHOLD &&
@@ -52,7 +61,8 @@ export function calculateEffectiveScore(input: EffectiveScoreInputs): number {
 
   return (
     input.qualityScore +
-    clusterAmplification -
+    clusterAmplification +
+    saveSignal -
     recencyDecay +
     freshnessBonus -
     edgarPenalty

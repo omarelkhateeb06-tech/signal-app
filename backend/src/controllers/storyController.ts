@@ -33,6 +33,7 @@ import {
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
+  W3,
 } from "../feed/rankingConstants";
 
 const MAX_LIMIT = 50;
@@ -360,10 +361,16 @@ export function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
   const ageHours = eventAgeHoursExpr();
   const isEdgarSole = eventIsEdgarSoleSourceExpr();
   const bodyPresent = eventBodyTextPresentExpr();
+  // Reuse the same correlated subquery the SELECT list uses for the
+  // `save_count` column — no extra round-trip, no N+1. COUNT(*) returns
+  // 0 for an event with no saves, and LN(1+0)=0, so the term vanishes
+  // gracefully when there's no save data.
+  const saveCount = eventSaveCountExpr();
 
   return sql<number>`(
     ${quality}::numeric
     + ${W1}::numeric * LN(1 + ${alternates}::numeric)
+    + ${W3}::numeric * LN(1 + ${saveCount}::numeric)
     - ${W2}::numeric * ${ageHours}::numeric
     + CASE
         WHEN ${quality}::numeric >= ${FRESHNESS_QUALITY_THRESHOLD}::numeric

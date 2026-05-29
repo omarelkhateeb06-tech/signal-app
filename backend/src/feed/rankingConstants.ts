@@ -7,6 +7,7 @@
 //   effective_score
 //     = quality_score
 //     + ln(1 + sources_attached_count) * W1
+//     + ln(1 + save_count) * W3
 //     - age_hours * W2
 //     + freshness_bonus
 //     - edgar_penalty
@@ -16,6 +17,10 @@
 // `sources_attached_count` is the number of *alternate* event_sources
 // rows for the event (= total event_sources − 1). A solo event scores
 // ln(1+0)=0 amplification; a cluster of 3 sources scores ln(3)*W1.
+// `save_count` is the absolute number of user_saves rows pointing at the
+// event. Log-scaled like cluster amplification so a high-save outlier
+// lifts the event without dominating the score; an event with zero saves
+// scores ln(1+0)=0 (the graceful default — no save data → no penalty).
 
 /**
  * W1 — cluster amplification weight. Multiplied by ln(1 + alternates).
@@ -28,6 +33,17 @@ export const W1 = 2.0;
  * base. Tune during the soak.
  */
 export const W2 = 0.15;
+
+/**
+ * W3 — save-signal weight. Multiplied by ln(1 + save_count), mirroring
+ * the cluster-amplification shape so an outlier save count is normalized
+ * rather than allowed to dominate. Sized below W1: at 10 saves the lift
+ * is ~1.5*ln(11)≈3.6, at 50 saves ~5.9, at 1000 saves only ~10.4 — a
+ * meaningful but bounded nudge. Save *count* (not rate) is the signal in
+ * this stage; save rate waits on reliable view tracking. Tune during the
+ * soak alongside W1/W2.
+ */
+export const W3 = 1.5;
 
 /**
  * Freshness bonus applied to events whose primary source has
