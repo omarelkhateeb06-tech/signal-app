@@ -32,6 +32,12 @@
 // or whether a threshold is too strict. --verbose enables the diagnostics
 // without suppressing the insert/enrichment (a real run with the trace on).
 //
+// The diagnostics extend through the authoring stage: every repo that
+// cleared the gate and was sent to the LLM prints its decision — AUTHORED
+// (with the headline) or SKIPPED (with the model's skip reason / failure) —
+// plus an author summary line. This is what tells "the gate passed credible
+// repos but the model found no current story" apart from a pipeline bug.
+//
 // Shutdown: clean teardown via try/finally. No process.exit(0) — see
 // followup #47 (Node-on-Windows libuv shutdown crash). On fatal error,
 // set process.exitCode = 1 and let the event loop drain naturally.
@@ -83,6 +89,9 @@ interface DiagnosticTally {
   passedPreFilter: number;
   reachedQualify: number;
   passed: number;
+  sentToLlm: number;
+  authored: number;
+  skipped: number;
 }
 
 function formatSignals(signals: Record<string, unknown> | undefined): string {
@@ -101,6 +110,9 @@ function makeDiagnosticPrinter(): {
     passedPreFilter: 0,
     reachedQualify: 0,
     passed: 0,
+    sentToLlm: 0,
+    authored: 0,
+    skipped: 0,
   };
   const onDiagnostic = (d: GeneratorDiagnostic): void => {
     if (d.stage === "prefilter") {
@@ -109,11 +121,23 @@ function makeDiagnosticPrinter(): {
     } else if (d.stage === "qualify") {
       tally.reachedQualify += 1;
       if (d.decision === "pass") tally.passed += 1;
+    } else if (d.stage === "author") {
+      tally.sentToLlm += 1;
+      if (d.decision === "pass") tally.authored += 1;
+      else tally.skipped += 1;
     }
-    const verdict =
-      d.decision === "pass"
-        ? "PASS  "
-        : `REJECT ${d.reason}${d.detail ? ` (${d.detail})` : ""}`;
+    let verdict: string;
+    if (d.stage === "author") {
+      verdict =
+        d.decision === "pass"
+          ? `AUTHORED  "${d.detail ?? ""}"`
+          : `SKIPPED   ${d.reason ?? ""}${d.detail ? ` (${d.detail})` : ""}`;
+    } else {
+      verdict =
+        d.decision === "pass"
+          ? "PASS  "
+          : `REJECT ${d.reason}${d.detail ? ` (${d.detail})` : ""}`;
+    }
     // eslint-disable-next-line no-console
     console.log(
       `[${d.stage.padEnd(9)}] ${verdict}\n` +
@@ -231,11 +255,23 @@ async function main(): Promise<void> {
     });
 
     if (diag) {
-      const { considered, passedPreFilter, reachedQualify, passed } = diag.tally;
+      const {
+        considered,
+        passedPreFilter,
+        reachedQualify,
+        passed,
+        sentToLlm,
+        authored,
+        skipped,
+      } = diag.tally;
       console.log(
         `\n[run-native-generation] gate summary: ${considered} considered, ` +
           `${passedPreFilter} passed pre-filter, ${reachedQualify} reached qualifyRepo, ` +
           `${passed} passed the gate`,
+      );
+      console.log(
+        `[run-native-generation] author summary: ${passed} passed gate, ` +
+          `${sentToLlm} sent to LLM, ${authored} authored, ${skipped} skipped`,
       );
     }
 

@@ -104,6 +104,14 @@ const SEARCH_PER_PAGE = 20;
 //     manipulation profile. Real traction takes time to compound.
 //   - contributors: 1–2 accounts driving a "viral" repo is a tell. Real
 //     momentum pulls in contributors.
+//   - issues-per-1k-stars: a RELATIVE credibility signal. The absolute
+//     open-issue floor only catches dead repos; it does nothing at high
+//     star counts. A genuinely-used 198K-star project accumulates
+//     thousands of issues — real usage generates real bug reports and
+//     feature requests. A 198K-star repo with 38 open issues is a tell the
+//     stars don't reflect usage (ECC's profile). This floor scales the
+//     expectation with stars, so it only bites where the absolute floor
+//     can't: huge stars, anomalously few issues.
 export interface QualifyConfig {
   minForkStarRatio: number;
   strictMinForkStarRatio: number;
@@ -112,6 +120,8 @@ export interface QualifyConfig {
   minContributors: number;
   strictMinContributors: number;
   minOpenIssues: number;
+  minIssuesPer1kStars: number;
+  strictMinIssuesPer1kStars: number;
   minRepoAgeDays: number;
   strictMinRepoAgeDays: number;
 }
@@ -124,6 +134,8 @@ export const DEFAULT_QUALIFY_CONFIG: QualifyConfig = {
   minContributors: 3,
   strictMinContributors: 8,
   minOpenIssues: 3,
+  minIssuesPer1kStars: 1.0,
+  strictMinIssuesPer1kStars: 2.0,
   minRepoAgeDays: 30,
   strictMinRepoAgeDays: 90,
 };
@@ -161,6 +173,16 @@ const GithubNativeOutputSchema = z
   .strict();
 
 export type GithubNativeOutput = z.infer<typeof GithubNativeOutputSchema>;
+
+// Outcome of the authoring stage for one gate-passing repo. The runner
+// turns "authored" into a NativeCandidate and drops the rest; the verbose
+// diagnostics surface WHY a repo that cleared the structural gate produced
+// no post — almost always the model declining ("skipped") because the repo
+// has no current story, which is a correct outcome, not a bug.
+export type AuthorOutcome =
+  | { status: "authored"; output: GithubNativeOutput }
+  | { status: "skipped"; reason: string } // model returned {skip:true}
+  | { status: "error"; reason: string }; // call/parse/schema failure
 
 // ---- Pure helpers (exported for tests) ----
 
@@ -241,6 +263,17 @@ export function qualifyRepo(
 
   if (signals.openIssues < config.minOpenIssues) {
     return { ok: false, reason: "no_issue_activity" };
+  }
+
+  // Relative credibility: open issues scaled to stars. Catches the
+  // high-stars / near-zero-issues fraud profile the absolute floor misses.
+  const issuesPer1k =
+    signals.stars > 0 ? (signals.openIssues / signals.stars) * 1000 : 0;
+  const minIssuesPer1k = corroborated
+    ? config.minIssuesPer1kStars
+    : config.strictMinIssuesPer1kStars;
+  if (issuesPer1k < minIssuesPer1k) {
+    return { ok: false, reason: "low_issue_star_ratio" };
   }
 
   const forkRatio = signals.stars > 0 ? signals.forks / signals.stars : 0;
@@ -332,6 +365,14 @@ export function explainFloor(
     }
     case "no_issue_activity":
       return `open_issues ${signals.openIssues} < ${config.minOpenIssues}`;
+    case "low_issue_star_ratio": {
+      const ratio =
+        signals.stars > 0 ? (signals.openIssues / signals.stars) * 1000 : 0;
+      const t = corroborated
+        ? config.minIssuesPer1kStars
+        : config.strictMinIssuesPer1kStars;
+      return `issues/1k-stars ${ratio.toFixed(2)} < ${t}`;
+    }
     case "low_fork_star_ratio": {
       const ratio = signals.stars > 0 ? signals.forks / signals.stars : 0;
       const t = corroborated
@@ -403,7 +444,7 @@ export interface GithubTrendingDeps {
   authorPost?: (
     inputs: GithubNativeInputs,
     haiku?: HaikuClientDeps,
-  ) => Promise<GithubNativeOutput | null>;
+  ) => Promise<AuthorOutcome>;
 }
 
 async function defaultFetchSearch(topic: string, now: Date): Promise<GithubRepo[]> {
@@ -496,25 +537,26 @@ async function defaultCorroborate(fullName: string): Promise<boolean> {
   }
 }
 
-// Author one native post from repo metadata. Returns null on any LLM or
-// parse failure, AND when the model itself declines (emits `{"skip":
-// true}`) — the caller skips the repo rather than emitting a degenerate or
-// manufactured candidate.
+// Author one native post from repo metadata. Returns a classified outcome:
+// "authored" on a valid post, "skipped" when the model itself declines
+// (emits `{"skip": true}`), or "error" on any LLM/parse/schema failure. The
+// caller emits a post only on "authored"; the skip/error split lets the
+// verbose diagnostics tell "model had no story" apart from "pipeline broke".
 async function defaultAuthorPost(
   inputs: GithubNativeInputs,
   haiku?: HaikuClientDeps,
-): Promise<GithubNativeOutput | null> {
+): Promise<AuthorOutcome> {
   const prompt = buildGithubNativePrompt(inputs);
   const result = await callHaikuForCommentary(prompt, haiku, {
     assistantPrefill: GITHUB_NATIVE_ASSISTANT_PREFILL,
     maxTokens: GITHUB_NATIVE_MAX_TOKENS,
   });
-  if (!result.ok) return null;
+  if (!result.ok) return { status: "error", reason: "llm_call_failed" };
   let parsed: unknown;
   try {
     parsed = JSON.parse(result.text);
   } catch {
-    return null;
+    return { status: "error", reason: "parse_error" };
   }
   // The model is allowed to decline a repo whose traction looks anomalous
   // relative to its actual substance. A skip is a correct outcome, not a
@@ -524,10 +566,17 @@ async function defaultAuthorPost(
     typeof parsed === "object" &&
     (parsed as { skip?: unknown }).skip === true
   ) {
-    return null;
+    const rawReason = (parsed as { reason?: unknown }).reason;
+    const reason =
+      typeof rawReason === "string" && rawReason.trim().length > 0
+        ? rawReason.trim()
+        : "unspecified";
+    return { status: "skipped", reason };
   }
   const validated = GithubNativeOutputSchema.safeParse(parsed);
-  return validated.success ? validated.data : null;
+  return validated.success
+    ? { status: "authored", output: validated.data }
+    : { status: "error", reason: "schema_invalid" };
 }
 
 interface QualifiedFinalist {
@@ -690,8 +739,26 @@ export function createGithubTrendingGenerator(
           createdAt: repo.created_at,
           pushedAt: repo.pushed_at,
         };
-        const post = await authorPost(inputs, deps.haiku);
-        if (!post) continue;
+        const outcome = await authorPost(inputs, deps.haiku);
+        if (emit) {
+          emit({
+            stage: "author",
+            identifier: repo.full_name,
+            url: repo.html_url,
+            decision: outcome.status === "authored" ? "pass" : "reject",
+            reason: outcome.status === "authored" ? null : outcome.reason,
+            detail:
+              outcome.status === "authored"
+                ? outcome.output.headline
+                : `${outcome.status}: ${outcome.reason}`,
+            signals: {
+              stars: repo.stargazers_count,
+              hn_corroborated: corroborated,
+            },
+          });
+        }
+        if (outcome.status !== "authored") continue;
+        const post = outcome.output;
 
         candidates.push({
           externalId: `github:${repo.id}`,

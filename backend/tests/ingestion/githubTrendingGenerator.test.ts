@@ -14,10 +14,18 @@ import {
   MAX_FINALISTS,
   type RepoSignals,
   type GithubNativeOutput,
+  type AuthorOutcome,
 } from "../../src/jobs/ingestion/generators/githubTrending";
 import type { GeneratorDiagnostic } from "../../src/jobs/ingestion/generators/types";
 
 const NOW = new Date("2026-05-30T00:00:00Z");
+
+// Wrap a finished post as the "authored" outcome the generator now expects
+// from authorPost (the dep returns a classified AuthorOutcome, not a bare
+// post-or-null).
+function authored(output: GithubNativeOutput): AuthorOutcome {
+  return { status: "authored", output };
+}
 
 // A repo fixture shaped like the GitHub search API subset the generator
 // reads. Defaults describe a HEALTHY, qualifying repo: old enough, real
@@ -157,8 +165,10 @@ describe("qualifyRepo — the anti-gaming gate", () => {
 
   it("rejects stars-without-forks (the classic purchased-star tell)", () => {
     // 198K stars, 40 forks → 0.0002 ratio, far below even the lenient 0.02.
+    // Issues set high enough to clear the issue/star floor so the fork-ratio
+    // floor is unambiguously what trips.
     const r = qualifyRepo(
-      signals({ stars: 198_000, forks: 40, contributors: 1 }),
+      signals({ stars: 198_000, forks: 40, openIssues: 500, contributors: 1 }),
       true,
     );
     expect(r).toEqual({ ok: false, reason: "low_fork_star_ratio" });
@@ -185,6 +195,53 @@ describe("qualifyRepo — the anti-gaming gate", () => {
     expect(qualifyRepo(s, false)).toEqual({
       ok: false,
       reason: "low_fork_star_ratio",
+    });
+  });
+
+  it("rejects the high-stars / near-zero-issues fraud profile on the issue/star floor", () => {
+    // ECC profile: 198K stars but only 38 open issues = 0.19 per 1k stars.
+    // Forks + contributors set high so the ONLY failing floor is the
+    // relative issue/star ratio — proving the new check is what bites.
+    const ecc = signals({
+      stars: 198_000,
+      forks: 20_000, // 0.10 ratio — clears the fork floor
+      openIssues: 38, // clears the absolute floor (≥3) but 0.19 per 1k
+      sizeKb: 5_000,
+      ageDays: 300,
+      contributors: 50,
+    });
+    expect(qualifyRepo(ecc, true)).toEqual({
+      ok: false,
+      reason: "low_issue_star_ratio",
+    });
+    expect(qualifyRepo(ecc, false)).toEqual({
+      ok: false,
+      reason: "low_issue_star_ratio",
+    });
+  });
+
+  it("passes a healthy giant whose issues scale with its stars", () => {
+    // transformers profile: 161K stars, 2,373 issues = 14.7 per 1k stars —
+    // far above both the lenient (1.0) and strict (2.0) floors.
+    const transformers = signals({
+      stars: 161_000,
+      forks: 30_000,
+      openIssues: 2_373,
+      sizeKb: 250_000,
+      ageDays: 2_000,
+      contributors: 500,
+    });
+    expect(qualifyRepo(transformers, true).ok).toBe(true);
+    expect(qualifyRepo(transformers, false).ok).toBe(true);
+  });
+
+  it("applies the strict issue/star bar when uncorroborated", () => {
+    // 1.5 issues per 1k stars clears lenient 1.0 but not strict 2.0.
+    const s = signals({ stars: 100_000, forks: 20_000, openIssues: 150 });
+    expect(qualifyRepo(s, true).ok).toBe(true);
+    expect(qualifyRepo(s, false)).toEqual({
+      ok: false,
+      reason: "low_issue_star_ratio",
     });
   });
 });
@@ -286,6 +343,9 @@ describe("DEFAULT_QUALIFY_CONFIG", () => {
     expect(c.strictMinRepoSizeKb).toBeGreaterThanOrEqual(c.minRepoSizeKb);
     expect(c.strictMinContributors).toBeGreaterThanOrEqual(c.minContributors);
     expect(c.strictMinRepoAgeDays).toBeGreaterThanOrEqual(c.minRepoAgeDays);
+    expect(c.strictMinIssuesPer1kStars).toBeGreaterThanOrEqual(
+      c.minIssuesPer1kStars,
+    );
   });
 });
 
@@ -300,7 +360,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       fetchSearch: async () => [repo(1)],
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.length).toBe(1);
@@ -315,7 +375,9 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
   });
 
   it("rejects a gamed repo before it ever reaches the prompt", async () => {
-    const authorPost = jest.fn(async () => post);
+    const authorPost = jest.fn(
+      async (): Promise<AuthorOutcome> => authored(post),
+    );
     const gen = createGithubTrendingGenerator({
       // 198K stars, ~zero forks, single contributor, young.
       fetchSearch: async () => [
@@ -329,7 +391,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       ],
       fetchContributorCount: async () => 1,
       corroborate: async () => false,
-      authorPost: authorPost as never,
+      authorPost,
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates).toEqual([]);
@@ -338,13 +400,15 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
   });
 
   it("rejects an uncorroborated repo that only clears the lenient bar", async () => {
-    const authorPost = jest.fn(async () => post);
+    const authorPost = jest.fn(
+      async (): Promise<AuthorOutcome> => authored(post),
+    );
     const gen = createGithubTrendingGenerator({
       // 45 days old, 4 contributors: passes lenient, fails strict.
       fetchSearch: async () => [repo(3, { created_at: "2026-04-15T00:00:00Z" })],
       fetchContributorCount: async () => 4,
       corroborate: async () => false,
-      authorPost: authorPost as never,
+      authorPost,
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates).toEqual([]);
@@ -356,7 +420,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       fetchSearch: async () => [repo(3, { created_at: "2026-04-15T00:00:00Z" })],
       fetchContributorCount: async () => 4,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.length).toBe(1);
@@ -373,7 +437,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       ],
       fetchContributorCount: async () => 20,
       corroborate: async (fullName) => fullName === "owner/repo-2",
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.map((c) => c.externalId)).toEqual([
@@ -390,19 +454,21 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       ],
       fetchContributorCount: async () => 1,
       corroborate: async () => false,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates).toEqual([]);
   });
 
-  it("skips a repo whose authoring step returns null (LLM decline or parse failure)", async () => {
+  it("skips a repo whose authoring step declines (model skip) but keeps the rest", async () => {
     const gen = createGithubTrendingGenerator({
       fetchSearch: async () => [repo(1), repo(2)],
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async (inputs) =>
-        inputs.fullName === "owner/repo-1" ? null : post,
+      authorPost: async (inputs): Promise<AuthorOutcome> =>
+        inputs.fullName === "owner/repo-1"
+          ? { status: "skipped", reason: "no-current-story" }
+          : authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.map((c) => c.externalId)).toEqual(["github:2"]);
@@ -418,7 +484,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       },
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.length).toBe(1);
@@ -436,7 +502,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
         return 20;
       },
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     await gen.generate({ now: () => NOW });
     expect(contributorCalls).toBe(MAX_FINALISTS);
@@ -450,7 +516,7 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
       fetchSearch: async () => many,
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({ now: () => NOW });
     expect(candidates.length).toBe(MAX_NATIVE_POSTS_PER_RUN);
@@ -522,6 +588,20 @@ describe("explainFloor renders value-vs-threshold strings", () => {
     expect(
       explainFloor("too_few_contributors", signals({ contributors: 2 }), false),
     ).toBe("contributors 2 < 8");
+    expect(
+      explainFloor(
+        "low_issue_star_ratio",
+        signals({ stars: 198_000, openIssues: 38 }),
+        true,
+      ),
+    ).toBe("issues/1k-stars 0.19 < 1");
+    expect(
+      explainFloor(
+        "low_issue_star_ratio",
+        signals({ stars: 198_000, openIssues: 38 }),
+        false,
+      ),
+    ).toBe("issues/1k-stars 0.19 < 2");
     expect(explainFloor("archived", signals(), true)).toBe("repo is archived");
   });
 });
@@ -541,7 +621,7 @@ describe("createGithubTrendingGenerator — gate diagnostics", () => {
       ],
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     const candidates = await gen.generate({
       now: () => NOW,
@@ -569,7 +649,7 @@ describe("createGithubTrendingGenerator — gate diagnostics", () => {
       fetchSearch: async () => [repo(1)],
       fetchContributorCount: async () => 20,
       corroborate: async () => false,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     await gen.generate({
       now: () => NOW,
@@ -584,20 +664,21 @@ describe("createGithubTrendingGenerator — gate diagnostics", () => {
   it("carries the rejection reason + detail for a finalist failing the strict bar", async () => {
     const records: GeneratorDiagnostic[] = [];
     const gen = createGithubTrendingGenerator({
-      // Clears the lenient pre-filter (0.03 fork ratio ≥ 0.02, issues ≥ 3),
-      // but uncorroborated → strict 0.05 fork bar at qualify rejects it.
+      // Clears the lenient pre-filter (0.03 fork ratio ≥ 0.02, issues ≥ 3)
+      // and the issue/star floor (250/100K = 2.5 per 1k ≥ strict 2.0), but
+      // uncorroborated → strict 0.05 fork bar at qualify rejects it.
       fetchSearch: async () => [
         repo(9, {
           stargazers_count: 100_000,
           forks_count: 3_000,
-          open_issues_count: 40,
+          open_issues_count: 250,
           size: 800,
           created_at: "2026-01-10T00:00:00Z",
         }),
       ],
       fetchContributorCount: async () => 20,
       corroborate: async () => false,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     });
     await gen.generate({
       now: () => NOW,
@@ -614,7 +695,7 @@ describe("createGithubTrendingGenerator — gate diagnostics", () => {
       fetchSearch: async () => [repo(1), repo(2)],
       fetchContributorCount: async () => 20,
       corroborate: async () => true,
-      authorPost: async () => post,
+      authorPost: async () => authored(post),
     };
     const withSink = await createGithubTrendingGenerator(deps).generate({
       now: () => NOW,
@@ -626,5 +707,81 @@ describe("createGithubTrendingGenerator — gate diagnostics", () => {
     expect(withSink.map((c) => c.externalId)).toEqual(
       without.map((c) => c.externalId),
     );
+  });
+});
+
+describe("createGithubTrendingGenerator — authoring-stage diagnostics", () => {
+  const post: GithubNativeOutput = {
+    headline: "A real headline about the repo",
+    body: "x".repeat(300),
+  };
+
+  it("emits an author record per gate-passing repo: AUTHORED carries the headline, SKIPPED carries the model reason", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      fetchSearch: async () => [repo(1), repo(2)],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => true,
+      authorPost: async (inputs): Promise<AuthorOutcome> =>
+        inputs.fullName === "owner/repo-1"
+          ? authored(post)
+          : { status: "skipped", reason: "no-current-story" },
+    });
+    const candidates = await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+
+    const authorRecords = records.filter((r) => r.stage === "author");
+    expect(authorRecords.length).toBe(2);
+
+    const a1 = authorRecords.find((r) => r.identifier === "owner/repo-1");
+    expect(a1?.decision).toBe("pass");
+    expect(a1?.reason).toBeNull();
+    expect(a1?.detail).toBe(post.headline);
+
+    const a2 = authorRecords.find((r) => r.identifier === "owner/repo-2");
+    expect(a2?.decision).toBe("reject");
+    expect(a2?.reason).toBe("no-current-story");
+    expect(a2?.detail).toContain("no-current-story");
+
+    // Only the authored repo becomes a candidate.
+    expect(candidates.map((c) => c.externalId)).toEqual(["github:1"]);
+  });
+
+  it("classifies an authoring error distinctly from a model skip", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      fetchSearch: async () => [repo(1)],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => true,
+      authorPost: async (): Promise<AuthorOutcome> => ({
+        status: "error",
+        reason: "parse_error",
+      }),
+    });
+    const candidates = await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+    const a = records.find((r) => r.stage === "author");
+    expect(a?.decision).toBe("reject");
+    expect(a?.reason).toBe("parse_error");
+    expect(candidates).toEqual([]);
+  });
+
+  it("emits no author records when nothing clears the gate", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      fetchSearch: async () => [repo(1, { size: 10 })], // rejected at pre-filter
+      fetchContributorCount: async () => 20,
+      corroborate: async () => true,
+      authorPost: async () => authored(post),
+    });
+    await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+    expect(records.filter((r) => r.stage === "author").length).toBe(0);
   });
 });
