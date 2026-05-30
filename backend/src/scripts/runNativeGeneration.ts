@@ -241,9 +241,19 @@ async function main(): Promise<void> {
       .where(eq(ingestionSources.slug, args.slug))
       .limit(1);
     const source = sourceRows[0];
-    if (!source) {
+    // A real run needs the source row (its id is the FK on every inserted
+    // candidate). A --dry-run authors + prints only — it never touches
+    // `source.id` — so a missing row is tolerated, letting a new generator's
+    // output be eyeballed before its seed migration is applied to this DB.
+    if (!source && !args.dryRun) {
       throw new Error(
-        `source row not found: slug=${args.slug} (apply migration 0037)`,
+        `source row not found: slug=${args.slug} (apply its seed migration)`,
+      );
+    }
+    if (!source) {
+      console.log(
+        `[run-native-generation] no source row for slug=${args.slug} — ` +
+          `dry-run tolerates this; a real run requires the seed migration.`,
       );
     }
 
@@ -274,13 +284,13 @@ async function main(): Promise<void> {
         skipped,
       } = diag.tally;
       console.log(
-        `\n[run-native-generation] discovery summary: ${discovered} HN-surfaced repo(s) ` +
-          `(${deduped} already posted, ${unparseable} non-repo URL(s) skipped), ` +
-          `${enriched} enriched via GitHub, ${passed} passed the gate`,
+        `\n[run-native-generation] discovery summary: ${discovered} candidate(s) considered ` +
+          `(${deduped} already posted, ${unparseable} unparseable URL(s) skipped), ` +
+          `${enriched} reached qualify, ${passed} passed`,
       );
       console.log(
-        `[run-native-generation] author summary: ${passed} passed gate, ` +
-          `${sentToLlm} sent to LLM, ${authored} authored, ${skipped} skipped`,
+        `[run-native-generation] author summary: ${passed} passed, ` +
+          `${sentToLlm} sent to LLM, ${authored} post(s) authored, ${skipped} skipped`,
       );
     }
 
@@ -293,6 +303,12 @@ async function main(): Promise<void> {
     if (args.dryRun) {
       console.log("\n[run-native-generation] dry-run — no inserts, no enrichment.");
       return;
+    }
+
+    // Unreachable when source is undefined: the !dryRun path above already
+    // threw. This narrows `source` for the persist loop's FK.
+    if (!source) {
+      throw new Error(`source row not found: slug=${args.slug}`);
     }
 
     console.log("\n[run-native-generation] persisting + enriching…");
