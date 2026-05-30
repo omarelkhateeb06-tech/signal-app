@@ -51,6 +51,11 @@ import { and, eq } from "drizzle-orm";
 import { db, pool } from "../db";
 import { ingestionCandidates, ingestionSources } from "../db/schema";
 import { getGenerator } from "../jobs/ingestion/generators";
+import {
+  applyDailyCap,
+  checkDailyCap,
+  NATIVE_DAILY_CAP,
+} from "../jobs/ingestion/generators/dailyCap";
 import type {
   GeneratorDiagnostic,
   NativeCandidate,
@@ -267,10 +272,42 @@ async function main(): Promise<void> {
     }
 
     const now = new Date();
-    const candidates = await generator.generate({
+
+    // Global daily volume cap (Phase 12n.4). Counted from the live DB so it
+    // composes across separate CLI invocations through the day: invocation N
+    // sees the native events 1..N-1 already wrote. Checked BEFORE generate so
+    // an exhausted budget skips the LLM call entirely. Dry-run still reports
+    // the status (a realistic diagnostic) but the early return below means it
+    // never persists, so it never consumes the budget.
+    const cap = await checkDailyCap(now);
+    console.log(
+      `[run-native-generation] daily cap: ${cap.used}/${NATIVE_DAILY_CAP} used, ` +
+        `${cap.remaining} remaining`,
+    );
+    if (cap.exhausted) {
+      console.log(
+        "[run-native-generation] daily cap exhausted — skipping generator " +
+          "(no LLM call, no inserts).",
+      );
+      return;
+    }
+
+    const produced = await generator.generate({
       now: () => now,
       onDiagnostic: diag?.onDiagnostic,
     });
+
+    // CLI-level ceiling: truncate this run's output to the remaining budget so
+    // the last generator of the day can't overshoot the global cap. The
+    // generator's own per-run cap already applied inside generate(); this is a
+    // post-filter on top, leaving generator internals untouched.
+    const candidates = applyDailyCap(produced, cap.remaining);
+    if (candidates.length < produced.length) {
+      console.log(
+        `[run-native-generation] capping ${produced.length} -> ${candidates.length} ` +
+          "candidate(s) to fit the remaining daily budget.",
+      );
+    }
 
     if (diag) {
       const {
