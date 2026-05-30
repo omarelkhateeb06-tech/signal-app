@@ -119,15 +119,27 @@
 }
 
 @layer utilities {
-  /* Card shimmer for skeleton states. Warm gray, not cold. */
+  /* Card shimmer for skeleton states. Warm gray, not cold.
+     The sweep lives on a transform: translateX ::after overlay so the
+     animation is GPU-composited — avoids the Lighthouse non-composited
+     animation diagnostic that background-position triggered. */
   .skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--line);
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
     background-image: linear-gradient(
       90deg,
-      var(--line) 0%,
+      transparent 0%,
       color-mix(in srgb, var(--line) 40%, var(--surface)) 50%,
-      var(--line) 100%
+      transparent 100%
     );
-    background-size: 200% 100%;
+    transform: translateX(-100%);
     animation: shimmer-x 1.6s linear infinite;
   }
 

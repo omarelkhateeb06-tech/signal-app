@@ -118,9 +118,11 @@ const config: Config = {
           "0%,100%": { opacity: "1" },
           "50%": { opacity: "0.65" },
         },
+        // GPU-composited sweep: animates transform (not background-position)
+        // so the skeleton shimmer stays off the main-thread paint path.
         "shimmer-x": {
-          from: { backgroundPosition: "-200% 0" },
-          to: { backgroundPosition: "200% 0" },
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(100%)" },
         },
       },
       animation: {
