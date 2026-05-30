@@ -19,6 +19,11 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   sec_edgar_json: secEdgarJsonAdapter,
   hackernews_api: hackerNewsAdapter,
   reddit_api: null,
+  // Phase 12n.2 — native posts are AUTHORED, not pulled off a feed.
+  // They never run through the poll/adapter path; the native generator
+  // registry (generators/index.ts) owns them. Null here keeps the
+  // adapter map exhaustive over the enum without implying a feed adapter.
+  native_generator: null,
 };
 
 // Suppress "imported but not yet wired" noise — the reddit adapter

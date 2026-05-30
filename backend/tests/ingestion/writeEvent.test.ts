@@ -51,6 +51,7 @@ function fullCandidate(
     imageUrl: null,
     sourceDisplayName: "Example Source",
     sourcePairedWriterId: WRITER_ID,
+    sourceAdapterType: "rss",
     ...overrides,
   };
 }

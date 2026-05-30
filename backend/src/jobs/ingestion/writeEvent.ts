@@ -158,6 +158,9 @@ export interface CandidateRowForWrite {
   imageUrl: string | null;
   sourceDisplayName: string;
   sourcePairedWriterId: string | null;
+  // Phase 12n.2 — the source's adapter_type. Drives events.source_type:
+  // 'native_generator' → 'native', everything else → 'ingested'.
+  sourceAdapterType: string;
 }
 
 async function loadCandidateForWrite(
@@ -180,6 +183,7 @@ async function loadCandidateForWrite(
       imageUrl: ingestionCandidates.imageUrl,
       sourceDisplayName: ingestionSources.displayName,
       sourcePairedWriterId: ingestionSources.pairedWriterId,
+      sourceAdapterType: ingestionSources.adapterType,
     })
     .from(ingestionCandidates)
     .innerJoin(
@@ -338,6 +342,14 @@ async function writeEventOnce(
       .insert(events)
       .values({
         sector: candidate.sector as string,
+        // Phase 12n.2 — discriminate native posts from ingested stories
+        // off the source's adapter_type. Source-agnostic: any source
+        // wired as a native generator produces native events; everything
+        // else stays 'ingested'.
+        sourceType:
+          candidate.sourceAdapterType === "native_generator"
+            ? "native"
+            : "ingested",
         headline,
         context,
         whyItMatters,

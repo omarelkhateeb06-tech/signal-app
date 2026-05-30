@@ -192,6 +192,10 @@ export async function reenrichEvent(
     imageUrl: null,
     sourceDisplayName: "",
     sourcePairedWriterId: null,
+    // Re-enrichment never writes the events row's source_type (it only
+    // patches facts/why_it_matters), so this value is inert here — but
+    // CandidateRowForWrite requires it. 'ingested' is the safe default.
+    sourceAdapterType: "ingested",
   };
 
   let whyItMatters: string;

@@ -41,6 +41,10 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
   "sec_edgar_json",
   "hackernews_api",
   "reddit_api",
+  // Phase 12n.2 — native generators (no poll adapter; driven by the
+  // native generation CLI). A source with this adapter_type produces
+  // AI-authored editorial events flagged source_type='native'.
+  "native_generator",
 ]);
 export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
   "discovered",
@@ -62,6 +66,7 @@ export const INGESTION_ADAPTER_TYPES = [
   "sec_edgar_json",
   "hackernews_api",
   "reddit_api",
+  "native_generator",
 ] as const;
 export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
 
@@ -629,6 +634,11 @@ export const events = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     sector: varchar("sector", { length: 50 }).notNull(),
+    // Phase 12n.2 — discriminates ingested stories from AI-authored
+    // native posts. 'ingested' (default, every pre-12n.2 row) vs
+    // 'native'. Set by writeEvent.ts from the source's adapter_type
+    // ('native_generator' → 'native').
+    sourceType: text("source_type").notNull().default("ingested"),
     headline: varchar("headline", { length: 255 }).notNull(),
     context: text("context").notNull(),
     whyItMatters: text("why_it_matters").notNull(),
