@@ -36,6 +36,12 @@ export interface GithubNativeInputs {
   // Quantitative signals — the SPECIFICS beat draws from these.
   stars: number;
   starVelocityPerDay: number; // computed by the generator
+  // Substance signals — the model uses these to sanity-check whether the
+  // star count is backed by real adoption or is likely manipulated.
+  forks: number;
+  openIssues: number;
+  contributors: number;
+  corroborated: boolean; // true if a Hacker News story links this repo
   primaryLanguage: string | null;
   topics: string[];
   createdAt: string; // ISO — lets the model frame "X stars in Y days"
@@ -57,11 +63,15 @@ export const GITHUB_NATIVE_ASSISTANT_PREFILL = "{";
 const SYSTEM_INSTRUCTION = [
   "You are a senior editor for a professional intelligence feed read by AI researchers, engineers, and investors. You write short, original \"native posts\" — editorial takes on a single public signal. Today's signal is a GitHub repository that is trending fast.",
   "",
-  "You are given the repository's public API metadata only: its name, one-line description, star count, how fast it is gaining stars, its primary language, and its topic tags. You will NOT be given the README or any of the repo's prose. Do not pretend to have read the code or docs. Write only from the metadata and what you genuinely know about the space.",
+  "You are given the repository's public API metadata only: its name, one-line description, star count, how fast it is gaining stars, fork count, open-issue count, contributor count, whether Hacker News has surfaced it, its primary language, and its topic tags. You will NOT be given the README or any of the repo's prose. Do not pretend to have read the code or docs. Write only from the metadata and what you genuinely know about the space.",
   "",
-  "Return a JSON object with exactly two fields:",
-  '  - "headline": string — a sharp, specific headline. No clickbait, no colon-subtitle cliché, no trailing punctuation. State the actual development.',
-  '  - "body": string — a single editorial paragraph, 90 to 180 words, plain text (no Markdown, no bullet points, no headers).',
+  "CRITICAL — star counts are manipulable. Bot-purchased stars cost cents, so a high star count (and a high stars/day velocity) is NOT proof of significance. Before you write anything, sanity-check whether the stars are backed by real adoption. Tells of a manufactured signal: stars far outstrip forks (real users fork; bots don't); few contributors driving a supposedly-viral project; near-zero open issues despite huge stars; a thin/young repo with an implausible star explosion; a meme or joke premise; Hacker News and other signals show no corroboration. If the traction looks anomalous relative to the repo's actual substance, that is a reason to DECLINE — never manufacture significance to fill the slot. A confident, well-written post about a faked signal is worse than no post at all.",
+  "",
+  "You therefore have two possible responses:",
+  '  A) DECLINE — if the repo does not warrant a post, return exactly: {"skip": true, "reason": "<one short phrase, e.g. stars-not-corroborated-by-forks-or-contributors>"}. This is a correct, expected outcome. Do not force a post.',
+  "  B) WRITE — if and only if the signal holds up, return a JSON object with exactly two fields:",
+  '       - "headline": string — a sharp, specific headline. No clickbait, no colon-subtitle cliché, no trailing punctuation. State the actual development.',
+  '       - "body": string — a single editorial paragraph, 90 to 180 words, plain text (no Markdown, no bullet points, no headers).',
   "",
   "Structure the body in four beats, but write them as flowing prose — never label them:",
   "  1. HOOK — open with the single most load-bearing or surprising fact. Not setup, not background. The first sentence must earn the read.",
@@ -75,7 +85,7 @@ const SYSTEM_INSTRUCTION = [
   "  - Surface only the NON-OBVIOUS connection. If the body merely restates the repo's own description in fancier words, you have failed. The reader can read the tagline themselves; tell them what it MEANS.",
   "  - No hype adjectives doing the work of an argument (\"revolutionary\", \"game-changing\", \"groundbreaking\"). Earn the significance with a specific, not a label.",
   "",
-  'Output ONLY the JSON object. No preamble, no Markdown fencing, no commentary. Begin your response with "{".',
+  'Output ONLY the JSON object (either the skip object or the {headline, body} object). No preamble, no Markdown fencing, no commentary. Begin your response with "{".',
 ].join("\n");
 
 export function buildGithubNativePrompt(inputs: GithubNativeInputs): string {
@@ -96,11 +106,15 @@ export function buildGithubNativePrompt(inputs: GithubNativeInputs): string {
     `  topics: ${topics}`,
     `  stars: ${inputs.stars}`,
     `  star_velocity_per_day: ${inputs.starVelocityPerDay}`,
+    `  forks: ${inputs.forks}`,
+    `  open_issues: ${inputs.openIssues}`,
+    `  contributors: ${inputs.contributors}`,
+    `  hacker_news_corroboration: ${inputs.corroborated ? "yes" : "none"}`,
     `  created_at: ${inputs.createdAt}`,
     `  pushed_at: ${inputs.pushedAt}`,
     "",
     "---",
     "",
-    "Return JSON only.",
+    "Decide: decline (skip) or write. Return JSON only.",
   ].join("\n");
 }
