@@ -42,10 +42,36 @@ export interface NativeCandidate {
   rawPayload: Record<string, unknown>;
 }
 
+// One observability record emitted as a generator evaluates a candidate
+// signal through its qualification stages. Diagnostics-only — a generator
+// emits these when ctx.onDiagnostic is set (dry-run / verbose); production
+// generation leaves the sink undefined and emits nothing. The shape is
+// deliberately generic so any future generator can reuse it.
+export interface GeneratorDiagnostic {
+  // Which gate stage produced this record (e.g. "prefilter", "qualify").
+  stage: string;
+  // Human identifier for the considered signal (e.g. a repo full name).
+  identifier: string;
+  url?: string;
+  decision: "pass" | "reject";
+  // The first failing floor name when rejected; null on pass.
+  reason: string | null;
+  // Human "value vs threshold" string for a rejection (e.g.
+  // "age 12d < 30d"). Omitted on pass.
+  detail?: string;
+  // The raw signals the gate evaluated, key→value, in print order.
+  signals?: Record<string, unknown>;
+}
+
 export interface NativeGeneratorContext {
   // Injectable clock so tests get deterministic timestamps and the CLI
   // can pass a fixed "now" if needed.
   now: () => Date;
+  // Optional diagnostics sink. When provided (dry-run / verbose), the
+  // generator reports each candidate's per-stage gate evaluation here.
+  // Undefined in production — emitting is purely observational and never
+  // affects which candidates are produced.
+  onDiagnostic?: (record: GeneratorDiagnostic) => void;
 }
 
 export interface NativeGenerator {

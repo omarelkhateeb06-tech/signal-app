@@ -19,10 +19,18 @@
 //   npm run run-native-generation --workspace=backend
 //   npm run run-native-generation --workspace=backend -- --slug=github-trending-native
 //   npm run run-native-generation --workspace=backend -- --dry-run
+//   npm run run-native-generation --workspace=backend -- --verbose
 //
 // --dry-run authors the posts and prints them but skips both the candidate
 // insert and enrichment — the sanctioned way to eyeball generation quality
 // on real trending repos before writing anything.
+//
+// --dry-run (or --verbose) also prints per-repo gate diagnostics: for every
+// repo the search returned, the raw signals the qualification gate weighed,
+// which bar was applied, and the exact floor a rejected repo failed —
+// enough to judge from one run whether the gate is correctly rejecting junk
+// or whether a threshold is too strict. --verbose enables the diagnostics
+// without suppressing the insert/enrichment (a real run with the trace on).
 //
 // Shutdown: clean teardown via try/finally. No process.exit(0) — see
 // followup #47 (Node-on-Windows libuv shutdown crash). On fatal error,
@@ -35,7 +43,10 @@ import { and, eq } from "drizzle-orm";
 import { db, pool } from "../db";
 import { ingestionCandidates, ingestionSources } from "../db/schema";
 import { getGenerator } from "../jobs/ingestion/generators";
-import type { NativeCandidate } from "../jobs/ingestion/generators/types";
+import type {
+  GeneratorDiagnostic,
+  NativeCandidate,
+} from "../jobs/ingestion/generators/types";
 import { processNativeEnrichment } from "../jobs/ingestion/nativeEnrichmentJob";
 
 const DEFAULT_SLUG = "github-trending-native";
@@ -43,11 +54,13 @@ const DEFAULT_SLUG = "github-trending-native";
 interface ParsedArgs {
   slug: string;
   dryRun: boolean;
+  verbose: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   let slug = DEFAULT_SLUG;
   let dryRun = false;
+  let verbose = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (!arg) continue;
@@ -56,8 +69,59 @@ function parseArgs(argv: string[]): ParsedArgs {
       slug = argv[i + 1] ?? slug;
       i += 1;
     } else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--verbose") verbose = true;
   }
-  return { slug, dryRun };
+  return { slug, dryRun, verbose };
+}
+
+// Per-repo gate diagnostics + a running tally for the summary line. The
+// generator calls `onDiagnostic` once per considered repo per stage; the
+// printer formats a line and the tally feeds the closing summary. Active
+// only in dry-run / verbose mode (production passes no sink).
+interface DiagnosticTally {
+  considered: number;
+  passedPreFilter: number;
+  reachedQualify: number;
+  passed: number;
+}
+
+function formatSignals(signals: Record<string, unknown> | undefined): string {
+  if (!signals) return "";
+  return Object.entries(signals)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+}
+
+function makeDiagnosticPrinter(): {
+  onDiagnostic: (record: GeneratorDiagnostic) => void;
+  tally: DiagnosticTally;
+} {
+  const tally: DiagnosticTally = {
+    considered: 0,
+    passedPreFilter: 0,
+    reachedQualify: 0,
+    passed: 0,
+  };
+  const onDiagnostic = (d: GeneratorDiagnostic): void => {
+    if (d.stage === "prefilter") {
+      tally.considered += 1;
+      if (d.decision === "pass") tally.passedPreFilter += 1;
+    } else if (d.stage === "qualify") {
+      tally.reachedQualify += 1;
+      if (d.decision === "pass") tally.passed += 1;
+    }
+    const verdict =
+      d.decision === "pass"
+        ? "PASS  "
+        : `REJECT ${d.reason}${d.detail ? ` (${d.detail})` : ""}`;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[${d.stage.padEnd(9)}] ${verdict}\n` +
+        `             ${d.identifier}  ${d.url ?? ""}\n` +
+        `             ${formatSignals(d.signals)}`,
+    );
+  };
+  return { onDiagnostic, tally };
 }
 
 function sha256Truncated(input: string): string {
@@ -151,8 +215,30 @@ async function main(): Promise<void> {
       );
     }
 
+    // Verbose gate diagnostics are emitted in dry-run mode, or whenever
+    // --verbose is passed. Production generation (neither flag) passes no
+    // sink, so emission is fully off and behavior is unchanged.
+    const verbose = args.dryRun || args.verbose;
+    const diag = verbose ? makeDiagnosticPrinter() : null;
+    if (verbose) {
+      console.log("\n[run-native-generation] gate diagnostics ──────────");
+    }
+
     const now = new Date();
-    const candidates = await generator.generate({ now: () => now });
+    const candidates = await generator.generate({
+      now: () => now,
+      onDiagnostic: diag?.onDiagnostic,
+    });
+
+    if (diag) {
+      const { considered, passedPreFilter, reachedQualify, passed } = diag.tally;
+      console.log(
+        `\n[run-native-generation] gate summary: ${considered} considered, ` +
+          `${passedPreFilter} passed pre-filter, ${reachedQualify} reached qualifyRepo, ` +
+          `${passed} passed the gate`,
+      );
+    }
+
     console.log(
       `[run-native-generation] generator authored ${candidates.length} candidate(s)`,
     );

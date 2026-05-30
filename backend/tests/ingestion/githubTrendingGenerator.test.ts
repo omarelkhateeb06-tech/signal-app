@@ -3,6 +3,8 @@ import {
   ageDaysOf,
   qualifyRepo,
   preFilterRepo,
+  preFilterReason,
+  explainFloor,
   signalsFromRepo,
   escapeLikePattern,
   parseLastPageFromLink,
@@ -13,6 +15,7 @@ import {
   type RepoSignals,
   type GithubNativeOutput,
 } from "../../src/jobs/ingestion/generators/githubTrending";
+import type { GeneratorDiagnostic } from "../../src/jobs/ingestion/generators/types";
 
 const NOW = new Date("2026-05-30T00:00:00Z");
 
@@ -455,5 +458,173 @@ describe("createGithubTrendingGenerator — end-to-end with the gate", () => {
 
   it("has the expected registry slug", () => {
     expect(createGithubTrendingGenerator().slug).toBe("github-trending-native");
+  });
+});
+
+describe("preFilterReason (diagnostics) tracks preFilterRepo exactly", () => {
+  it("returns null for a healthy repo", () => {
+    expect(preFilterReason(repo(1), NOW)).toBeNull();
+  });
+
+  it("names the first failing floor", () => {
+    expect(preFilterReason(repo(1, { archived: true }), NOW)).toBe("archived");
+    expect(preFilterReason(repo(1, { disabled: true }), NOW)).toBe("disabled");
+    expect(
+      preFilterReason(repo(1, { created_at: "2026-05-25T00:00:00Z" }), NOW),
+    ).toBe("too_new");
+    expect(preFilterReason(repo(1, { size: 10 }), NOW)).toBe("too_thin");
+    expect(preFilterReason(repo(1, { open_issues_count: 0 }), NOW)).toBe(
+      "no_issue_activity",
+    );
+    expect(
+      preFilterReason(
+        repo(1, { stargazers_count: 100_000, forks_count: 50 }),
+        NOW,
+      ),
+    ).toBe("low_fork_star_ratio");
+  });
+
+  it("its null/non-null outcome always matches preFilterRepo's boolean", () => {
+    const cases = [
+      repo(1),
+      repo(1, { size: 10 }),
+      repo(1, { archived: true }),
+      repo(1, { open_issues_count: 0 }),
+      repo(1, { created_at: "2026-05-29T00:00:00Z" }),
+    ];
+    for (const r of cases) {
+      expect(preFilterRepo(r, NOW)).toBe(preFilterReason(r, NOW) === null);
+    }
+  });
+});
+
+describe("explainFloor renders value-vs-threshold strings", () => {
+  it("names the bar-appropriate threshold for each reason", () => {
+    expect(explainFloor("too_new", signals({ ageDays: 12 }), true)).toBe(
+      "age 12d < 30d",
+    );
+    expect(explainFloor("too_new", signals({ ageDays: 12 }), false)).toBe(
+      "age 12d < 90d",
+    );
+    expect(explainFloor("too_thin", signals({ sizeKb: 20 }), true)).toBe(
+      "size 20KB < 100KB",
+    );
+    expect(
+      explainFloor("no_issue_activity", signals({ openIssues: 0 }), true),
+    ).toBe("open_issues 0 < 3");
+    expect(
+      explainFloor(
+        "low_fork_star_ratio",
+        signals({ stars: 198_000, forks: 40 }),
+        true,
+      ),
+    ).toBe("fork/star 0.0002 < 0.02");
+    expect(
+      explainFloor("too_few_contributors", signals({ contributors: 2 }), false),
+    ).toBe("contributors 2 < 8");
+    expect(explainFloor("archived", signals(), true)).toBe("repo is archived");
+  });
+});
+
+describe("createGithubTrendingGenerator — gate diagnostics", () => {
+  const post: GithubNativeOutput = {
+    headline: "A real headline about the repo",
+    body: "x".repeat(300),
+  };
+
+  it("emits a prefilter record per considered repo and a qualify record per finalist", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      fetchSearch: async () => [
+        repo(1), // healthy → passes pre-filter, reaches qualify
+        repo(2, { size: 10 }), // thin → rejected at pre-filter, never qualifies
+      ],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => true,
+      authorPost: async () => post,
+    });
+    const candidates = await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+
+    const prefilter = records.filter((r) => r.stage === "prefilter");
+    const qualify = records.filter((r) => r.stage === "qualify");
+    expect(prefilter.length).toBe(2);
+    expect(qualify.length).toBe(1); // only the pre-filter survivor
+
+    const thin = prefilter.find((r) => r.identifier === "owner/repo-2");
+    expect(thin?.decision).toBe("reject");
+    expect(thin?.reason).toBe("too_thin");
+    expect(thin?.detail).toContain("size 10KB");
+
+    // Emission is observational — candidate output is unchanged.
+    expect(candidates.length).toBe(1);
+    expect(candidates[0]!.externalId).toBe("github:1");
+  });
+
+  it("reports the applied bar (strict when uncorroborated) on qualify records", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      fetchSearch: async () => [repo(1)],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => false,
+      authorPost: async () => post,
+    });
+    await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+    const q = records.find((r) => r.stage === "qualify");
+    expect(q?.signals?.bar).toBe("strict");
+    expect(q?.signals?.hn_corroborated).toBe(false);
+    expect(q?.signals?.contributors).toBe(20);
+  });
+
+  it("carries the rejection reason + detail for a finalist failing the strict bar", async () => {
+    const records: GeneratorDiagnostic[] = [];
+    const gen = createGithubTrendingGenerator({
+      // Clears the lenient pre-filter (0.03 fork ratio ≥ 0.02, issues ≥ 3),
+      // but uncorroborated → strict 0.05 fork bar at qualify rejects it.
+      fetchSearch: async () => [
+        repo(9, {
+          stargazers_count: 100_000,
+          forks_count: 3_000,
+          open_issues_count: 40,
+          size: 800,
+          created_at: "2026-01-10T00:00:00Z",
+        }),
+      ],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => false,
+      authorPost: async () => post,
+    });
+    await gen.generate({
+      now: () => NOW,
+      onDiagnostic: (r) => records.push(r),
+    });
+    const q = records.find((r) => r.stage === "qualify");
+    expect(q?.decision).toBe("reject");
+    expect(q?.reason).toBe("low_fork_star_ratio");
+    expect(q?.detail).toContain("fork/star");
+  });
+
+  it("produces identical candidates whether or not a sink is attached", async () => {
+    const deps = {
+      fetchSearch: async () => [repo(1), repo(2)],
+      fetchContributorCount: async () => 20,
+      corroborate: async () => true,
+      authorPost: async () => post,
+    };
+    const withSink = await createGithubTrendingGenerator(deps).generate({
+      now: () => NOW,
+      onDiagnostic: () => undefined,
+    });
+    const without = await createGithubTrendingGenerator(deps).generate({
+      now: () => NOW,
+    });
+    expect(withSink.map((c) => c.externalId)).toEqual(
+      without.map((c) => c.externalId),
+    );
   });
 });

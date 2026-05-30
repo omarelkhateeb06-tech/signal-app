@@ -268,19 +268,86 @@ export function qualifyRepo(
 // here — final qualification (with contributors + corroboration) happens
 // in qualifyRepo. Contributor count is unknown at this stage, so it is not
 // checked here.
+//
+// Returns the FIRST failing floor name, or null when the repo passes.
+// `preFilterRepo` is the boolean view of this same decision — the two
+// share one implementation so the diagnostic reason can never drift from
+// the pass/fail outcome.
+export function preFilterReason(
+  repo: GithubRepo,
+  now: Date,
+  config: QualifyConfig = DEFAULT_QUALIFY_CONFIG,
+): string | null {
+  if (repo.archived) return "archived";
+  if (repo.disabled) return "disabled";
+  if (ageDaysOf(repo.created_at, now) < config.minRepoAgeDays) return "too_new";
+  if (repo.size < config.minRepoSizeKb) return "too_thin";
+  if (repo.open_issues_count < config.minOpenIssues) {
+    return "no_issue_activity";
+  }
+  const forkRatio =
+    repo.stargazers_count > 0 ? repo.forks_count / repo.stargazers_count : 0;
+  if (forkRatio < config.minForkStarRatio) return "low_fork_star_ratio";
+  return null;
+}
+
 export function preFilterRepo(
   repo: GithubRepo,
   now: Date,
   config: QualifyConfig = DEFAULT_QUALIFY_CONFIG,
 ): boolean {
-  if (repo.archived || repo.disabled) return false;
-  if (ageDaysOf(repo.created_at, now) < config.minRepoAgeDays) return false;
-  if (repo.size < config.minRepoSizeKb) return false;
-  if (repo.open_issues_count < config.minOpenIssues) return false;
-  const forkRatio =
-    repo.stargazers_count > 0 ? repo.forks_count / repo.stargazers_count : 0;
-  if (forkRatio < config.minForkStarRatio) return false;
-  return true;
+  return preFilterReason(repo, now, config) === null;
+}
+
+// Render a "value vs threshold" string for a single rejection reason, for
+// human-readable dry-run diagnostics. Diagnostics-only — never consulted
+// by the gate. `corroborated` selects which threshold variant to name (the
+// pre-filter stage always uses the lenient bar, so it passes
+// corroborated=true).
+export function explainFloor(
+  reason: string,
+  signals: Pick<
+    RepoSignals,
+    "stars" | "forks" | "openIssues" | "sizeKb" | "ageDays" | "contributors"
+  >,
+  corroborated: boolean,
+  config: QualifyConfig = DEFAULT_QUALIFY_CONFIG,
+): string {
+  switch (reason) {
+    case "archived":
+      return "repo is archived";
+    case "disabled":
+      return "repo is disabled";
+    case "too_new": {
+      const t = corroborated
+        ? config.minRepoAgeDays
+        : config.strictMinRepoAgeDays;
+      return `age ${signals.ageDays.toFixed(0)}d < ${t}d`;
+    }
+    case "too_thin": {
+      const t = corroborated
+        ? config.minRepoSizeKb
+        : config.strictMinRepoSizeKb;
+      return `size ${signals.sizeKb}KB < ${t}KB`;
+    }
+    case "no_issue_activity":
+      return `open_issues ${signals.openIssues} < ${config.minOpenIssues}`;
+    case "low_fork_star_ratio": {
+      const ratio = signals.stars > 0 ? signals.forks / signals.stars : 0;
+      const t = corroborated
+        ? config.minForkStarRatio
+        : config.strictMinForkStarRatio;
+      return `fork/star ${ratio.toFixed(4)} < ${t}`;
+    }
+    case "too_few_contributors": {
+      const t = corroborated
+        ? config.minContributors
+        : config.strictMinContributors;
+      return `contributors ${signals.contributors} < ${t}`;
+    }
+    default:
+      return reason;
+  }
 }
 
 // Escape LIKE/ILIKE metacharacters so a repo name containing `_` or `%`
@@ -482,6 +549,7 @@ export function createGithubTrendingGenerator(
     slug: "github-trending-native",
     async generate(ctx: NativeGeneratorContext): Promise<NativeCandidate[]> {
       const now = ctx.now();
+      const emit = ctx.onDiagnostic;
 
       // Gather repos across every allowlisted topic. A topic-level fetch
       // failure is non-fatal — we collect what we can and let the others
@@ -504,9 +572,57 @@ export function createGithubTrendingGenerator(
 
       // Cheap pre-filter on search-API fields, then rank by stars and take
       // the finalists. This bounds the contributor-count + corroboration
-      // calls to at most MAX_FINALISTS per run.
-      const finalists = Array.from(byId.values())
-        .filter((repo) => preFilterRepo(repo, now))
+      // calls to at most MAX_FINALISTS per run. Diagnostics (when enabled)
+      // report every considered repo and why it passed or was dropped.
+      const passedPreFilter: GithubRepo[] = [];
+      for (const repo of byId.values()) {
+        const reason = preFilterReason(repo, now);
+        if (reason === null) {
+          passedPreFilter.push(repo);
+        }
+        if (emit) {
+          const ageDays = ageDaysOf(repo.created_at, now);
+          const ratio =
+            repo.stargazers_count > 0
+              ? repo.forks_count / repo.stargazers_count
+              : 0;
+          emit({
+            stage: "prefilter",
+            identifier: repo.full_name,
+            url: repo.html_url,
+            decision: reason === null ? "pass" : "reject",
+            reason,
+            detail:
+              reason === null
+                ? undefined
+                : explainFloor(
+                    reason,
+                    {
+                      stars: repo.stargazers_count,
+                      forks: repo.forks_count,
+                      openIssues: repo.open_issues_count,
+                      sizeKb: repo.size,
+                      ageDays,
+                      contributors: -1, // unknown at pre-filter
+                    },
+                    true, // pre-filter always uses the lenient bar
+                  ),
+            signals: {
+              stars: repo.stargazers_count,
+              forks: repo.forks_count,
+              fork_star_ratio: Number(ratio.toFixed(4)),
+              age_days: Math.round(ageDays),
+              size_kb: repo.size,
+              open_issues: repo.open_issues_count,
+              star_velocity: Math.round(
+                computeStarVelocity(repo.stargazers_count, repo.created_at, now),
+              ),
+            },
+          });
+        }
+      }
+
+      const finalists = passedPreFilter
         .sort((a, b) => b.stargazers_count - a.stargazers_count)
         .slice(0, MAX_FINALISTS);
 
@@ -519,6 +635,31 @@ export function createGithubTrendingGenerator(
         const verdict = qualifyRepo(signals, corroborated);
         if (verdict.ok) {
           qualified.push({ repo, contributors, corroborated });
+        }
+        if (emit) {
+          const ratio =
+            signals.stars > 0 ? signals.forks / signals.stars : 0;
+          emit({
+            stage: "qualify",
+            identifier: repo.full_name,
+            url: repo.html_url,
+            decision: verdict.ok ? "pass" : "reject",
+            reason: verdict.reason,
+            detail: verdict.reason
+              ? explainFloor(verdict.reason, signals, corroborated)
+              : undefined,
+            signals: {
+              bar: corroborated ? "lenient" : "strict",
+              hn_corroborated: corroborated,
+              contributors,
+              stars: signals.stars,
+              forks: signals.forks,
+              fork_star_ratio: Number(ratio.toFixed(4)),
+              age_days: Math.round(signals.ageDays),
+              size_kb: signals.sizeKb,
+              open_issues: signals.openIssues,
+            },
+          });
         }
       }
 
