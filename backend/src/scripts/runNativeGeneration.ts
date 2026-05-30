@@ -23,14 +23,16 @@
 //
 // --dry-run authors the posts and prints them but skips both the candidate
 // insert and enrichment — the sanctioned way to eyeball generation quality
-// on real trending repos before writing anything.
+// on real HN-surfaced repos before writing anything.
 //
-// --dry-run (or --verbose) also prints per-repo gate diagnostics: for every
-// repo the search returned, the raw signals the qualification gate weighed,
-// which bar was applied, and the exact floor a rejected repo failed —
-// enough to judge from one run whether the gate is correctly rejecting junk
-// or whether a threshold is too strict. --verbose enables the diagnostics
-// without suppressing the insert/enrichment (a real run with the trace on).
+// --dry-run (or --verbose) also prints per-repo diagnostics across the
+// three stages — DISCOVER (which HN-surfaced repos were found, and which
+// were skipped as already-posted or non-repo URLs), QUALIFY (the raw GitHub
+// signals the substance gate weighed and the exact floor a rejected repo
+// failed), and AUTHOR — enough to judge from one run whether the gate is
+// correctly rejecting junk or whether a threshold is too strict. --verbose
+// enables the diagnostics without suppressing the insert/enrichment (a real
+// run with the trace on).
 //
 // The diagnostics extend through the authoring stage: every repo that
 // cleared the gate and was sent to the LLM prints its decision — AUTHORED
@@ -85,10 +87,11 @@ function parseArgs(argv: string[]): ParsedArgs {
 // printer formats a line and the tally feeds the closing summary. Active
 // only in dry-run / verbose mode (production passes no sink).
 interface DiagnosticTally {
-  considered: number;
-  passedPreFilter: number;
-  reachedQualify: number;
-  passed: number;
+  discovered: number; // unique repos surfaced on HN (incl. deduped)
+  deduped: number; // already covered by a recent native event
+  unparseable: number; // HN URLs that didn't parse to a repo
+  enriched: number; // repos that reached the GitHub-enrichment + gate stage
+  passed: number; // passed the substance gate
   sentToLlm: number;
   authored: number;
   skipped: number;
@@ -106,20 +109,25 @@ function makeDiagnosticPrinter(): {
   tally: DiagnosticTally;
 } {
   const tally: DiagnosticTally = {
-    considered: 0,
-    passedPreFilter: 0,
-    reachedQualify: 0,
+    discovered: 0,
+    deduped: 0,
+    unparseable: 0,
+    enriched: 0,
     passed: 0,
     sentToLlm: 0,
     authored: 0,
     skipped: 0,
   };
   const onDiagnostic = (d: GeneratorDiagnostic): void => {
-    if (d.stage === "prefilter") {
-      tally.considered += 1;
-      if (d.decision === "pass") tally.passedPreFilter += 1;
+    if (d.stage === "discover") {
+      if (d.reason === "unparseable_url") {
+        tally.unparseable += 1;
+      } else {
+        tally.discovered += 1;
+        if (d.decision === "reject") tally.deduped += 1; // already_posted
+      }
     } else if (d.stage === "qualify") {
-      tally.reachedQualify += 1;
+      tally.enriched += 1;
       if (d.decision === "pass") tally.passed += 1;
     } else if (d.stage === "author") {
       tally.sentToLlm += 1;
@@ -256,18 +264,19 @@ async function main(): Promise<void> {
 
     if (diag) {
       const {
-        considered,
-        passedPreFilter,
-        reachedQualify,
+        discovered,
+        deduped,
+        unparseable,
+        enriched,
         passed,
         sentToLlm,
         authored,
         skipped,
       } = diag.tally;
       console.log(
-        `\n[run-native-generation] gate summary: ${considered} considered, ` +
-          `${passedPreFilter} passed pre-filter, ${reachedQualify} reached qualifyRepo, ` +
-          `${passed} passed the gate`,
+        `\n[run-native-generation] discovery summary: ${discovered} HN-surfaced repo(s) ` +
+          `(${deduped} already posted, ${unparseable} non-repo URL(s) skipped), ` +
+          `${enriched} enriched via GitHub, ${passed} passed the gate`,
       );
       console.log(
         `[run-native-generation] author summary: ${passed} passed gate, ` +
