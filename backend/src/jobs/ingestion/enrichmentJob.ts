@@ -24,7 +24,12 @@ import type OpenAI from "openai";
 import { db as defaultDb } from "../../db";
 import { ingestionCandidates, ingestionSources } from "../../db/schema";
 import { HEURISTIC_REASONS, type HeuristicReason } from "./heuristics";
-import type { RelevanceReason, RelevanceSeamRaw, Sector } from "./relevanceSeam";
+import {
+  TRANSIENT_RELEVANCE_REASONS as TRANSIENT_RELEVANCE_REASON_LIST,
+  type RelevanceReason,
+  type RelevanceSeamRaw,
+  type Sector,
+} from "./relevanceSeam";
 import type { FactsSeamResult } from "./factsSeam";
 import type { TierSeamResult } from "./tierGenerationSeam";
 import { processTierGeneration } from "./tierOrchestration";
@@ -215,6 +220,29 @@ const HEURISTIC_ALREADY_RAN: ReadonlySet<string> = new Set([
   "duplicate",
 ]);
 
+// Relevance-gate failure classes that are transient INFRASTRUCTURE
+// faults — the model was never actually consulted (no_api_key), the
+// call failed before a verdict (api_error / rate_limited / timeout), or
+// it returned nothing usable (empty). These must NOT terminate the
+// candidate at 'llm_rejected': doing so conflates "Haiku judged this
+// off-topic" with "we couldn't reach Haiku", permanently burying a
+// recoverable candidate in the same dead-end as a genuine reject.
+// Instead the candidate is LEFT at its current non-terminal
+// 'heuristic_passed' status (with the transient reason recorded in
+// status_reason for observability + recovery detection); the
+// enrichment-recovery scheduler re-enqueues it, bounded by
+// MAX_RECOVERY_ATTEMPTS, so a transient Haiku outage self-heals instead
+// of silently shrinking the feed. `llm_parse_error` is intentionally
+// EXCLUDED — the seam already retried once and the model returned
+// unparseable bytes twice, so it's a content/model fault, not a
+// transient outage; it terminates at 'failed' (an honest non-reject
+// failure bucket), not 'llm_rejected'. The reason list itself lives in
+// relevanceSeam.ts (single source of truth shared with
+// enrichmentRecovery's detection query).
+const TRANSIENT_RELEVANCE_REASONS: ReadonlySet<string> = new Set(
+  TRANSIENT_RELEVANCE_REASON_LIST,
+);
+
 interface CandidateSnapshot {
   status: string;
   statusReason: string | null;
@@ -401,7 +429,7 @@ export async function processEnrichmentJob(
     // of verdict.
     const relevanceUpdates: {
       processedAt: Date;
-      status?: "llm_relevant" | "llm_rejected";
+      status?: "llm_relevant" | "llm_rejected" | "failed";
       statusReason?: string;
       sector?: string | null;
       llmJudgmentRaw?: Record<string, unknown> | null;
@@ -418,9 +446,27 @@ export async function processEnrichmentJob(
     }
 
     if (!relevance.relevant) {
-      relevanceUpdates.status = "llm_rejected";
-      relevanceUpdates.statusReason =
-        relevance.rejectionReason ?? "llm_rejected";
+      const rejectionReason = relevance.rejectionReason ?? "llm_rejected";
+      const transient = TRANSIENT_RELEVANCE_REASONS.has(rejectionReason);
+      // Record the reason + processedAt regardless. The status we write
+      // back depends on the failure class:
+      //   - transient infra fault → leave status at the non-terminal
+      //     'heuristic_passed' the heuristic stage just wrote, so the
+      //     recovery scheduler can replay the relevance gate.
+      //   - llm_parse_error → terminal 'failed' (model fault, not a
+      //     genuine off-topic verdict — keep it out of the rejected bucket).
+      //   - genuine off-topic verdict (or unknown) → terminal 'llm_rejected'.
+      relevanceUpdates.statusReason = rejectionReason;
+      const terminalStatus: "heuristic_passed" | "failed" | "llm_rejected" =
+        transient
+          ? "heuristic_passed"
+          : rejectionReason === "llm_parse_error"
+            ? "failed"
+            : "llm_rejected";
+      if (!transient) {
+        relevanceUpdates.status =
+          rejectionReason === "llm_parse_error" ? "failed" : "llm_rejected";
+      }
       // sector stays NULL on rejection (G5 — even if the LLM offered
       // one, it's not actionable for a rejected candidate).
       await db
@@ -430,17 +476,19 @@ export async function processEnrichmentJob(
       // 12e.5c sub-step 6: per-stage Sentry tagging. Synchronous
       // captureException with stage tags after the await above
       // resolves — keeps withScope isolated under BullMQ concurrency=2.
+      // Transient faults are captured too (observability of the Haiku
+      // error rate); recovery is what actually retries them.
       captureFailure({
         stage: "relevance",
         candidateId: input.candidateId,
         sourceSlug: snapshot?.sourceSlug ?? null,
-        rejectionReason: relevance.rejectionReason ?? "llm_rejected",
+        rejectionReason,
       });
       return {
         candidateId: input.candidateId,
         resolvedEventId: null,
-        terminalStatus: "llm_rejected",
-        failureReason: relevance.rejectionReason ?? "llm_rejected",
+        terminalStatus,
+        failureReason: rejectionReason,
       };
     }
 

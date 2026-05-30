@@ -222,27 +222,54 @@ describe("processEnrichmentJob", () => {
       expect(relevanceUpdate.llmJudgmentRaw).toEqual(raw);
     });
 
-    it.each([
-      ["llm_parse_error"],
-      ["llm_timeout"],
-      ["llm_no_api_key"],
-      ["llm_api_error"],
-      ["llm_rate_limited"],
-      ["llm_empty"],
-    ])("propagates rejectionReason=%s into status_reason", async (reason) => {
+    it("llm_parse_error terminates at 'failed' (model fault, not a rejection)", async () => {
+      // The seam already retried once; unparseable bytes twice is a
+      // content/model fault, so it lands in the honest 'failed' bucket
+      // rather than 'llm_rejected'.
       const runRelevanceGate = jest.fn().mockResolvedValue({
         relevant: false,
-        rejectionReason: reason,
+        rejectionReason: "llm_parse_error",
       });
       const result = await processEnrichmentJob(
         { candidateId: CANDIDATE_ID },
         { db: mock.db, seams: passingHeuristicSeams(runRelevanceGate) },
       );
-      expect(result.terminalStatus).toBe("llm_rejected");
-      expect(result.failureReason).toBe(reason);
+      expect(result.terminalStatus).toBe("failed");
+      expect(result.failureReason).toBe("llm_parse_error");
       const relevanceUpdate = mock.state.updatedRows[1];
-      expect(relevanceUpdate.statusReason).toBe(reason);
+      expect(relevanceUpdate.status).toBe("failed");
+      expect(relevanceUpdate.statusReason).toBe("llm_parse_error");
     });
+
+    it.each([
+      ["llm_timeout"],
+      ["llm_no_api_key"],
+      ["llm_api_error"],
+      ["llm_rate_limited"],
+      ["llm_empty"],
+    ])(
+      "parks (does NOT reject) on transient relevance fault rejectionReason=%s",
+      async (reason) => {
+        const runRelevanceGate = jest.fn().mockResolvedValue({
+          relevant: false,
+          rejectionReason: reason,
+        });
+        const result = await processEnrichmentJob(
+          { candidateId: CANDIDATE_ID },
+          { db: mock.db, seams: passingHeuristicSeams(runRelevanceGate) },
+        );
+        // A transient Haiku fault must NOT be buried at terminal
+        // 'llm_rejected'. The candidate is left at the non-terminal
+        // 'heuristic_passed' status (status unset on the relevance
+        // write) with the transient reason recorded, so the recovery
+        // scheduler can replay the gate.
+        expect(result.terminalStatus).toBe("heuristic_passed");
+        expect(result.failureReason).toBe(reason);
+        const relevanceUpdate = mock.state.updatedRows[1];
+        expect(relevanceUpdate.status).toBeUndefined();
+        expect(relevanceUpdate.statusReason).toBe(reason);
+      },
+    );
 
     it("persists raw even when relevance is rejected (audit surface)", async () => {
       const raw = {

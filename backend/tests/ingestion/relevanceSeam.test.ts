@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createMockDb, type MockDb } from "../helpers/mockDb";
-import { RELEVANCE_REASONS } from "../../src/jobs/ingestion/relevanceSeam";
+import {
+  RELEVANCE_REASONS,
+  TRANSIENT_RELEVANCE_REASONS,
+} from "../../src/jobs/ingestion/relevanceSeam";
 import type { HaikuResult } from "../../src/services/haikuCommentaryClient";
 
 let mock: MockDb;
@@ -263,6 +266,33 @@ describe("runRelevanceSeam", () => {
       } finally {
         warnSpy.mockRestore();
       }
+    });
+  });
+
+  // Contract pinned because BOTH enrichmentJob (classification: park vs.
+  // terminate) and enrichmentRecovery (detection: which parked rows to
+  // replay) consume this list. Drift here silently changes which
+  // candidates get retried vs. permanently dropped.
+  describe("TRANSIENT_RELEVANCE_REASONS", () => {
+    it("contains exactly the infrastructure-fault reasons", () => {
+      expect([...TRANSIENT_RELEVANCE_REASONS].sort()).toEqual(
+        [
+          RELEVANCE_REASONS.LLM_API_ERROR,
+          RELEVANCE_REASONS.LLM_EMPTY,
+          RELEVANCE_REASONS.LLM_NO_API_KEY,
+          RELEVANCE_REASONS.LLM_RATE_LIMITED,
+          RELEVANCE_REASONS.LLM_TIMEOUT,
+        ].sort(),
+      );
+    });
+
+    it("excludes genuine off-topic verdicts and parse errors (those are terminal)", () => {
+      expect(TRANSIENT_RELEVANCE_REASONS).not.toContain(
+        RELEVANCE_REASONS.LLM_REJECTED,
+      );
+      expect(TRANSIENT_RELEVANCE_REASONS).not.toContain(
+        RELEVANCE_REASONS.LLM_PARSE_ERROR,
+      );
     });
   });
 });

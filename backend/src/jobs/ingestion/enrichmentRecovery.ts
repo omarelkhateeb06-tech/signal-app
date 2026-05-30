@@ -9,15 +9,21 @@
 // candidate whose tier already exists in tier_outputs is skipped by
 // the seam), so a recovery run only fills the gaps.
 //
-// Detection query — a candidate is "stuck" when:
-//   - created within the last 48h (older rows are written off),
-//   - tier_generated_at IS NULL (not all three tiers complete),
-//   - tier_outputs IS NOT NULL with at least one populated key
-//     (proves at least one tier already succeeded; distinguishes
-//     stuck rows from rows that simply haven't reached tier
-//     generation yet),
-//   - enrichment_failed = false (we haven't given up on it),
-//   - recovery_attempts < MAX_RECOVERY_ATTEMPTS.
+// Detection query — a candidate is "stuck" (within the last 48h, with
+// enrichment_failed = false and recovery_attempts < MAX_RECOVERY_ATTEMPTS)
+// in either of two shapes:
+//   (1) tier-stuck:
+//       - tier_generated_at IS NULL (not all three tiers complete),
+//       - tier_outputs IS NOT NULL with at least one populated key
+//         (proves at least one tier already succeeded; distinguishes
+//         stuck rows from rows that simply haven't reached tier
+//         generation yet).
+//   (2) relevance-parked (added when the relevance gate stopped
+//       fail-closing transient Haiku faults into 'llm_rejected'):
+//       - status = 'heuristic_passed',
+//       - status_reason IN the transient-relevance set (api_error,
+//         timeout, rate_limited, no_api_key, empty).
+//   See TRANSIENT_RELEVANCE_REASON_STRINGS below for the full rationale.
 //
 // On every scheduler run, each matching candidate:
 //   - has recovery_attempts bumped by 1,
@@ -37,15 +43,37 @@
 // enqueued, then completes naturally before the next 6h tick is
 // simply not selected next time.
 
-import { and, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db as defaultDb } from "../../db";
 import { ingestionCandidates } from "../../db/schema";
 import {
   enqueueEnrichment as defaultEnqueueEnrichment,
 } from "./enrichmentQueue";
+import { TRANSIENT_RELEVANCE_REASONS } from "./relevanceSeam";
 
 export const MAX_RECOVERY_ATTEMPTS = 3;
 const STUCK_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+// A candidate is "stuck" in one of two shapes, both handled by the
+// detection/finalize queries below:
+//
+//   (1) tier-stuck — partial tier_outputs from an earlier successful
+//       tier, tier_generated_at NULL (a later tier Haiku call failed).
+//       The original 12e.x recovery case.
+//
+//   (2) relevance-parked — the relevance gate hit a transient Haiku
+//       fault (api_error / timeout / rate_limited / no_api_key / empty),
+//       so enrichmentJob left the row at the non-terminal
+//       'heuristic_passed' status with the transient reason in
+//       status_reason instead of terminating it at 'llm_rejected'.
+//       Re-enqueuing replays the gate; the enrichmentJob short-circuits
+//       skip the already-run heuristic and re-run only the relevance
+//       call. A normal in-flight 'heuristic_passed' row is NOT matched
+//       because its status_reason is null (or a heuristic note), never a
+//       transient relevance reason.
+const TRANSIENT_RELEVANCE_REASON_STRINGS: string[] = [
+  ...TRANSIENT_RELEVANCE_REASONS,
+];
 
 export interface RecoveryDeps {
   db?: typeof defaultDb;
@@ -77,17 +105,31 @@ export async function findStuckCandidates(
     .from(ingestionCandidates)
     .where(
       and(
+        // Shared guards: within the write-off window, not already
+        // finalized, under the attempt cap.
         gt(ingestionCandidates.discoveredAt, since),
-        isNull(ingestionCandidates.tierGeneratedAt),
-        isNotNull(ingestionCandidates.tierOutputs),
         eq(ingestionCandidates.enrichmentFailed, false),
         lt(ingestionCandidates.recoveryAttempts, MAX_RECOVERY_ATTEMPTS),
-        // tier_outputs is jsonb; "at least one tier key populated"
-        // is approximated by checking that the value isn't the
-        // empty object. Stricter shape checks live in the
-        // tierGenerationSeam — by the time tier_outputs is set in the
-        // DB, at least one tier has succeeded.
-        sql`${ingestionCandidates.tierOutputs}::text <> '{}'`,
+        or(
+          // (1) tier-stuck. tier_outputs is jsonb; "at least one tier
+          // key populated" is approximated by checking that the value
+          // isn't the empty object. Stricter shape checks live in the
+          // tierGenerationSeam — by the time tier_outputs is set in the
+          // DB, at least one tier has succeeded.
+          and(
+            isNull(ingestionCandidates.tierGeneratedAt),
+            isNotNull(ingestionCandidates.tierOutputs),
+            sql`${ingestionCandidates.tierOutputs}::text <> '{}'`,
+          ),
+          // (2) relevance-parked by a transient Haiku fault.
+          and(
+            eq(ingestionCandidates.status, "heuristic_passed"),
+            inArray(
+              ingestionCandidates.statusReason,
+              TRANSIENT_RELEVANCE_REASON_STRINGS,
+            ),
+          ),
+        ),
       ),
     );
   return rows.map((r) => r.id);
@@ -113,10 +155,25 @@ async function finalizeExhausted(
     .where(
       and(
         gt(ingestionCandidates.discoveredAt, since),
-        isNull(ingestionCandidates.tierGeneratedAt),
-        isNotNull(ingestionCandidates.tierOutputs),
         eq(ingestionCandidates.enrichmentFailed, false),
         sql`${ingestionCandidates.recoveryAttempts} >= ${MAX_RECOVERY_ATTEMPTS}`,
+        or(
+          // (1) tier-stuck exhausted.
+          and(
+            isNull(ingestionCandidates.tierGeneratedAt),
+            isNotNull(ingestionCandidates.tierOutputs),
+          ),
+          // (2) relevance-parked exhausted. Status stays
+          // 'heuristic_passed'; enrichment_failed=true + the rewritten
+          // status_reason take it out of the detection set permanently.
+          and(
+            eq(ingestionCandidates.status, "heuristic_passed"),
+            inArray(
+              ingestionCandidates.statusReason,
+              TRANSIENT_RELEVANCE_REASON_STRINGS,
+            ),
+          ),
+        ),
       ),
     )
     .returning({ id: ingestionCandidates.id });

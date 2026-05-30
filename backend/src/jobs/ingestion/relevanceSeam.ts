@@ -65,6 +65,24 @@ export const RELEVANCE_REASONS = {
 export type RelevanceReason =
   (typeof RELEVANCE_REASONS)[keyof typeof RELEVANCE_REASONS];
 
+// Rejection classes that are transient INFRASTRUCTURE faults — the
+// Haiku call never produced a verdict. The orchestration body
+// (enrichmentJob) parks candidates that fail this way at the
+// non-terminal 'heuristic_passed' status so the recovery scheduler can
+// replay the gate, rather than burying them at terminal 'llm_rejected'
+// alongside genuine off-topic verdicts. `LLM_PARSE_ERROR` is NOT here:
+// the model responded (twice) with unparseable bytes, which is a
+// content/model fault, not a retryable outage. Single source of truth
+// shared by enrichmentJob (classification) and enrichmentRecovery
+// (detection) so the two can't drift.
+export const TRANSIENT_RELEVANCE_REASONS: readonly RelevanceReason[] = [
+  RELEVANCE_REASONS.LLM_API_ERROR,
+  RELEVANCE_REASONS.LLM_TIMEOUT,
+  RELEVANCE_REASONS.LLM_RATE_LIMITED,
+  RELEVANCE_REASONS.LLM_NO_API_KEY,
+  RELEVANCE_REASONS.LLM_EMPTY,
+];
+
 export interface RelevanceSeamRaw {
   model: string;
   promptText: string;
