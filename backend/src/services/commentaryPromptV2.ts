@@ -98,6 +98,11 @@ const ONE_SHOT_EXAMPLE = `Example output for an unrelated story (different secto
 {"thesis":"The TSM 2nm pull-in to Q3 2026 puts your foundry-allocation thesis on a tighter clock than the prior 2027 timeline assumed. If you've been pacing depreciation against the older ramp, the model needs a six-to-nine-month shift.","support":"Capacity bookings disclosed at the April call show >70% of 2nm wafers already committed to four customers — the first time TSMC has confirmed this concentration publicly. Apple, Nvidia, AMD, and Qualcomm absorb the headline allocation; Intel Foundry and Samsung get the mindshare but no near-term volume relief. The second-order effect is on cost-per-transistor curves: a tighter 2nm ramp with the same yield trajectory makes 3nm the long-tail node for two extra quarters, which delays the next price-per-transistor step. If your 2027 P&L assumed a clean migration off 3nm, that's the line to revisit."}`;
 
 export interface CommentaryPromptV2Inputs {
+  // Human-readable current date (e.g. "May 31, 2026"), injected as the
+  // temporal anchor at the top of the prompt. Supplied by the caller so
+  // this module stays pure — output is a function of inputs only, never
+  // wall-clock. Formatting is the caller's responsibility.
+  currentDate: string;
   depth: DepthLevel;
   profile: {
     role: string | null;
@@ -153,12 +158,14 @@ function audienceBlock(inputs: CommentaryPromptV2Inputs): string {
 export function buildExpandableCommentaryPrompt(
   inputs: CommentaryPromptV2Inputs,
 ): string {
-  const { depth, story } = inputs;
+  const { currentDate, depth, story } = inputs;
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
   const b = DEPTH_BUDGETS[depth];
   const depthLabel = DEPTH_LABEL[depth];
 
   return [
+    `Today's date is ${currentDate}. All timeline references in your commentary must treat this as the present. Do not reference past quarters or years as future events.`,
+    "",
     `You write commentary for SIGNAL, a professional intelligence platform covering AI, finance, and semiconductors.`,
     "",
     `Output JSON ONLY, matching this schema exactly:`,

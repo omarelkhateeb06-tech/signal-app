@@ -7,6 +7,7 @@ import { BANNED_PHRASES } from "../src/services/commentaryFallback";
 
 function baseInputs(): Parameters<typeof buildExpandableCommentaryPrompt>[0] {
   return {
+    currentDate: "January 15, 2026",
     depth: "briefed",
     profile: {
       role: "engineer",
@@ -86,6 +87,16 @@ describe("buildExpandableCommentaryPrompt", () => {
       depth: "technical",
     });
     expect(technical).toContain("Audience depth: Technical");
+  });
+
+  it("injects the supplied current date as a temporal anchor", () => {
+    const p = buildExpandableCommentaryPrompt(baseInputs());
+    expect(p).toContain("Today's date is January 15, 2026.");
+    expect(p).toContain("treat this as the present");
+    // The date line must lead the prompt, ahead of the persona line.
+    expect(p.indexOf("Today's date is")).toBeLessThan(
+      p.indexOf("You write commentary for SIGNAL"),
+    );
   });
 
   it("instructs against banned openers per Decision 12d", () => {

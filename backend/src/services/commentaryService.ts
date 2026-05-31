@@ -265,7 +265,16 @@ export async function getOrGenerateCommentary(
   };
 
   // ---- 3. Build the V2 prompt ----
+  // Temporal anchor for the prompt — computed here (not in the pure
+  // prompt module) so the model treats actual today as the present and
+  // doesn't hallucinate stale year references from its training window.
+  const currentDate = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
   const prompt = buildExpandableCommentaryPrompt({
+    currentDate,
     depth: input.depth,
     profile: profileShape,
     matchedTopics: matched.matchedTopics,
