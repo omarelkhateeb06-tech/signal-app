@@ -537,7 +537,11 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       const bTs = (b.publishedAt ?? b.createdAt).getTime();
       return bTs - aTs;
     });
-    const pageItems = ranked.slice(0, limit);
+    // Phase 12m — honor `offset` so infinite-scroll pages return distinct
+    // slices of the ranked pool. The prior `slice(0, limit)` ignored
+    // offset, so every page re-returned the top `limit` events and the
+    // frontend river rendered the same articles on every page.
+    const pageItems = ranked.slice(offset, offset + limit);
 
     // Batch-fetch event_sources for the events on this page. Skip the
     // round-trip when the page is empty.
@@ -600,11 +604,19 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       );
     });
 
+    // The ranked pool is capped at FEED_MAX_STORIES, so pagination can
+    // only ever walk the servable subset. Bound `has_more` by that cap
+    // (in addition to `total`) so a sector holding more than
+    // FEED_MAX_STORIES events doesn't keep `has_more=true` past the pool
+    // and spin the frontend on empty pages. For the common case
+    // (total <= FEED_MAX_STORIES) this is identical to comparing against
+    // `total`.
+    const reachable = Math.min(total, FEED_MAX_STORIES);
     res.json({
       data: {
         stories: shaped,
         total,
-        has_more: offset + pageItems.length < total,
+        has_more: offset + pageItems.length < reachable,
         limit,
         offset,
       },
