@@ -231,9 +231,8 @@ describe("getFeed — sector filter (Phase 12f)", () => {
     mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     // getFeed profile lookup — sectors=[], role=null.
     mock.queueSelect([{ sectors: [], role: null }]);
-    // stories query (chronological).
-    mock.queueSelect([]);
-    // events query (ranked) — return one event of sector 'ai' and one of
+    // Phase 12m — feed is events-only; no stories query leg. events
+    // query (ranked) — return one event of sector 'ai' and one of
     // sector 'finance'. With the prior behavior (early-return on empty
     // sectorsFilter), neither would appear; with the 12f behavior, both
     // pass the no-filter path.
@@ -279,8 +278,6 @@ describe("getFeed — sector filter (Phase 12f)", () => {
     ]);
     // event_sources batch fetch (for the two ids on the page).
     mock.queueSelect([]);
-    // storiesCountRow.
-    mock.queueSelect([{ count: 0 }]);
     // eventsCountRow.
     mock.queueSelect([{ count: 2 }]);
 
@@ -304,9 +301,8 @@ describe("getFeed — sector filter (Phase 12f)", () => {
     // Phase 12g — tier resolution (defaults to pro to skip gating).
     mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     mock.queueSelect([{ sectors: ["ai"], role: null }]);
-    mock.queueSelect([]);
-    // Two events with different effectiveScore — verify the merge
-    // sorts by score DESC.
+    // Phase 12m — events-only; no stories leg. Two events with
+    // different effectiveScore — verify the ranking sorts by score DESC.
     mock.queueSelect([
       {
         id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -347,9 +343,8 @@ describe("getFeed — sector filter (Phase 12f)", () => {
         effectiveScore: 11.5,
       },
     ]);
-    mock.queueSelect([]);
-    mock.queueSelect([{ count: 0 }]);
-    mock.queueSelect([{ count: 2 }]);
+    mock.queueSelect([]); // event_sources batch
+    mock.queueSelect([{ count: 2 }]); // events count
 
     const res = await request(app)
       .get("/api/v1/stories/feed")
@@ -400,9 +395,9 @@ describe("eventHasEnabledSourceExpr — disabled-source filter (hotfix #88)", ()
     // Phase 12g — tier resolution (defaults to pro to skip gating).
     mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
     mock.queueSelect([{ sectors: ["ai"], role: null }]);
-    mock.queueSelect([]); // stories
-    // events: the SQL filter would have excluded any disabled-source
-    // events; we return only the surviving enabled-source event.
+    // Phase 12m — events-only; no stories leg. events: the SQL filter
+    // would have excluded any disabled-source events; we return only
+    // the surviving enabled-source event.
     mock.queueSelect([
       {
         id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
@@ -425,7 +420,6 @@ describe("eventHasEnabledSourceExpr — disabled-source filter (hotfix #88)", ()
       },
     ]);
     mock.queueSelect([]); // event_sources batch
-    mock.queueSelect([{ count: 0 }]); // stories count
     mock.queueSelect([{ count: 1 }]); // events count (post-filter)
 
     const res = await request(app)

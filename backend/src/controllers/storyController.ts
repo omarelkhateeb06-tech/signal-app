@@ -477,8 +477,6 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     // any sectors and didn't pass a `?sectors=` query param; in that
     // case we return all sectors rather than empty (CLAUDE.md feed
     // behavior).
-    const storiesSectorWhere =
-      sectorsFilter.length > 0 ? inArray(stories.sector, sectorsFilter) : undefined;
     const eventsSectorWhere =
       sectorsFilter.length > 0 ? inArray(events.sector, sectorsFilter) : undefined;
     // Hotfix (GH #88) — exclude events whose every source is disabled.
@@ -486,24 +484,14 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     // cleanly whether or not sectorsFilter is empty.
     const eventsWhere = and(eventsSectorWhere, eventHasEnabledSourceExpr());
 
-    // Phase 12e.7a — dual-read across `stories` (legacy hand-curated,
-    // 20 rows) and `events` (ingestion-written, the bulk). Stories keep
-    // their chronological order (no ranking inputs apply); events are
-    // ranked via the 12f effective_score expression.
-    const storyRows = (await db
-      .select({
-        ...baseStoryColumns,
-        isSaved: isSavedExpr(userId),
-        saveCount: saveCountExpr(),
-        commentCount: commentCountExpr(),
-      })
-      .from(stories)
-      .leftJoin(writers, eq(writers.id, stories.authorId))
-      .where(storiesSectorWhere)
-      .orderBy(desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`))
-      .limit(limit)
-      .offset(offset)) as StoryRow[];
-
+    // Phase 12m — feed is events-only. The legacy `stories` leg (20
+    // hand-curated, pre-ingestion rows) was removed from the feed: those
+    // rows sorted on a static baseline score and were winning the
+    // ranking over fresh ingested events. The `stories` table and its
+    // data are untouched — detail (`getStoryById`), saved (`listMySaves`),
+    // search, and related-stories paths still read it. Only the feed
+    // stopped merging it in.
+    //
     // Phase 12f — events query is ranked by effective_score DESC and
     // capped at FEED_MAX_STORIES (the top-N pool). User-supplied limit
     // and offset paginate the merged result downstream; the SQL-level
@@ -537,41 +525,23 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       .orderBy(desc(eventEffectiveScore))
       .limit(FEED_MAX_STORIES)) as EventRow[];
 
-    type MergedItem =
-      | { _type: "story"; row: StoryRow; sortKey: number }
-      | { _type: "event"; row: EventRow; sortKey: number };
-    const merged: MergedItem[] = [
-      ...storyRows.map(
-        (row): MergedItem => ({
-          _type: "story",
-          row,
-          sortKey: STORY_BASELINE_EFFECTIVE_SCORE,
-        }),
-      ),
-      ...eventRows.map(
-        (row): MergedItem => ({
-          _type: "event",
-          row,
-          // `effectiveScore` comes back as numeric → string from pg in
-          // some configurations; coerce defensively.
-          sortKey: Number(row.effectiveScore),
-        }),
-      ),
-    ];
-    merged.sort((a, b) => {
-      if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
-      // Stable tiebreaker: newer first.
-      const aTs = (a.row.publishedAt ?? a.row.createdAt).getTime();
-      const bTs = (b.row.publishedAt ?? b.row.createdAt).getTime();
+    // Rank events by effective_score DESC, newer first on ties. The SQL
+    // already orders by score; the in-memory sort makes the tiebreak
+    // deterministic (`effectiveScore` can come back numeric → string
+    // from pg in some configurations, so coerce defensively).
+    const ranked = [...eventRows].sort((a, b) => {
+      const aScore = Number(a.effectiveScore);
+      const bScore = Number(b.effectiveScore);
+      if (bScore !== aScore) return bScore - aScore;
+      const aTs = (a.publishedAt ?? a.createdAt).getTime();
+      const bTs = (b.publishedAt ?? b.createdAt).getTime();
       return bTs - aTs;
     });
-    const pageItems = merged.slice(0, limit);
+    const pageItems = ranked.slice(0, limit);
 
-    // Batch-fetch event_sources for whichever event items survived the
-    // merge slice. Skip the round-trip when no events are on the page.
-    const eventIds = pageItems
-      .filter((m): m is { _type: "event"; row: EventRow; sortKey: number } => m._type === "event")
-      .map((m) => m.row.id);
+    // Batch-fetch event_sources for the events on this page. Skip the
+    // round-trip when the page is empty.
+    const eventIds = pageItems.map((row) => row.id);
     const allSources =
       eventIds.length > 0
         ? await db
@@ -591,19 +561,13 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       sourcesByEventId.set(s.eventId, arr);
     }
 
-    // Counts: union total = stories matching sectors + events matching sectors.
-    // Same optional-WHERE semantics as the main queries above: when the
-    // user has no sectors, count all rows.
-    const [storiesCountRow] = await db
-      .select({ count: sql<number>`COUNT(*)::int` })
-      .from(stories)
-      .where(storiesSectorWhere);
+    // Count: events-only total. Same optional-WHERE semantics as the
+    // main query above: when the user has no sectors, count all rows.
     const [eventsCountRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
       .from(events)
       .where(eventsWhere);
-    const total =
-      Number(storiesCountRow?.count ?? 0) + Number(eventsCountRow?.count ?? 0);
+    const total = Number(eventsCountRow?.count ?? 0);
 
     // Phase 12g — free-tier per-row gate flagging. The feed always
     // returns every row (headlines stay visible per spec; the frontend
@@ -618,8 +582,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
     const overCap =
       isFree && viewedSnapshot.available && viewedSnapshot.count >= FREE_TIER_STORY_CAP;
 
-    const shaped = pageItems.map((m): Record<string, unknown> | FeedGatedItem => {
-      const row = m.row;
+    const shaped = pageItems.map((row): Record<string, unknown> | FeedGatedItem => {
       if (overCap && !row.isSaved && !viewedSnapshot.ids.has(row.id)) {
         return gatedFeedItem(
           row.id,
@@ -630,13 +593,11 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
           trialAvailable,
         );
       }
-      return m._type === "story"
-        ? shapeStory(m.row, profile?.role ?? null)
-        : shapeEvent(
-            m.row,
-            profile?.role ?? null,
-            sourcesByEventId.get(m.row.id) ?? [],
-          );
+      return shapeEvent(
+        row,
+        profile?.role ?? null,
+        sourcesByEventId.get(row.id) ?? [],
+      );
     });
 
     res.json({

@@ -98,6 +98,34 @@ function makeStoryRow(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+// Phase 12m — the feed is events-only, so feed tests stage event-shaped
+// rows (the events query column set). `makeStoryRow` above is retained
+// for the `/:id` detail-gating tests, which still read the stories table.
+function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: storyId,
+    sector: "ai",
+    headline: "Model release headline",
+    context: "Context paragraph.",
+    whyItMatters: "Costs collapse. Then they rise.",
+    whyItMattersTemplate: null,
+    genericCommentary: null,
+    primarySourceUrl: "https://example.com/post",
+    primarySourceName: "Example",
+    imageUrl: null,
+    publishedAt: new Date("2026-05-01T00:00:00Z"),
+    createdAt: new Date("2026-05-01T00:00:00Z"),
+    authorId: "author-1",
+    authorName: "Jane",
+    authorBio: "Bio",
+    isSaved: false,
+    saveCount: 0,
+    commentCount: 0,
+    effectiveScore: 8,
+    ...overrides,
+  };
+}
+
 const queueOnboarded = (): void => {
   mock.queueSelect([{ completedAt: new Date("2026-04-20T00:00:00Z") }]);
 };
@@ -121,12 +149,11 @@ describe("Phase 12g paywall gating", () => {
       // SMEMBERS returns 15 OTHER ids — user is at cap, this row is unviewed.
       const viewedIds = Array.from({ length: 15 }, (_, i) => `viewed-${i}`);
       smembersMock.mockResolvedValueOnce(viewedIds);
-      // Profile, stories, events, count, count.
+      // Phase 12m — events-only: profile, events, event_sources, count.
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeStoryRow()]);
-      mock.queueSelect([]); // events
-      mock.queueSelect([{ count: 1 }]); // stories count
-      mock.queueSelect([{ count: 0 }]); // events count
+      mock.queueSelect([makeEventRow()]);
+      mock.queueSelect([]); // event_sources batch
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -159,10 +186,9 @@ describe("Phase 12g paywall gating", () => {
       ];
       smembersMock.mockResolvedValueOnce(viewedIds);
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeStoryRow()]);
-      mock.queueSelect([]);
-      mock.queueSelect([{ count: 1 }]);
-      mock.queueSelect([{ count: 0 }]);
+      mock.queueSelect([makeEventRow()]);
+      mock.queueSelect([]); // event_sources batch
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -178,10 +204,9 @@ describe("Phase 12g paywall gating", () => {
       const viewedIds = Array.from({ length: 15 }, (_, i) => `viewed-${i}`);
       smembersMock.mockResolvedValueOnce(viewedIds);
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeStoryRow({ isSaved: true })]);
-      mock.queueSelect([]);
-      mock.queueSelect([{ count: 1 }]);
-      mock.queueSelect([{ count: 0 }]);
+      mock.queueSelect([makeEventRow({ isSaved: true })]);
+      mock.queueSelect([]); // event_sources batch
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -196,10 +221,9 @@ describe("Phase 12g paywall gating", () => {
       queueTierFree();
       smembersMock.mockResolvedValueOnce(["viewed-1", "viewed-2"]); // count=2, well under 15
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeStoryRow()]);
-      mock.queueSelect([]);
-      mock.queueSelect([{ count: 1 }]);
-      mock.queueSelect([{ count: 0 }]);
+      mock.queueSelect([makeEventRow()]);
+      mock.queueSelect([]); // event_sources batch
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -213,10 +237,9 @@ describe("Phase 12g paywall gating", () => {
       queueOnboarded();
       queueTierFree();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeStoryRow()]);
-      mock.queueSelect([]);
-      mock.queueSelect([{ count: 1 }]);
-      mock.queueSelect([{ count: 0 }]);
+      mock.queueSelect([makeEventRow()]);
+      mock.queueSelect([]); // event_sources batch
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")

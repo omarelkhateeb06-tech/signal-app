@@ -47,6 +47,37 @@ function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknow
   };
 }
 
+// Phase 12m — the feed is events-only. Feed tests stage event-shaped
+// rows (the column set the events query SELECTs); `effectiveScore`
+// drives the in-memory ranking sort. `makeRow` (story shape) is still
+// used by the non-feed endpoints (detail / saves / related) below.
+const eventId = "33333333-3333-3333-3333-333333333333";
+
+function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: eventId,
+    sector: "ai",
+    headline: "New frontier model released",
+    context: "Context text.",
+    whyItMatters: "Costs fall.",
+    whyItMattersTemplate: null,
+    genericCommentary: null,
+    primarySourceUrl: "https://example.com/post",
+    primarySourceName: "Example",
+    imageUrl: null,
+    publishedAt: new Date("2026-04-01T00:00:00Z"),
+    createdAt: new Date("2026-04-01T00:00:00Z"),
+    authorId: "author-1",
+    authorName: "Jane Writer",
+    authorBio: "Bio",
+    isSaved: false,
+    saveCount: 3,
+    commentCount: 1,
+    effectiveScore: 8,
+    ...overrides,
+  };
+}
+
 describe("stories endpoints", () => {
   let token: string;
 
@@ -97,14 +128,11 @@ describe("stories endpoints", () => {
       queueOnboarded();
       queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeRow()]);
-      // Phase 12e.7a — getFeed does a dual-read across stories + events,
-      // batched event_sources, then a count per table. Empty events
-      // returns mean the event_sources fetch is skipped (controller
-      // guards on eventIds.length > 0).
-      mock.queueSelect([]); // events query — empty
-      mock.queueSelect([{ count: 1 }]); // stories count
-      mock.queueSelect([{ count: 0 }]); // events count
+      // Phase 12m — feed is events-only: events query → event_sources
+      // batch (one round-trip when the page is non-empty) → events count.
+      mock.queueSelect([makeEventRow()]);
+      mock.queueSelect([]); // event_sources batch — none
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -124,10 +152,9 @@ describe("stories endpoints", () => {
       queueOnboarded();
       queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "vc" }]);
-      mock.queueSelect([makeRow({ sector: "finance" })]);
-      mock.queueSelect([]); // events query — empty
-      mock.queueSelect([{ count: 1 }]); // stories count
-      mock.queueSelect([{ count: 0 }]); // events count
+      mock.queueSelect([makeEventRow({ sector: "finance" })]);
+      mock.queueSelect([]); // event_sources batch — none
+      mock.queueSelect([{ count: 1 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed?sectors=finance")
@@ -144,10 +171,12 @@ describe("stories endpoints", () => {
       queueOnboarded();
       queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      mock.queueSelect([makeRow(), makeRow({ id: "22222222-2222-2222-2222-222222222222" })]);
-      mock.queueSelect([]); // events query — empty
-      mock.queueSelect([{ count: 10 }]); // stories count
-      mock.queueSelect([{ count: 0 }]); // events count
+      mock.queueSelect([
+        makeEventRow(),
+        makeEventRow({ id: "22222222-2222-2222-2222-222222222222" }),
+      ]);
+      mock.queueSelect([]); // event_sources batch — none
+      mock.queueSelect([{ count: 10 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed?limit=2&offset=0")
@@ -161,43 +190,38 @@ describe("stories endpoints", () => {
       expect(res.body.data.offset).toBe(0);
     });
 
-    // Phase 12e.7a / 12f — dual-read merged sort. Verifies that an
-    // event with a higher effective_score lands first in the merged
-    // page (the 12f sort key replaced the pre-12f published_at DESC
-    // sort), event_sources are batched + attached, and multi-source
-    // attribution surfaces on the wire shape of both event items and
-    // legacy story items.
-    it("merges stories + events sorted by effective_score DESC and attaches sources", async () => {
+    // Phase 12m — events-only ranking. Verifies that the event with the
+    // higher effective_score lands first (the 12f sort key replaced the
+    // pre-12f published_at DESC sort), regardless of the order the SQL
+    // returned them in, and that event_sources are batched + attached to
+    // the right event on the wire shape. Converted from the pre-12m
+    // dual-read merge test when the legacy `stories` leg was removed
+    // from the feed.
+    it("ranks events by effective_score DESC and attaches sources", async () => {
       queueOnboarded();
       queueTierPro();
       mock.queueSelect([{ sectors: ["ai"], role: "engineer" }]);
-      // stories: one row — legacy stories sort against the
-      // STORY_BASELINE_EFFECTIVE_SCORE constant (currently 7).
-      mock.queueSelect([makeRow({ headline: "Lower-ranked story" })]);
-      // events: one row with effective_score 9.5 — should land first.
-      const eventId = "33333333-3333-3333-3333-333333333333";
+      const lowerEventId = "44444444-4444-4444-4444-444444444444";
+      // events query: lower-ranked row staged FIRST to prove the
+      // in-memory sort — not the staged order — decides the page order.
       mock.queueSelect([
-        {
+        makeEventRow({
+          id: lowerEventId,
+          headline: "Lower-ranked event",
+          primarySourceUrl: "https://lower.example.com",
+          primarySourceName: "Lower Source",
+          effectiveScore: 7,
+        }),
+        makeEventRow({
           id: eventId,
-          sector: "ai",
           headline: "Higher-ranked event",
-          context: "Event context",
-          whyItMatters: "Event WIM",
-          whyItMattersTemplate: null,
           primarySourceUrl: "https://primary.example.com",
           primarySourceName: "Primary Source",
-          publishedAt: new Date("2026-04-10T00:00:00Z"),
-          createdAt: new Date("2026-04-10T00:00:00Z"),
-          authorId: null,
-          authorName: null,
-          authorBio: null,
-          isSaved: false,
-          saveCount: 0,
-          commentCount: 0,
           effectiveScore: 9.5,
-        },
+        }),
       ]);
-      // event_sources batch: two rows for the one event (primary + alternate)
+      // event_sources batch: two rows for the higher event (primary +
+      // alternate); the lower event has no source rows.
       mock.queueSelect([
         {
           eventId,
@@ -212,8 +236,7 @@ describe("stories endpoints", () => {
           role: "alternate",
         },
       ]);
-      mock.queueSelect([{ count: 1 }]); // stories count
-      mock.queueSelect([{ count: 1 }]); // events count
+      mock.queueSelect([{ count: 2 }]); // events count
 
       const res = await request(app)
         .get("/api/v1/stories/feed")
@@ -221,17 +244,17 @@ describe("stories endpoints", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.stories).toHaveLength(2);
-      // Higher-ranked event lands first (effective_score 9.5 vs. story baseline 7).
+      // Higher-ranked event lands first (effective_score 9.5 vs. 7).
       expect(res.body.data.stories[0].id).toBe(eventId);
       expect(res.body.data.stories[0].headline).toBe("Higher-ranked event");
       expect(res.body.data.stories[0].sources).toHaveLength(2);
       expect(res.body.data.stories[0].primary_source_url).toBe(
         "https://primary.example.com",
       );
-      // Story second; legacy stories carry a synthetic single-element sources array.
-      expect(res.body.data.stories[1].headline).toBe("Lower-ranked story");
-      expect(res.body.data.stories[1].sources).toHaveLength(1);
-      expect(res.body.data.stories[1].sources[0].role).toBe("primary");
+      // Lower-ranked event second; no event_sources rows → empty array.
+      expect(res.body.data.stories[1].id).toBe(lowerEventId);
+      expect(res.body.data.stories[1].headline).toBe("Lower-ranked event");
+      expect(res.body.data.stories[1].sources).toHaveLength(0);
       expect(res.body.data.total).toBe(2);
       expect(res.body.data.has_more).toBe(false);
     });
