@@ -1,10 +1,11 @@
 // Phase 12n.4 — global daily volume cap for native-post generation.
 //
-// Each generator has its own per-run cap (2–3 posts), but nothing bounds the
-// TOTAL across all five generators. If every generator qualifies in the same
-// window the theoretical max is 3+2+2+2+2 = 11 posts/day — over the 10/day
-// target. This module enforces a single global ceiling, checked at generation
-// time against a DB count of today's native events.
+// Each generator has its own per-run cap (1–3 posts), but nothing bounds the
+// TOTAL across all seven generators. If every generator qualifies in the same
+// window the theoretical max is 3+2+2+2+2+1+1 = 13 posts/day. This module
+// enforces a single global ceiling (raised 10→25 in 12n.4 to give the two new
+// generators and the reframed synthesis posts room to land), checked at
+// generation time against a DB count of today's native events.
 //
 // Mechanism (locked): DB count, not a Redis counter. Before a generator's
 // authoring run, count events WHERE source_type='native' AND created_at >=
@@ -19,7 +20,7 @@
 
 // The global ceiling: at most this many native posts per UTC calendar day,
 // across every generator combined.
-export const NATIVE_DAILY_CAP = 10;
+export const NATIVE_DAILY_CAP = 25;
 
 // The plan a single generator run should follow given the day's usage so far.
 export interface CapPlan {

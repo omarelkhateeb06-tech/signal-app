@@ -8,8 +8,8 @@ import {
 const NOW = new Date("2026-05-30T12:00:00Z");
 
 describe("NATIVE_DAILY_CAP", () => {
-  it("is the documented 10/day ceiling", () => {
-    expect(NATIVE_DAILY_CAP).toBe(10);
+  it("is the documented 25/day ceiling", () => {
+    expect(NATIVE_DAILY_CAP).toBe(25);
   });
 });
 
@@ -60,12 +60,12 @@ describe("checkDailyCap", () => {
       countTodayNativeEvents,
     });
     expect(countTodayNativeEvents).toHaveBeenCalledWith(NOW);
-    expect(plan).toEqual({ used: 4, remaining: 6, exhausted: false });
+    expect(plan).toEqual({ used: 4, remaining: 21, exhausted: false });
   });
 
   it("reports exhausted when today's count meets the cap", async () => {
     const plan = await checkDailyCap(NOW, NATIVE_DAILY_CAP, {
-      countTodayNativeEvents: async () => 10,
+      countTodayNativeEvents: async () => 25,
     });
     expect(plan.exhausted).toBe(true);
     expect(plan.remaining).toBe(0);

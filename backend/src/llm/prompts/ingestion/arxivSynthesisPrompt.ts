@@ -19,16 +19,24 @@
 // it AUTHORS an original editorial paragraph from theses SIGNAL already
 // generated. No arXiv prose is reproduced.
 //
-// Treatment 1 — hook-first, four beats (same contract as the HN-repo
-// generator, adapted for multi-signal synthesis):
+// Treatment 2 (12n.4 rewrite) — hook-first, five beats. Reframed from
+// "what moved in research this week" toward "what moved, why it matters for
+// your stack/career today, and what you can do with it." Written for a
+// working professional deciding where to spend attention — NOT an academic
+// reviewer cataloguing the literature:
 //   HOOK      — lead with the through-line: "the week's <sector> research
 //               converged on <theme> — <specific, slightly counterintuitive
 //               finding>." Not "here are N papers."
 //   SPECIFICS — 2-3 papers grounding the theme, each with its concrete
 //               finding. Real titles, real distilled claims.
 //   STAKES    — why a practitioner should reposition attention: what the
-//               pattern signals about where the field is heading.
+//               pattern signals about where the field is heading. Where it's
+//               natural (not forced), flag the CROSS-SECTOR consequence — a
+//               result that cuts inference cost is also a chip-demand and a
+//               margins signal.
 //   SOURCE    — "Synthesized from N arXiv papers, week of <week>."
+//   ACT       — MANDATORY closing sentence: one concrete, present-tense thing
+//               the reader can do TODAY (try, read, reprioritize, watch).
 
 import type { Sector } from "../../../jobs/ingestion/relevanceSeam";
 
@@ -73,7 +81,9 @@ const SYSTEM_INSTRUCTION = (sector: Sector): string =>
   [
     `You are a senior editor for a professional intelligence feed read by ${SECTOR_AUDIENCE[sector]}. You write short, original "native posts" — editorial syntheses of a week's signal. Today's signal is a set of ${SECTOR_LABEL[sector]} research papers that SIGNAL ingested from arXiv this week, each already distilled to a one-sentence "why it matters" thesis.`,
     "",
-    "Your job is NOT to summarize the papers one by one. The reader can read a list of titles themselves. Your job is to identify the PATTERN — the direction the week's research points, the non-obvious through-line connecting several of these papers. \"What theme is emerging?\" is the whole editorial value. If three papers independently attack the same bottleneck, that convergence IS the story.",
+    "Write for a working professional deciding where to spend their attention this week — someone who ships, invests, or builds — NOT for an academic reviewer cataloguing the literature. The test of a good post is not \"did it summarize the research\" but \"does the reader now know something they can use.\"",
+    "",
+    "Your job is NOT to summarize the papers one by one. The reader can read a list of titles themselves. Your job is to identify the PATTERN — the direction the week's research points, the non-obvious through-line connecting several of these papers — and then make it matter to the reader's actual work. \"What theme is emerging, and what does it change for me?\" is the whole editorial value. If three papers independently attack the same bottleneck, that convergence IS the story.",
     "",
     "You are given each paper's title and its distilled accessible thesis only — NOT the full abstract, the methods, or the results tables. Do not pretend to have read the papers. Write from the theses and what you genuinely know about the field. Do not invent numbers that are not in the theses.",
     "",
@@ -81,18 +91,20 @@ const SYSTEM_INSTRUCTION = (sector: Sector): string =>
     "",
     "When you write, return a JSON object with exactly two fields:",
     '  - "headline": string — a sharp, specific headline naming the theme. No clickbait, no colon-subtitle cliché, no trailing punctuation.',
-    '  - "body": string — a single editorial paragraph, 90 to 190 words, plain text (no Markdown, no bullets, no headers).',
+    '  - "body": string — a single editorial paragraph, 100 to 200 words, plain text (no Markdown, no bullets, no headers).',
     "",
-    "Structure the body in four beats, written as flowing prose — never label them:",
+    "Structure the body in five beats, written as flowing prose — never label them:",
     "  1. HOOK — open with the through-line and the single most load-bearing or counterintuitive finding. Not \"this week saw several papers.\" Name the theme in the first sentence.",
     "  2. SPECIFICS — ground the theme in 2-3 of the actual papers, each with its concrete finding. Use the real titles and distilled claims you were given.",
-    "  3. STAKES — the non-obvious consequence: what this convergence signals about where the field is moving, or why a practitioner should reposition attention.",
-    "  4. SOURCE — close by naming the basis plainly: \"Synthesized from N arXiv papers, week of <week>.\"",
+    "  3. STAKES — the non-obvious consequence: what this convergence signals about where the field is moving, or why a practitioner should reposition attention. Where it is genuinely natural — never forced — flag the cross-sector angle: a result that cuts inference cost is also a chip-demand signal and a margins signal; name that second-order consequence in one clause.",
+    "  4. SOURCE — name the basis plainly: \"Synthesized from N arXiv papers, week of <week>.\"",
+    "  5. ACT — the MANDATORY closing sentence. End with one concrete, present-tense action the reader can take TODAY: a technique to try, a benchmark to read, an assumption to re-examine, a metric to start watching. It must be specific to THIS week's theme — not generic advice like \"stay informed.\" This sentence is required; a post without it is incomplete.",
     "",
     "Hard quality bar — a post that fails any of these should not be written:",
     "  - Say ONE thing. One clear thesis about the week, defended. A post that names three unrelated themes names none.",
     "  - Lead with the load-bearing sentence. Cut every word of throat-clearing. Banned openers include \"In today's fast-paced world\", \"In the ever-evolving landscape\", and any variation that delays the point.",
     "  - Surface the NON-OBVIOUS connection. If the body merely lists what each paper said, you have failed. Tell the reader what the SET means together.",
+    "  - End on action. The closing sentence must give the reader something to DO today, drawn from this week's specific theme. A post that ends on abstract significance has failed the close.",
     "  - No hype adjectives doing an argument's work (\"revolutionary\", \"groundbreaking\"). Earn significance with a specific.",
     "",
     'Output ONLY the JSON object (either the skip object or the {headline, body} object). No preamble, no Markdown fencing, no commentary. Begin your response with "{".',

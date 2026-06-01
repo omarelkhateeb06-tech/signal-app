@@ -9,6 +9,8 @@
 //   - HN community synthesis (slug `hn-synthesis-native`).
 //   - EDGAR earnings/filing reaction (slug `earnings-reaction-native`).
 //   - Semiconductor supply-chain synthesis (slug `supply-chain-synthesis-native`).
+//   - Cross-sector causal chain (slug `cross-sector-chain-native`, 12n.4).
+//   - Tool spotlight (slug `tool-spotlight-native`, 12n.4).
 
 import type { NativeGenerator } from "./types";
 import { hnRepoDiscoveryGenerator } from "./hnRepoDiscovery";
@@ -16,6 +18,8 @@ import { arxivSynthesisGenerator } from "./arxivSynthesis";
 import { hnCommunitySynthesisGenerator } from "./hnCommunitySynthesis";
 import { earningsReactionGenerator } from "./earningsReaction";
 import { supplyChainSynthesisGenerator } from "./supplyChainSynthesis";
+import { crossSectorChainGenerator } from "./crossSectorChain";
+import { toolSpotlightGenerator } from "./toolSpotlight";
 
 const REGISTRY: Record<string, NativeGenerator> = {
   [hnRepoDiscoveryGenerator.slug]: hnRepoDiscoveryGenerator,
@@ -23,6 +27,8 @@ const REGISTRY: Record<string, NativeGenerator> = {
   [hnCommunitySynthesisGenerator.slug]: hnCommunitySynthesisGenerator,
   [earningsReactionGenerator.slug]: earningsReactionGenerator,
   [supplyChainSynthesisGenerator.slug]: supplyChainSynthesisGenerator,
+  [crossSectorChainGenerator.slug]: crossSectorChainGenerator,
+  [toolSpotlightGenerator.slug]: toolSpotlightGenerator,
 };
 
 export function getGenerator(slug: string): NativeGenerator | null {
