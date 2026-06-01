@@ -100,16 +100,25 @@ export default function FeedPage(): JSX.Element {
     [data],
   );
 
-  // Front-page composition: the first non-gated story anchors the page
-  // (lead), the next few fill the right-hand rail, everything else flows
-  // into the river grid below. Gated items never become the lead/rail —
-  // they always render as the soft-block card in the river.
+  // Front-page composition: a non-gated story anchors the page (lead), the
+  // next few fill the right-hand rail, everything else flows into the river
+  // grid below. Gated items never become the lead/rail — they always render
+  // as the soft-block card in the river.
+  //
+  // Lead selection prefers a story WITH a hero image: scan the top 5 non-gated
+  // stories and pick the first with an image_url, falling back to the top
+  // story when none of the leaders have one. A leader displaced from the lead
+  // slot isn't dropped — it stays in the rail/river (the rail excludes the
+  // chosen lead by id rather than assuming it's index 0).
   const { lead, rail, river } = useMemo(() => {
     const nonGated = items.filter((i): i is Story & { gated: false } =>
       !isGatedFeedItem(i),
     );
-    const leadStory = nonGated[0] ?? null;
-    const railStories = leadStory ? nonGated.slice(1, 5) : [];
+    const leadStory =
+      nonGated.slice(0, 5).find((s) => s.image_url) ?? nonGated[0] ?? null;
+    const railStories = leadStory
+      ? nonGated.filter((s) => s.id !== leadStory.id).slice(0, 4)
+      : [];
     const used = new Set<string>(
       [leadStory, ...railStories].filter(Boolean).map((s) => (s as Story).id),
     );

@@ -100,6 +100,7 @@ function buildSystemInstruction(
     "  - Lead with the load-bearing sentence. Cut throat-clearing. Banned openers include \"In today's fast-paced world\", \"In the ever-evolving landscape\", and any variation that delays the point.",
     "  - End on action. The closing sentence must give the reader something to DO today, drawn from this specific chain. A post that ends on abstract significance has failed the close.",
     "  - No hype adjectives doing an argument's work (\"revolutionary\", \"groundbreaking\"). Earn significance with a specific.",
+    "  - No asterisk emphasis. Do not use *word* or **word** formatting. Plain text only — no Markdown of any kind.",
     "",
     'Output ONLY the JSON object (either the skip object or the {headline, body} object). No preamble, no Markdown fencing, no commentary. Begin your response with "{".',
   ].join("\n");

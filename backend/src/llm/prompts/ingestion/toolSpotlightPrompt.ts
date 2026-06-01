@@ -82,6 +82,7 @@ function buildSystemInstruction(): string {
     "  - Lead with the load-bearing sentence. Cut throat-clearing. Banned openers include \"In today's fast-paced world\", \"In the ever-evolving landscape\", and any variation that delays the point.",
     "  - End on action. The closing sentence must give the reader something concrete to DO today with THIS tool. A post that ends on abstract significance has failed the close.",
     "  - No hype adjectives doing an argument's work (\"revolutionary\", \"game-changing\"). Earn significance with a specific.",
+    "  - No asterisk emphasis. Do not use *word* or **word** formatting. Plain text only — no Markdown of any kind.",
     "  - Do not reproduce or paraphrase the README; you don't have it. Write from the title and what the tool plainly is.",
     "",
     'Output ONLY the JSON object (either the skip object or the {headline, body} object). No preamble, no Markdown fencing, no commentary. Begin your response with "{".',

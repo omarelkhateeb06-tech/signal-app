@@ -98,6 +98,7 @@ const SYSTEM_INSTRUCTION = (sector: Sector): string =>
     "  - End on something to watch or try. The closing sentence must give the reader a concrete thing to track or test this week. A post that ends on abstract significance has failed the close.",
     "  - Surface the NON-OBVIOUS read. If the body merely lists what got upvoted, you have failed. Tell the reader what the pattern MEANS.",
     "  - No hype adjectives doing an argument's work. Earn significance with a specific.",
+    "  - No asterisk emphasis. Do not use *word* or **word** formatting. Plain text only — no Markdown of any kind.",
     "",
     'Output ONLY the JSON object (either the skip object or the {headline, body} object). No preamble, no Markdown fencing, no commentary. Begin your response with "{".',
   ].join("\n");
