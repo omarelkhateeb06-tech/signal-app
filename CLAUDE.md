@@ -870,6 +870,37 @@ Same as above, **plus**:
 3. If the page needs data: add an API wrapper in `lib/api.ts`, a hook in `hooks/`, wire TanStack Query.
 4. Update navigation if it's user-facing.
 
+### Regenerate `backend/package-lock.json`
+
+#### When this applies
+
+When backend dependencies change (`package.json` edit, `npm install` in `backend/`), Railway deploys will fail with:
+
+```
+npm ci: `package-lock.json` is inconsistent with `package.json`
+```
+
+This happens because `backend/Dockerfile` uses `backend/` as its build context with a standalone `backend/package-lock.json`. Updating the root lockfile does NOT update `backend/package-lock.json`. They are separate files.
+
+#### Procedure (PowerShell)
+
+Run this OUTSIDE the workspace (npm inside the workspace folds backend deps into the root lockfile and will NOT produce a standalone `backend/package-lock.json`):
+
+```powershell
+New-Item -ItemType Directory -Force $env:TEMP\signal-lock-tmp
+Copy-Item backend\package.json $env:TEMP\signal-lock-tmp\package.json
+Set-Location $env:TEMP\signal-lock-tmp
+npm install --package-lock-only
+Copy-Item package-lock.json C:\dev\signal-app\backend\package-lock.json
+Set-Location C:\dev\signal-app
+```
+
+Then commit the updated `backend/package-lock.json` alongside the `backend/package.json` change.
+
+#### Why not just `npm install` in `backend/`?
+
+npm in workspace mode (root has `workspaces: ["backend"]`) silently folds backend packages into the root `node_modules` and root `package-lock.json`. The scratch-dir approach bypasses workspace resolution.
+
 ---
 
 ## 17. RULES FOR CLAUDE CODE
