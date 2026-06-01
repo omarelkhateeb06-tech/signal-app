@@ -35,6 +35,7 @@ import {
   W2,
   W3,
 } from "../feed/rankingConstants";
+import { applyDiversityCap } from "../feed/diversityCap";
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 10;
@@ -162,6 +163,9 @@ interface EventRow {
   genericCommentary: string | null;
   primarySourceUrl: string;
   primarySourceName: string | null;
+  // Phase 12 — 'native' (SIGNAL-authored) vs 'ingested'. Used by the
+  // feed diversity cap to exempt native posts; stripped before the wire.
+  sourceType: string;
   imageUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
@@ -508,6 +512,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         genericCommentary: events.genericCommentary,
         primarySourceUrl: events.primarySourceUrl,
         primarySourceName: events.primarySourceName,
+        sourceType: events.sourceType,
         imageUrl: events.imageUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
@@ -537,11 +542,19 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
       const bTs = (b.publishedAt ?? b.createdAt).getTime();
       return bTs - aTs;
     });
+    // Phase 12 — source-diversity cap. Applied to the FULL ranked pool
+    // before pagination so no single source occupies more than
+    // MAX_PER_SOURCE slots in any DIVERSITY_WINDOW-position window.
+    // Running it pre-slice (not per-page) keeps the window invariant
+    // intact across the offset/limit page boundary and keeps pagination
+    // stable. Does not touch ranking scores — pure post-ranking reorder.
+    // Native posts are exempt (never capped).
+    const diversified = applyDiversityCap(ranked);
     // Phase 12m — honor `offset` so infinite-scroll pages return distinct
     // slices of the ranked pool. The prior `slice(0, limit)` ignored
     // offset, so every page re-returned the top `limit` events and the
     // frontend river rendered the same articles on every page.
-    const pageItems = ranked.slice(offset, offset + limit);
+    const pageItems = diversified.slice(offset, offset + limit);
 
     // Batch-fetch event_sources for the events on this page. Skip the
     // round-trip when the page is empty.
