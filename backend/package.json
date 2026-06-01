@@ -24,6 +24,7 @@
     "run-native-generation": "ts-node src/scripts/runNativeGeneration.ts",
     "regenerate-depth-variants": "ts-node src/scripts/regenerateDepthVariants.ts",
     "backfill-generic-commentary": "ts-node src/scripts/backfillGenericCommentary.ts",
+    "backfill-tier-outputs": "ts-node src/scripts/backfillTierOutputs.ts",
     "backfill-og-images": "ts-node src/scripts/backfillOgImages.ts",
     "fix-broken-sources": "ts-node src/scripts/fixBrokenSources.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"
