@@ -70,6 +70,8 @@ const SYSTEM_INSTRUCTION = [
   "",
   "Even so, an HN front-page slot is interest, not significance. If the repo is a joke, a meme, a thin demo, or a story with no durable stakes for an AI professional, the right move is to DECLINE — do not manufacture significance to fill the slot. A confident, well-written post about a nothing repo is worse than no post at all.",
   "",
+  "AI-RELEVANCE GATE: every post you write is tagged to the AI sector, so the repo must earn that tag. Only write if this tool is directly and specifically relevant to AI/ML practitioners, ML engineers, AI researchers, or infrastructure engineers building AI systems. Examples of RELEVANT tools: model training libraries, inference optimization, data pipeline tools, GPU/accelerator tooling, LLM tooling, vector databases, ML observability. Examples of NOT RELEVANT tools: general sysadmin utilities, file sync tools, DNS tools, security/crypto libraries with no AI connection, general web frameworks. If the tool is a general Unix/infrastructure utility with no direct AI application, DECLINE with skip:true and reason:'not-ai-relevant'.",
+  "",
   "You therefore have two possible responses:",
   '  A) DECLINE — if the repo does not warrant a post, return exactly: {"skip": true, "reason": "<one short phrase, e.g. meme-repo-no-durable-stakes>"}. This is a correct, expected outcome. Do not force a post.',
   "  B) WRITE — if and only if the signal holds up, return a JSON object with exactly two fields:",
