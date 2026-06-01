@@ -9,6 +9,7 @@ import { StorySaveButton } from "@/components/stories/StorySaveButton";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
+import { isNativeStory, resolveCardHeadline } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 // "Intelligence Terminal × Editorial" front page — the lead story.
@@ -50,6 +51,8 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
   const source = story.source_name ?? story.sources[0]?.name ?? null;
+  const native = isNativeStory(story);
+  const headline = resolveCardHeadline(story, body);
 
   return (
     <motion.article
@@ -99,42 +102,74 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
           )}
         </div>
 
-        <h2
-          className={[
-            "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
-            isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
-          ].join(" ")}
-        >
-          {story.headline}
-        </h2>
-
-        <p className="mb-1.5 mt-5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
-          Why it matters to you
-        </p>
-        <div className="relative min-h-[4.5rem]">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.p
-              key={loading ? "loading" : "body"}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18, ease: EASE }}
-              className="max-w-[58ch] text-[16px] leading-relaxed text-ink-muted"
-              style={
-                loading
-                  ? { color: "var(--ink-muted)" }
-                  : {
-                      display: "-webkit-box",
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }
-              }
+        {native ? (
+          <>
+            {/* Native (SIGNAL editorial): classic headline + framed
+                commentary, left untouched by the hook-as-title swap. */}
+            <h2
+              className={[
+                "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
+                isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
+              ].join(" ")}
             >
-              {loading ? "Generating your briefing…" : body}
-            </motion.p>
-          </AnimatePresence>
-        </div>
+              {story.headline}
+            </h2>
+
+            <p className="mb-1.5 mt-5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+              Why it matters to you
+            </p>
+            <div className="relative min-h-[4.5rem]">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.p
+                  key={loading ? "loading" : "body"}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: EASE }}
+                  className="max-w-[58ch] text-[16px] leading-relaxed text-ink-muted"
+                  style={
+                    loading
+                      ? { color: "var(--ink-muted)" }
+                      : {
+                          display: "-webkit-box",
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                        }
+                  }
+                >
+                  {loading ? "Generating your briefing…" : body}
+                </motion.p>
+              </AnimatePresence>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Ingested: the hook becomes the hero headline; the source
+                article headline drops to a secondary attribution line.
+                The "Why it matters to you" label is dropped — the hook
+                now speaks for itself as the headline. */}
+            <h2
+              className={[
+                "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
+                isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
+              ].join(" ")}
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {headline.primary}
+            </h2>
+            {headline.attribution && (
+              <p className="mt-4 max-w-[58ch] truncate text-[15px] leading-relaxed text-ink-muted">
+                {headline.attribution}
+              </p>
+            )}
+          </>
+        )}
       </Link>
 
       {/* Editorial meta line */}

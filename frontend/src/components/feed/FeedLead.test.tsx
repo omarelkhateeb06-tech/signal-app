@@ -83,8 +83,35 @@ describe("FeedLead hero imagery", () => {
     expect(container.querySelectorAll("img").length).toBe(0);
   });
 
-  it("surfaces the personalization framing label", () => {
-    renderLead(baseStory({ why_it_matters_to_you: "A plain fallback summary." }));
+  // Hook-as-title: for ingested stories the personalization hook is
+  // promoted to the headline and the source article headline drops to a
+  // muted attribution line. The old "Why it matters to you" label is gone.
+  it("promotes the hook to the headline for an ingested story", () => {
+    renderLead(
+      baseStory({
+        headline: "Source wire headline",
+        why_it_matters_to_you: "This is the hook that should headline.",
+      }),
+    );
+    expect(
+      screen.getByText("This is the hook that should headline."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source wire headline")).toBeInTheDocument();
+    expect(screen.queryByText("Why it matters to you")).not.toBeInTheDocument();
+  });
+
+  // Native (SIGNAL) stories keep the classic headline + framed commentary.
+  it("leaves native (SIGNAL) stories untouched", () => {
+    renderLead(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        headline: "Editorial native headline",
+        why_it_matters_to_you: "Native commentary body.",
+      }),
+    );
+    expect(screen.getByText("Editorial native headline")).toBeInTheDocument();
     expect(screen.getByText("Why it matters to you")).toBeInTheDocument();
+    expect(screen.getByText("Native commentary body.")).toBeInTheDocument();
   });
 });
