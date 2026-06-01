@@ -9,6 +9,7 @@ import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
+import { isNativeStory, resolveCardHeadline } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 const VISIBILITY_ROOT_MARGIN = "1200px 0px";
@@ -84,6 +85,8 @@ export function StoryCard({
     shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
 
   const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
+  const native = isNativeStory(story);
+  const headline = resolveCardHeadline(story, previewText);
   const sourceCount = story.sources.length;
   const primarySource = story.source_name ?? story.sources[0]?.name ?? null;
   const sourceLabel =
@@ -130,26 +133,55 @@ export function StoryCard({
             )}
           </div>
 
-          <h2
-            className={[
-              "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
-              isRead ? "text-ink-muted" : "text-ink",
-            ].join(" ")}
-          >
-            {story.headline}
-          </h2>
-
-          <p
-            className="text-sm leading-relaxed text-ink-muted"
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {isCommentaryLoading ? "Generating your briefing…" : previewText}
-          </p>
+          {native ? (
+            <>
+              {/* Native (SIGNAL editorial): classic headline-then-commentary
+                  layout, left untouched by the hook-as-title swap. */}
+              <h2
+                className={[
+                  "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+                  isRead ? "text-ink-muted" : "text-ink",
+                ].join(" ")}
+              >
+                {story.headline}
+              </h2>
+              <p
+                className="text-sm leading-relaxed text-ink-muted"
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {isCommentaryLoading ? "Generating your briefing…" : previewText}
+              </p>
+            </>
+          ) : (
+            <>
+              {/* Ingested: the hook becomes the headline; the source
+                  article headline drops to a secondary attribution line. */}
+              <h2
+                className={[
+                  "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+                  isRead ? "text-ink-muted" : "text-ink",
+                ].join(" ")}
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {headline.primary}
+              </h2>
+              {headline.attribution && (
+                <p className="truncate text-xs leading-relaxed text-ink-muted">
+                  {headline.attribution}
+                </p>
+              )}
+            </>
+          )}
         </Link>
 
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-xs text-ink-muted">
