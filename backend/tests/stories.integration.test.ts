@@ -399,14 +399,19 @@ describe("stories endpoints", () => {
     });
   });
 
+  // Phase 12q — getRelatedStories was rewritten to query `events`.
+  // Anchor lookup tries `stories` first, then `events` (dual-table
+  // pattern matching getStoryById). Related content is fetched from
+  // `events` with a sources batch-fetch, shaped via shapeEvent.
   describe("GET /api/v1/stories/:id/related", () => {
     it("returns 401 without a token", async () => {
       const res = await request(app).get(`/api/v1/stories/${storyId}/related`);
       expect(res.status).toBe(401);
     });
 
-    it("returns 404 when base story is missing", async () => {
-      mock.queueSelect([]);
+    it("returns 404 when neither stories nor events contains the id", async () => {
+      mock.queueSelect([]); // stories anchor miss
+      mock.queueSelect([]); // events anchor miss
 
       const res = await request(app)
         .get(`/api/v1/stories/${storyId}/related`)
@@ -416,13 +421,14 @@ describe("stories endpoints", () => {
       expect(res.body.error.code).toBe("STORY_NOT_FOUND");
     });
 
-    it("returns same-sector stories excluding the current one", async () => {
-      mock.queueSelect([{ id: storyId, sector: "ai" }]);
-      mock.queueSelect([{ role: "engineer" }]);
-      mock.queueSelect([
-        makeRow({ id: "22222222-2222-2222-2222-222222222222" }),
-        makeRow({ id: "33333333-3333-3333-3333-333333333333" }),
+    it("returns same-sector events when anchor is a legacy story id", async () => {
+      mock.queueSelect([{ id: storyId, sector: "ai" }]); // stories anchor found
+      mock.queueSelect([{ role: "engineer" }]);           // profile
+      mock.queueSelect([                                  // related events
+        makeEventRow({ id: "22222222-2222-2222-2222-222222222222" }),
+        makeEventRow({ id: "44444444-4444-4444-4444-444444444444" }),
       ]);
+      mock.queueSelect([]);                               // event_sources batch
 
       const res = await request(app)
         .get(`/api/v1/stories/${storyId}/related`)
@@ -433,6 +439,27 @@ describe("stories endpoints", () => {
       expect(res.body.data.stories[0].id).not.toBe(storyId);
       expect(res.body.data.stories[0].why_it_matters_to_you).toContain(
         "As an engineer",
+      );
+    });
+
+    it("returns same-sector events when anchor is an event id", async () => {
+      mock.queueSelect([]);                                     // stories anchor miss
+      mock.queueSelect([{ id: eventId, sector: "finance" }]);  // events anchor found
+      mock.queueSelect([{ role: "analyst" }]);                  // profile
+      mock.queueSelect([                                        // related events
+        makeEventRow({ id: storyId, sector: "finance" }),
+      ]);
+      mock.queueSelect([]);                                     // event_sources batch
+
+      const res = await request(app)
+        .get(`/api/v1/stories/${eventId}/related`)
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories).toHaveLength(1);
+      expect(res.body.data.stories[0].sector).toBe("finance");
+      expect(res.body.data.stories[0].why_it_matters_to_you).toContain(
+        "As an analyst",
       );
     });
   });

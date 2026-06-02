@@ -1161,13 +1161,30 @@ export async function getRelatedStories(
     const userId = requireUserId(req);
     const { id } = idParamSchema.parse(req.params);
 
-    const [current] = await db
+    // Phase 12q — dual-table anchor lookup: try `stories` (legacy hand-
+    // curated rows) first, then `events` (ingestion pipeline). Mirrors
+    // the same pattern in getStoryById. Clients reach this route from both
+    // surfaces — a legacy story detail and an event detail both call
+    // GET /stories/:id/related with their respective UUIDs.
+    let anchorSector: string;
+    const [storyAnchor] = await db
       .select({ id: stories.id, sector: stories.sector })
       .from(stories)
       .where(eq(stories.id, id))
       .limit(1);
-    if (!current) {
-      throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+
+    if (storyAnchor) {
+      anchorSector = storyAnchor.sector;
+    } else {
+      const [eventAnchor] = await db
+        .select({ id: events.id, sector: events.sector })
+        .from(events)
+        .where(eq(events.id, id))
+        .limit(1);
+      if (!eventAnchor) {
+        throw new AppError("STORY_NOT_FOUND", "Story not found", 404);
+      }
+      anchorSector = eventAnchor.sector;
     }
 
     const [profile] = await db
@@ -1176,20 +1193,66 @@ export async function getRelatedStories(
       .where(eq(userProfiles.userId, userId))
       .limit(1);
 
+    // Phase 12q — related content now queries `events`. Similarity
+    // mechanism unchanged: same sector, newest first (COALESCE on
+    // publishedAt / createdAt). The `events` table has an `embedding`
+    // column (pgvector) but vector similarity is deferred to a future
+    // phase; sector + recency gives reasonable recall at zero extra cost.
+    // Covered by events_sector_published_at_idx on (sector, published_at).
     const rows = (await db
       .select({
-        ...baseStoryColumns,
-        isSaved: isSavedExpr(userId),
-        saveCount: saveCountExpr(),
-        commentCount: commentCountExpr(),
+        id: events.id,
+        sector: events.sector,
+        headline: events.headline,
+        context: events.context,
+        whyItMatters: events.whyItMatters,
+        whyItMattersTemplate: events.whyItMattersTemplate,
+        genericCommentary: events.genericCommentary,
+        primarySourceUrl: events.primarySourceUrl,
+        primarySourceName: events.primarySourceName,
+        sourceType: events.sourceType,
+        generatorSlug: eventGeneratorSlugExpr(),
+        imageUrl: events.imageUrl,
+        publishedAt: events.publishedAt,
+        createdAt: events.createdAt,
+        authorId: writers.id,
+        authorName: writers.name,
+        authorBio: writers.bio,
+        isSaved: isEventSavedExpr(userId),
+        saveCount: eventSaveCountExpr(),
+        commentCount: eventCommentCountExpr(),
+        effectiveScore: sql<number>`0`,
       })
-      .from(stories)
-      .leftJoin(writers, eq(writers.id, stories.authorId))
-      .where(and(eq(stories.sector, current.sector), ne(stories.id, current.id)))
-      .orderBy(desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`))
-      .limit(RELATED_LIMIT)) as StoryRow[];
+      .from(events)
+      .leftJoin(writers, eq(writers.id, events.authorId))
+      .where(and(eq(events.sector, anchorSector), ne(events.id, id)))
+      .orderBy(desc(sql`COALESCE(${events.publishedAt}, ${events.createdAt})`))
+      .limit(RELATED_LIMIT)) as EventRow[];
 
-    const shaped = rows.map((row) => shapeStory(row, profile?.role ?? null));
+    // Batch-fetch event_sources — same pattern as getFeed / searchStories.
+    const eventIds = rows.map((r) => r.id);
+    const allSources =
+      eventIds.length > 0
+        ? await db
+            .select({
+              eventId: eventSources.eventId,
+              url: eventSources.url,
+              name: eventSources.name,
+              role: eventSources.role,
+            })
+            .from(eventSources)
+            .where(inArray(eventSources.eventId, eventIds))
+        : [];
+    const sourcesByEventId = new Map<string, EventSourceRow[]>();
+    for (const s of allSources) {
+      const arr = sourcesByEventId.get(s.eventId) ?? [];
+      arr.push({ url: s.url, name: s.name, role: s.role });
+      sourcesByEventId.set(s.eventId, arr);
+    }
+
+    const shaped = rows.map((row) =>
+      shapeEvent(row, profile?.role ?? null, sourcesByEventId.get(row.id) ?? []),
+    );
     res.json({ data: { stories: shaped } });
   } catch (error) {
     next(error);
