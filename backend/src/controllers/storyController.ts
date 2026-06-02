@@ -1152,6 +1152,75 @@ export async function searchStories(
   }
 }
 
+// Phase 12r — archive endpoint schema. Reuses MAX_LIMIT / DEFAULT_LIMIT
+// from the top of the file; no `sectors` param (native posts span all three).
+const nativeQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * Phase 12r — `GET /api/v1/stories/native`
+ *
+ * Lean archive endpoint: returns native (SIGNAL-authored) events only,
+ * sorted newest first (COALESCE on publishedAt / createdAt). Carries only
+ * the fields the archive table needs — no ranking, no paywall, no sources
+ * batch. No requireProfile gate: the archive is discovery, not detail.
+ */
+export async function getNativeStories(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    requireUserId(req); // auth guard; userId not needed in the query itself
+    const { limit, offset } = nativeQuerySchema.parse(req.query);
+
+    const rows = await db
+      .select({
+        id: events.id,
+        headline: events.headline,
+        publishedAt: events.publishedAt,
+        createdAt: events.createdAt,
+        sector: events.sector,
+        generatorSlug: eventGeneratorSlugExpr(),
+      })
+      .from(events)
+      .where(eq(events.sourceType, "native"))
+      .orderBy(desc(sql`COALESCE(${events.publishedAt}, ${events.createdAt})`))
+      .limit(limit)
+      .offset(offset);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(events)
+      .where(eq(events.sourceType, "native"));
+
+    const total = Number(countRow?.count ?? 0);
+
+    const shaped = rows.map((row) => ({
+      id: row.id,
+      headline: row.headline,
+      published_at: row.publishedAt,
+      created_at: row.createdAt,
+      sector: row.sector,
+      generator_type: row.generatorSlug ?? null,
+    }));
+
+    res.json({
+      data: {
+        items: shaped,
+        total,
+        has_more: offset + rows.length < total,
+        limit,
+        offset,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getRelatedStories(
   req: Request,
   res: Response,

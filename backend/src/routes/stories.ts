@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getFeed,
+  getNativeStories,
   getRelatedStories,
   getStoryById,
   saveStory,
@@ -29,6 +30,9 @@ storiesRouter.use(requireAuth);
 // more than gating just the discovery surfaces.
 storiesRouter.get("/feed", requireProfile, getFeed);
 storiesRouter.get("/search", requireProfile, searchStories);
+// Phase 12r — /native MUST be registered before /:id so Express matches
+// the literal "native" segment before treating it as a UUID parameter.
+storiesRouter.get("/native", getNativeStories);
 storiesRouter.get("/:id/related", getRelatedStories);
 storiesRouter.post("/:id/save", saveStory);
 storiesRouter.delete("/:id/save", unsaveStory);

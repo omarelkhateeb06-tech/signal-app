@@ -17,6 +17,7 @@ import {
 } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
 import { timeAgo } from "@/lib/timeAgo";
+import { isNativeStory, sourceDisplayLabel } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 interface StoryDetailProps {
@@ -36,6 +37,12 @@ const SECTOR_LABEL: Record<string, string> = {
 };
 
 export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
+  // Phase 12r — distinguish native (SIGNAL-authored) from ingested posts.
+  // Native posts get a brand label kicker, a synthesis hero body, and no
+  // "From the source" section (their `context` is useless metadata).
+  const native = isNativeStory(story);
+  const sourceLabel = sourceDisplayLabel(story);
+
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
   const tierQuery = useTier();
@@ -97,9 +104,11 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
             />
             {SECTOR_LABEL[story.sector] ?? story.sector}
           </span>
-          {(story.source_name ?? story.sources[0]?.name) && (
+          {/* Phase 12r — native posts show a brand label (no "via" prefix);
+              ingested posts keep the "via {source}" attribution style. */}
+          {sourceLabel && (
             <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">
-              via {story.source_name ?? story.sources[0]?.name}
+              {native ? sourceLabel : `via ${sourceLabel}`}
             </span>
           )}
         </div>
@@ -128,6 +137,26 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           <StorySaveButton story={story} />
         </div>
       </header>
+
+      {/* Phase 12r — synthesis hero for native posts. `generic_commentary`
+          holds the full 200-word editorial paragraph (accessible.thesis +
+          accessible.support from the tier generation chain). Displayed as
+          the primary body text above the "Why it matters" section. Hidden
+          for ingested posts where generic_commentary is a role-neutral
+          hook/teaser, not a long-form synthesis. */}
+      {native && story.generic_commentary && (
+        <section
+          className="space-y-2 border-l-[3px] pl-4"
+          style={{ borderColor: "var(--accent)" }}
+        >
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+            The synthesis
+          </p>
+          <p className="text-[15px] leading-[1.75] text-ink">
+            {story.generic_commentary}
+          </p>
+        </section>
+      )}
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -227,12 +256,18 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </section>
       )}
 
-      <section className="space-y-3">
-        <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
-          From the source
-        </h2>
-        <SourceBody html={story.context} />
-      </section>
+      {/* Phase 12r — "From the source" section is suppressed for native
+          posts: their `context` field holds useless metadata strings (e.g.
+          "Weekly arXiv synthesis — 3 ai paper(s), 2026-W22") rather than
+          article body HTML. Only rendered for ingested posts. */}
+      {!native && (
+        <section className="space-y-3">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">
+            From the source
+          </h2>
+          <SourceBody html={story.context} />
+        </section>
+      )}
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-ink-muted">
         <span className="inline-flex items-center gap-1">

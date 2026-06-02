@@ -13,6 +13,8 @@ import type {
 import type {
   CommentaryEnvelope,
   FeedResponse,
+  NativeArchiveParams,
+  NativeArchiveResponse,
   SaveToggleResponse,
   SavedStoriesResponse,
   SearchEnvelope,
@@ -248,6 +250,22 @@ export async function getStoryCommentaryRequest(
   const res = await api.get<{ data: CommentaryEnvelope }>(
     `/api/v1/stories/${id}/commentary`,
     { params: depth ? { depth } : undefined },
+  );
+  return res.data.data;
+}
+
+// Phase 12r — lean archive fetch: native events only, sorted newest first.
+// No paywall, no sources batch — the archive table only needs id/headline/
+// published_at/sector/generator_type.
+export async function getNativeStoriesRequest(
+  params: NativeArchiveParams = {},
+): Promise<NativeArchiveResponse> {
+  const query: Record<string, string> = {};
+  if (params.limit !== undefined) query.limit = String(params.limit);
+  if (params.offset !== undefined) query.offset = String(params.offset);
+  const res = await api.get<{ data: NativeArchiveResponse }>(
+    "/api/v1/stories/native",
+    { params: query },
   );
   return res.data.data;
 }

@@ -180,6 +180,32 @@ export interface SearchResultStory extends Story {
   rank: number;
 }
 
+// Phase 12r — native archive endpoint. Lean shape: just the fields the
+// archive table needs. No sources, no commentary, no paywall fields.
+export interface NativeArchiveItem {
+  id: string;
+  headline: string;
+  published_at: string | null;
+  created_at: string;
+  sector: Sector | string;
+  // Slug of the generating source (e.g. "arxiv-synthesis-native"), mapped
+  // to a brand label by `brandLabelForGeneratorType` in feedCard.ts.
+  generator_type: string | null;
+}
+
+export interface NativeArchiveParams {
+  limit?: number;
+  offset?: number;
+}
+
+export interface NativeArchiveResponse {
+  items: NativeArchiveItem[];
+  total: number;
+  has_more: boolean;
+  limit: number;
+  offset: number;
+}
+
 export type SearchSort = "relevance" | "newest" | "most_saved";
 
 export interface SearchResponse {

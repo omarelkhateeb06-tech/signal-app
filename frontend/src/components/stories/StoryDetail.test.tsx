@@ -69,7 +69,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
   };
 }
 
-function renderDetail(story: Story): { container: HTMLElement } {
+function renderDetail(story: Story) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -77,6 +77,21 @@ function renderDetail(story: Story): { container: HTMLElement } {
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
   return render(<StoryDetail story={story} />, { wrapper: Wrapper });
+}
+
+// Phase 12r — native story fixture. source_name "SIGNAL" makes
+// isNativeStory() return true; generator_type drives the brand label.
+function nativeStory(overrides: Partial<Story> = {}): Story {
+  return baseStory({
+    source_name: "SIGNAL",
+    source_url: "https://signal.so",
+    sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+    generator_type: "arxiv-synthesis-native",
+    generic_commentary:
+      "This week's synthesis covers three AI papers on transformer efficiency. The work pushes state-of-the-art on long-context reasoning.",
+    context: "Weekly arXiv synthesis — 3 ai paper(s), 2026-W22",
+    ...overrides,
+  });
 }
 
 describe("StoryDetail og:image hero", () => {
@@ -100,5 +115,48 @@ describe("StoryDetail og:image hero", () => {
     // Detail has no other <img> elements when image_url is null.
     const imgs = container.querySelectorAll("img");
     expect(imgs.length).toBe(0);
+  });
+});
+
+// Phase 12r — native post layout tests.
+describe("StoryDetail native post layout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the synthesis hero (generic_commentary) for native posts", () => {
+    const { getByText } = renderDetail(nativeStory());
+    // The synthesis body text should appear as the hero paragraph.
+    expect(
+      getByText(/This week's synthesis covers three AI papers/),
+    ).not.toBeNull();
+  });
+
+  it("renders the brand label without 'via' prefix for native posts", () => {
+    const { getByText } = renderDetail(nativeStory());
+    // Brand label text should appear (no "via" prefix).
+    expect(getByText("The Research Read")).not.toBeNull();
+  });
+
+  it("does not render 'From the source' section for native posts", () => {
+    const { queryByText } = renderDetail(nativeStory());
+    expect(queryByText("From the source")).toBeNull();
+  });
+
+  it("does not render synthesis hero when generic_commentary is null", () => {
+    const { queryByText } = renderDetail(
+      nativeStory({ generic_commentary: null }),
+    );
+    expect(queryByText("The synthesis")).toBeNull();
+  });
+
+  it("renders 'From the source' section for ingested posts", () => {
+    const { getByText } = renderDetail(baseStory());
+    expect(getByText("From the source")).not.toBeNull();
+  });
+
+  it("renders 'via {source}' kicker for ingested posts", () => {
+    const { getByText } = renderDetail(baseStory({ source_name: "Reuters" }));
+    expect(getByText("via Reuters")).not.toBeNull();
   });
 });
