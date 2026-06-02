@@ -1043,46 +1043,97 @@ export async function searchStories(
       .where(eq(userProfiles.userId, userId))
       .limit(1);
 
-    const tsVector = sql`to_tsvector('english', coalesce(${stories.headline}, '') || ' ' || coalesce(${stories.context}, ''))`;
+    // Phase 12p — search now queries `events` (the live ingestion table)
+    // rather than the legacy `stories` table (20 hand-curated seed rows
+    // that Phase 12m already removed from the feed). FTS vector covers
+    // headline + why_it_matters + generic_commentary — the editorial
+    // columns with the best search signal. `context` (article body HTML)
+    // is intentionally excluded; it is noisy and the editorial summaries
+    // cover the same ground with less noise. A GIN index on this vector
+    // is added by migration 0043_phase12p_events_search_index.sql.
+    const tsVector = sql`to_tsvector('english',
+      coalesce(${events.headline}, '') || ' ' ||
+      coalesce(${events.whyItMatters}, '') || ' ' ||
+      coalesce(${events.genericCommentary}, '')
+    )`;
     const tsQuery = sql`websearch_to_tsquery('english', ${parsed.q})`;
     const rankExpr = sql<number>`ts_rank(${tsVector}, ${tsQuery})`;
 
     const clauses: SQL[] = [sql`${tsVector} @@ ${tsQuery}`];
-    if (parsed.sector) clauses.push(eq(stories.sector, parsed.sector));
-    if (fromDate) clauses.push(gte(stories.publishedAt, fromDate));
-    if (toDate) clauses.push(lte(stories.publishedAt, toDate));
+    if (parsed.sector) clauses.push(eq(events.sector, parsed.sector));
+    if (fromDate) clauses.push(gte(events.publishedAt, fromDate));
+    if (toDate) clauses.push(lte(events.publishedAt, toDate));
     const whereCondition = clauses.length === 1 ? clauses[0] : and(...clauses);
 
     const orderBy =
       parsed.sort === "newest"
-        ? desc(sql`COALESCE(${stories.publishedAt}, ${stories.createdAt})`)
+        ? desc(sql`COALESCE(${events.publishedAt}, ${events.createdAt})`)
         : parsed.sort === "most_saved"
-          ? desc(saveCountExpr())
+          ? desc(eventSaveCountExpr())
           : desc(rankExpr);
 
     const rows = (await db
       .select({
-        ...baseStoryColumns,
-        isSaved: isSavedExpr(userId),
-        saveCount: saveCountExpr(),
-        commentCount: commentCountExpr(),
+        id: events.id,
+        sector: events.sector,
+        headline: events.headline,
+        context: events.context,
+        whyItMatters: events.whyItMatters,
+        whyItMattersTemplate: events.whyItMattersTemplate,
+        genericCommentary: events.genericCommentary,
+        primarySourceUrl: events.primarySourceUrl,
+        primarySourceName: events.primarySourceName,
+        sourceType: events.sourceType,
+        generatorSlug: eventGeneratorSlugExpr(),
+        imageUrl: events.imageUrl,
+        publishedAt: events.publishedAt,
+        createdAt: events.createdAt,
+        authorId: writers.id,
+        authorName: writers.name,
+        authorBio: writers.bio,
+        isSaved: isEventSavedExpr(userId),
+        saveCount: eventSaveCountExpr(),
+        commentCount: eventCommentCountExpr(),
+        effectiveScore: sql<number>`0`,
         rank: rankExpr,
       })
-      .from(stories)
-      .leftJoin(writers, eq(writers.id, stories.authorId))
+      .from(events)
+      .leftJoin(writers, eq(writers.id, events.authorId))
       .where(whereCondition)
       .orderBy(orderBy)
       .limit(parsed.limit)
-      .offset(parsed.offset)) as Array<StoryRow & { rank: number }>;
+      .offset(parsed.offset)) as Array<EventRow & { rank: number }>;
+
+    // Batch-fetch event_sources for the result set — same pattern as
+    // getFeed. Skipped when the result is empty to save a round-trip.
+    const eventIds = rows.map((r) => r.id);
+    const allSources =
+      eventIds.length > 0
+        ? await db
+            .select({
+              eventId: eventSources.eventId,
+              url: eventSources.url,
+              name: eventSources.name,
+              role: eventSources.role,
+            })
+            .from(eventSources)
+            .where(inArray(eventSources.eventId, eventIds))
+        : [];
+    const sourcesByEventId = new Map<string, EventSourceRow[]>();
+    for (const s of allSources) {
+      const arr = sourcesByEventId.get(s.eventId) ?? [];
+      arr.push({ url: s.url, name: s.name, role: s.role });
+      sourcesByEventId.set(s.eventId, arr);
+    }
 
     const [countRow] = await db
       .select({ count: sql<number>`COUNT(*)::int` })
-      .from(stories)
+      .from(events)
       .where(whereCondition);
     const total = Number(countRow?.count ?? 0);
 
     const shaped = rows.map((row) => ({
-      ...shapeStory(row, profile?.role ?? null),
+      ...shapeEvent(row, profile?.role ?? null, sourcesByEventId.get(row.id) ?? []),
       rank: Number(row.rank ?? 0),
     }));
 

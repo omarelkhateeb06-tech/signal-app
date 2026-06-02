@@ -26,6 +26,12 @@ const email = "reader@example.com";
 const storyId = "11111111-1111-1111-1111-111111111111";
 const secondStoryId = "22222222-2222-2222-2222-222222222222";
 
+// Phase 12p — makeRow produces an EventRow-shaped mock (the search query
+// now targets `events`, not `stories`). Fields renamed:
+//   sourceUrl  → primarySourceUrl
+//   sourceName → primarySourceName
+// New fields added: genericCommentary, sourceType, generatorSlug,
+// imageUrl, effectiveScore (unused by shapeEvent but satisfies EventRow).
 function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: storyId,
@@ -34,8 +40,12 @@ function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     context: "New frontier models lower per-token costs.",
     whyItMatters: "Costs fall for builders.",
     whyItMattersTemplate: null,
-    sourceUrl: "https://example.com/post",
-    sourceName: "Example",
+    genericCommentary: null,
+    primarySourceUrl: "https://example.com/post",
+    primarySourceName: "Example",
+    sourceType: "ingested",
+    generatorSlug: null,
+    imageUrl: null,
     publishedAt: new Date("2026-04-01T00:00:00Z"),
     createdAt: new Date("2026-04-01T00:00:00Z"),
     authorId: "author-1",
@@ -44,6 +54,7 @@ function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     isSaved: false,
     saveCount: 3,
     commentCount: 1,
+    effectiveScore: 0,
     rank: 0.42,
     ...overrides,
   };
@@ -98,6 +109,7 @@ describe("GET /api/v1/stories/search", () => {
     queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId, rank: 0.2 })]);
+    mock.queueSelect([]); // event_sources batch
     mock.queueSelect([{ count: 2 }]);
 
     const res = await request(app)
@@ -120,6 +132,7 @@ describe("GET /api/v1/stories/search", () => {
     queueTierPro();
     mock.queueSelect([{ role: "vc" }]);
     mock.queueSelect([makeRow({ sector: "finance" })]);
+    mock.queueSelect([]); // event_sources batch
     mock.queueSelect([{ count: 1 }]);
 
     const res = await request(app)
@@ -141,6 +154,7 @@ describe("GET /api/v1/stories/search", () => {
     queueTierPro();
     mock.queueSelect([{ role: "analyst" }]);
     mock.queueSelect([makeRow()]);
+    mock.queueSelect([]); // event_sources batch
     mock.queueSelect([{ count: 1 }]);
 
     const res = await request(app)
@@ -156,6 +170,7 @@ describe("GET /api/v1/stories/search", () => {
     queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow()]);
+    mock.queueSelect([]); // event_sources batch
     mock.queueSelect([{ count: 1 }]);
 
     const res = await request(app)
@@ -172,6 +187,7 @@ describe("GET /api/v1/stories/search", () => {
     queueTierPro();
     mock.queueSelect([{ role: "engineer" }]);
     mock.queueSelect([makeRow(), makeRow({ id: secondStoryId })]);
+    mock.queueSelect([]); // event_sources batch
     mock.queueSelect([{ count: 12 }]);
 
     const res = await request(app)
