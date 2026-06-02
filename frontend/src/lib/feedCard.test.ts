@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Story } from "@/types/story";
 import {
   NATIVE_SOURCE_NAME,
+  brandLabelForGeneratorType,
   isNativeStory,
   sourceDisplayLabel,
   splitHook,
@@ -141,6 +142,37 @@ describe("sourceDisplayLabel", () => {
         }),
       ),
     ).toBe("The Research Read");
+  });
+});
+
+describe("brandLabelForGeneratorType", () => {
+  it("maps known slugs to their brand labels", () => {
+    expect(brandLabelForGeneratorType("arxiv-synthesis-native")).toBe(
+      "The Research Read",
+    );
+    expect(brandLabelForGeneratorType("hn-synthesis-native")).toBe(
+      "Practitioner Brief",
+    );
+    expect(brandLabelForGeneratorType("cross-sector-chain-native")).toBe(
+      "The Connection",
+    );
+    expect(brandLabelForGeneratorType("tool-spotlight-native")).toBe(
+      "Worth an Afternoon",
+    );
+  });
+
+  it("falls back to SIGNAL for an unrecognised native slug", () => {
+    expect(brandLabelForGeneratorType("github-trending-native")).toBe(
+      NATIVE_SOURCE_NAME,
+    );
+  });
+
+  it("returns null for null", () => {
+    expect(brandLabelForGeneratorType(null)).toBeNull();
+  });
+
+  it("returns null for undefined", () => {
+    expect(brandLabelForGeneratorType(undefined)).toBeNull();
   });
 });
 

@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { Bookmark, Home, Search, Settings } from "lucide-react";
+import { Archive, Bookmark, Home, Search, Settings } from "lucide-react";
 
 const NAV: Array<{ href: string; label: string; icon: typeof Home }> = [
   { href: "/feed", label: "Feed", icon: Home },
   { href: "/saved", label: "Saved", icon: Bookmark },
   { href: "/search", label: "Search", icon: Search },
   { href: "/settings", label: "Settings", icon: Settings },
+  // Phase 12r — native post archive.
+  { href: "/archive", label: "Archive", icon: Archive },
 ];
 
 export function Sidebar(): JSX.Element {

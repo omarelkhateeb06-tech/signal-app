@@ -463,4 +463,81 @@ describe("stories endpoints", () => {
       );
     });
   });
+
+  // Phase 12r — lean archive endpoint: native events only, no ranking,
+  // no paywall, no event_sources batch. Two DB calls: events SELECT +
+  // count SELECT. Route registered before /:id so "native" is never
+  // treated as a UUID parameter.
+  describe("GET /api/v1/stories/native", () => {
+    it("returns 401 without a token", async () => {
+      const res = await request(app).get("/api/v1/stories/native");
+      expect(res.status).toBe(401);
+    });
+
+    it("returns empty list when no native events exist", async () => {
+      mock.queueSelect([]); // events query
+      mock.queueSelect([{ count: 0 }]); // count
+
+      const res = await request(app)
+        .get("/api/v1/stories/native")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.items).toEqual([]);
+      expect(res.body.data.total).toBe(0);
+      expect(res.body.data.has_more).toBe(false);
+    });
+
+    it("returns native events with generator_type on the wire", async () => {
+      mock.queueSelect([
+        {
+          id: eventId,
+          headline: "The Research Read: AI Weekly",
+          publishedAt: new Date("2026-05-01T00:00:00Z"),
+          createdAt: new Date("2026-05-01T00:00:00Z"),
+          sector: "ai",
+          generatorSlug: "arxiv-synthesis-native",
+        },
+      ]); // events query
+      mock.queueSelect([{ count: 1 }]); // count
+
+      const res = await request(app)
+        .get("/api/v1/stories/native")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.items).toHaveLength(1);
+      expect(res.body.data.items[0].id).toBe(eventId);
+      expect(res.body.data.items[0].headline).toBe("The Research Read: AI Weekly");
+      expect(res.body.data.items[0].generator_type).toBe("arxiv-synthesis-native");
+      expect(res.body.data.items[0].sector).toBe("ai");
+      expect(res.body.data.total).toBe(1);
+      expect(res.body.data.has_more).toBe(false);
+    });
+
+    it("reports has_more when offset+rows < total", async () => {
+      mock.queueSelect([
+        {
+          id: eventId,
+          headline: "The Research Read: AI Weekly",
+          publishedAt: new Date("2026-05-01T00:00:00Z"),
+          createdAt: new Date("2026-05-01T00:00:00Z"),
+          sector: "ai",
+          generatorSlug: "arxiv-synthesis-native",
+        },
+      ]); // events query
+      mock.queueSelect([{ count: 5 }]); // count
+
+      const res = await request(app)
+        .get("/api/v1/stories/native?limit=1&offset=0")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.items).toHaveLength(1);
+      expect(res.body.data.total).toBe(5);
+      expect(res.body.data.has_more).toBe(true);
+      expect(res.body.data.limit).toBe(1);
+      expect(res.body.data.offset).toBe(0);
+    });
+  });
 });

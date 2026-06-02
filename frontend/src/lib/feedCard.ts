@@ -69,6 +69,23 @@ export function sourceDisplayLabel(story: StoryBrandFields): string | null {
   return base;
 }
 
+/**
+ * Phase 12r — maps a `generator_type` slug to a brand label for the
+ * archive page (which has `NativeArchiveItem` shapes, not full `Story`
+ * shapes). Mirrors the lookup inside `sourceDisplayLabel` but operates
+ * directly on the slug so callers don't need to construct a Story.
+ *
+ * Returns the brand label for known generator slugs, "SIGNAL" for
+ * unrecognised native slugs, and null for null/undefined (ingested items
+ * or rows where no generator was resolved).
+ */
+export function brandLabelForGeneratorType(
+  generatorType: string | null | undefined,
+): string | null {
+  if (!generatorType) return null;
+  return NATIVE_BRAND_LABELS[generatorType] ?? NATIVE_SOURCE_NAME;
+}
+
 export interface HookSplit {
   /** Bold primary headline (first sentence of the hook). Never blank. */
   hookTitle: string;
