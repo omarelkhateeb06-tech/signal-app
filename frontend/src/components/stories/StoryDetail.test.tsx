@@ -50,6 +50,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     why_it_matters_to_you: "Why it matters to you body.",
     commentary: null,
     commentary_source: null,
+    generic_commentary: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",

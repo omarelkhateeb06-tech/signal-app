@@ -37,6 +37,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     why_it_matters_to_you: "Why it matters to you body.",
     commentary: null,
     commentary_source: null,
+    generic_commentary: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",
@@ -83,24 +84,33 @@ describe("FeedLead hero imagery", () => {
     expect(container.querySelectorAll("img").length).toBe(0);
   });
 
-  // Hook-as-title: for ingested stories the personalization hook is
-  // promoted to the headline and the source article headline drops to a
-  // muted attribution line. The old "Why it matters to you" label is gone.
-  it("promotes the hook to the headline for an ingested story", () => {
+  // Three-section model: for ingested stories the hook title (first
+  // sentence of generic_commentary) is the headline, the source article
+  // headline drops to a muted attribution line, and the commentary body
+  // (the remainder of generic_commentary) renders as its own paragraph.
+  // The old "Why it matters to you" label is gone for ingested rows.
+  it("splits generic_commentary into hook title + attribution + body", () => {
     renderLead(
       baseStory({
         headline: "Source wire headline",
-        why_it_matters_to_you: "This is the hook that should headline.",
+        generic_commentary:
+          "This is the hook that should headline. And here is why it matters.",
       }),
     );
+    // Section 1 — hook title (first sentence, trailing period stripped).
     expect(
-      screen.getByText("This is the hook that should headline."),
+      screen.getByText("This is the hook that should headline"),
     ).toBeInTheDocument();
+    // Section 2 — source headline demoted to muted attribution.
     expect(screen.getByText("Source wire headline")).toBeInTheDocument();
+    // Section 3 — commentary body (the remainder).
+    expect(screen.getByText("And here is why it matters.")).toBeInTheDocument();
     expect(screen.queryByText("Why it matters to you")).not.toBeInTheDocument();
   });
 
-  // Native (SIGNAL) stories keep the classic headline + framed commentary.
+  // Native (SIGNAL) stories keep the classic headline + framed commentary,
+  // untouched by the three-section split even though they also carry
+  // generic_commentary on the wire.
   it("leaves native (SIGNAL) stories untouched", () => {
     renderLead(
       baseStory({
@@ -108,10 +118,13 @@ describe("FeedLead hero imagery", () => {
         sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
         headline: "Editorial native headline",
         why_it_matters_to_you: "Native commentary body.",
+        generic_commentary: "Native hook. Native body that must not split.",
       }),
     );
     expect(screen.getByText("Editorial native headline")).toBeInTheDocument();
     expect(screen.getByText("Why it matters to you")).toBeInTheDocument();
     expect(screen.getByText("Native commentary body.")).toBeInTheDocument();
+    // The generic_commentary hook must NOT appear — native is exempt.
+    expect(screen.queryByText("Native hook")).not.toBeInTheDocument();
   });
 });

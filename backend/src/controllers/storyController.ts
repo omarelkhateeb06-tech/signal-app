@@ -114,6 +114,10 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
       whyItMattersTemplate: row.whyItMattersTemplate,
       role,
     }),
+    // Phase 12n — role-neutral commentary on the wire (mirrors
+    // shapeEvent). Lets the feed card derive its hook title + body
+    // uniformly whether the row is a legacy story or an event.
+    generic_commentary: row.genericCommentary,
     // Phase 12c contract: feed-list responses never carry the
     // per-user commentary inline. The client hydrates it via
     // GET /stories/:id/commentary after the feed lands. Returning
@@ -204,6 +208,11 @@ function shapeEvent(
       whyItMattersTemplate: row.whyItMattersTemplate,
       role,
     }),
+    // Phase 12n — role-neutral commentary on the feed wire. The card
+    // derives its hook title (first sentence) + commentary body from
+    // this; it is present immediately (no lazy fetch) and is the same
+    // text free-tier users read on the detail page.
+    generic_commentary: row.genericCommentary,
     commentary: null,
     commentary_source: null,
     // `source_url` and `source_name` are kept on the wire for

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,6 +54,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     why_it_matters_to_you: "Why it matters to you body.",
     commentary: null,
     commentary_source: null,
+    generic_commentary: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",
@@ -102,5 +103,46 @@ describe("StoryCard imagery (text-forward river card)", () => {
     const { container } = renderCard(baseStory({ image_url: null }));
     const imgs = container.querySelectorAll("img");
     expect(imgs.length).toBe(0);
+  });
+});
+
+describe("StoryCard three-section model", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Ingested cards build three sections from generic_commentary: the hook
+  // title (first sentence) as the headline, the source headline as muted
+  // attribution, and the remainder as the commentary body.
+  it("splits generic_commentary into hook title + attribution + body", () => {
+    renderCard(
+      baseStory({
+        headline: "Source wire headline",
+        generic_commentary:
+          "The hook that leads the card. Plus the body that follows it.",
+      }),
+    );
+    expect(screen.getByText("The hook that leads the card")).toBeInTheDocument();
+    expect(screen.getByText("Source wire headline")).toBeInTheDocument();
+    expect(
+      screen.getByText("Plus the body that follows it."),
+    ).toBeInTheDocument();
+  });
+
+  // Native (SIGNAL) cards keep the classic headline-then-commentary layout,
+  // untouched by the split even though they carry generic_commentary.
+  it("leaves native (SIGNAL) cards on their editorial headline", () => {
+    renderCard(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        headline: "Editorial native headline",
+        generic_commentary: "Native hook that must not headline. And a body.",
+      }),
+    );
+    expect(screen.getByText("Editorial native headline")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Native hook that must not headline"),
+    ).not.toBeInTheDocument();
   });
 });
