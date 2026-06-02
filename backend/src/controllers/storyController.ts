@@ -130,6 +130,11 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     commentary_source: null,
     source_url: row.sourceUrl,
     source_name: row.sourceName,
+    // Phase 12o — legacy hand-curated stories are never native, so they
+    // carry no generator brand label. Emitted as null (not omitted) to
+    // keep the wire shape uniform with shapeEvent for the saved/search
+    // surfaces that render through StoryCard.
+    generator_type: null,
     // Phase 12e.7a — multi-source attribution. Hand-curated stories
     // carry a synthetic single-element array so the wire shape is
     // uniform across legacy stories and ingestion-written events.
@@ -170,6 +175,12 @@ interface EventRow {
   // Phase 12 — 'native' (SIGNAL-authored) vs 'ingested'. Used by the
   // feed diversity cap to exempt native posts; stripped before the wire.
   sourceType: string;
+  // Phase 12o — slug of the event's primary ingestion source (e.g.
+  // 'arxiv-synthesis-native'). Drives the branded section label on the
+  // card. Only meaningful for native events; null when no primary source
+  // row resolves. Stripped from the wire for ingested events (see
+  // shapeEvent).
+  generatorSlug: string | null;
   imageUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
@@ -221,6 +232,12 @@ function shapeEvent(
     // full attribution list.
     source_url: row.primarySourceUrl,
     source_name: row.primarySourceName,
+    // Phase 12o — branded section-label discriminant. Native events carry
+    // the slug of their generating source (e.g. 'arxiv-synthesis-native'),
+    // which the frontend maps to a brand label ("The Research Read", …).
+    // Ingested events emit null — their internal source slug is never
+    // exposed on the wire and they keep their ordinary source attribution.
+    generator_type: row.sourceType === "native" ? row.generatorSlug ?? null : null,
     primary_source_url: row.primarySourceUrl,
     sources,
     // Phase 12k — see shapeStory: null when no og:image was found.
@@ -266,6 +283,20 @@ function eventSaveCountExpr(): ReturnType<typeof sql<number>> {
 
 function eventCommentCountExpr(): ReturnType<typeof sql<number>> {
   return sql<number>`(SELECT COUNT(*)::int FROM comments c WHERE c.event_id = ${events.id} AND c.deleted_at IS NULL)`;
+}
+
+// Phase 12o — slug of the event's primary ingestion source, used to
+// brand native posts (arxiv-synthesis-native → "The Research Read", …).
+// Mirrors the event_sources → ingestion_sources join used by
+// eventQualityScoreExpr; returns null when no primary source row exists.
+function eventGeneratorSlugExpr(): ReturnType<typeof sql<string | null>> {
+  return sql<string | null>`(
+    SELECT isrc.slug
+      FROM event_sources es
+      JOIN ingestion_sources isrc ON isrc.id = es.ingestion_source_id
+      WHERE es.event_id = ${events.id} AND es.role = 'primary'
+      LIMIT 1
+  )`;
 }
 
 // Phase 12f — ranking expressions for the events query. Each helper is
@@ -522,6 +553,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         primarySourceUrl: events.primarySourceUrl,
         primarySourceName: events.primarySourceName,
         sourceType: events.sourceType,
+        generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
@@ -720,8 +752,11 @@ export async function getStoryById(
           context: events.context,
           whyItMatters: events.whyItMatters,
           whyItMattersTemplate: events.whyItMattersTemplate,
+          genericCommentary: events.genericCommentary,
           primarySourceUrl: events.primarySourceUrl,
           primarySourceName: events.primarySourceName,
+          sourceType: events.sourceType,
+          generatorSlug: eventGeneratorSlugExpr(),
           imageUrl: events.imageUrl,
           publishedAt: events.publishedAt,
           createdAt: events.createdAt,

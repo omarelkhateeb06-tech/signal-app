@@ -51,6 +51,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     commentary: null,
     commentary_source: null,
     generic_commentary: null,
+    generator_type: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",

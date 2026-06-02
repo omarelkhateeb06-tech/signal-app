@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { MessageSquare } from "lucide-react";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { isNativeStory, splitHook } from "@/lib/feedCard";
+import { isNativeStory, sourceDisplayLabel, splitHook } from "@/lib/feedCard";
 import type { Story } from "@/types/story";
 
 // Secondary "top stories" rail item. Deliberately dense and text-only:
@@ -51,7 +52,9 @@ export function FeedRailItem({
   const stamp = timeAgo(story.published_at ?? story.created_at);
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
-  const source = story.source_name ?? story.sources[0]?.name ?? null;
+  // Phase 12o — native posts brand the kicker by generator; ingested
+  // posts show their source name.
+  const source = sourceDisplayLabel(story);
   // Native items render byte-identically to before (editorial headline, no
   // attribution). Ingested items headline with the hook title and drop the
   // source headline to a muted attribution line.
@@ -113,6 +116,12 @@ export function FeedRailItem({
           {story.reading_time_minutes != null && (
             <span className="font-mono text-[10px] uppercase tracking-wide">
               {story.reading_time_minutes} min
+            </span>
+          )}
+          {story.comment_count > 0 && (
+            <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide">
+              <MessageSquare className="h-3 w-3" />
+              {story.comment_count}
             </span>
           )}
         </div>

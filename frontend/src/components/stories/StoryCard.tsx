@@ -9,7 +9,7 @@ import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { isNativeStory, splitHook } from "@/lib/feedCard";
+import { isNativeStory, sourceDisplayLabel, splitHook } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 const VISIBILITY_ROOT_MARGIN = "1200px 0px";
@@ -99,7 +99,9 @@ export function StoryCard({
   );
   const attribution = hookTitle === story.headline ? null : story.headline;
   const sourceCount = story.sources.length;
-  const primarySource = story.source_name ?? story.sources[0]?.name ?? null;
+  // Phase 12o — native posts brand the kicker by generator; ingested
+  // posts show their source name.
+  const primarySource = sourceDisplayLabel(story);
   const sourceLabel =
     sourceCount > 1 ? `+${sourceCount - 1}` : null;
 

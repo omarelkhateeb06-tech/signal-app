@@ -38,6 +38,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     commentary: null,
     commentary_source: null,
     generic_commentary: null,
+    generator_type: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",
@@ -126,5 +127,42 @@ describe("FeedLead hero imagery", () => {
     expect(screen.getByText("Native commentary body.")).toBeInTheDocument();
     // The generic_commentary hook must NOT appear — native is exempt.
     expect(screen.queryByText("Native hook")).not.toBeInTheDocument();
+  });
+
+  // Branded section labels: a native post's source kicker shows the
+  // generator's brand name instead of the shared "SIGNAL" byline.
+  it("brands the kicker for a mapped native generator", () => {
+    renderLead(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        generator_type: "arxiv-synthesis-native",
+      }),
+    );
+    expect(screen.getByText("via The Research Read")).toBeInTheDocument();
+    expect(screen.queryByText("via SIGNAL")).not.toBeInTheDocument();
+  });
+
+  it("keeps the SIGNAL byline for an unmapped native generator", () => {
+    renderLead(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        generator_type: "github-trending-native",
+      }),
+    );
+    expect(screen.getByText("via SIGNAL")).toBeInTheDocument();
+  });
+
+  it("shows the comment count when comments exist", () => {
+    const { container } = renderLead(baseStory({ comment_count: 12 }));
+    const badge = container.querySelector(".lucide-message-square");
+    expect(badge).not.toBeNull();
+    expect(badge?.parentElement?.textContent).toContain("12");
+  });
+
+  it("omits the comment count when there are none", () => {
+    const { container } = renderLead(baseStory({ comment_count: 0 }));
+    expect(container.querySelector(".lucide-message-square")).toBeNull();
   });
 });

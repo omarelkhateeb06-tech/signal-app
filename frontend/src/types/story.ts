@@ -96,6 +96,12 @@ export interface Story {
   // headline) and a commentary body (the remainder). Null falls back to
   // the source `headline` as the hook title.
   generic_commentary: string | null;
+  // Phase 12o — for native (SIGNAL) posts, the slug of the generating
+  // source (e.g. "arxiv-synthesis-native"), which the card maps to a
+  // brand label ("The Research Read", …) in the source kicker. Null for
+  // ingested stories and for native posts whose generator has no brand
+  // mapping (they keep the plain "SIGNAL" attribution).
+  generator_type: string | null;
   source_url: string;
   source_name: string | null;
   // Phase 12e.7a: multi-source attribution for ingestion-written events.

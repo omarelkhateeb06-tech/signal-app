@@ -55,6 +55,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     commentary: null,
     commentary_source: null,
     generic_commentary: null,
+    generator_type: null,
     source_url: "https://example.com/article",
     source_name: "Example",
     primary_source_url: "https://example.com/article",
@@ -144,5 +145,45 @@ describe("StoryCard three-section model", () => {
     expect(
       screen.queryByText("Native hook that must not headline"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("StoryCard branded labels + comment count", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("brands the source kicker for a mapped native generator", () => {
+    renderCard(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        generator_type: "hn-synthesis-native",
+      }),
+    );
+    expect(screen.getByText(/Practitioner Brief/)).toBeInTheDocument();
+  });
+
+  it("keeps the SIGNAL byline for an unmapped native generator", () => {
+    renderCard(
+      baseStory({
+        source_name: "SIGNAL",
+        sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+        generator_type: "github-trending-native",
+      }),
+    );
+    expect(screen.getByText(/SIGNAL/)).toBeInTheDocument();
+  });
+
+  it("shows the comment count when comments exist", () => {
+    const { container } = renderCard(baseStory({ comment_count: 9 }));
+    const badge = container.querySelector(".lucide-message-square");
+    expect(badge).not.toBeNull();
+    expect(badge?.parentElement?.textContent).toContain("9");
+  });
+
+  it("omits the comment count when there are none", () => {
+    const { container } = renderCard(baseStory({ comment_count: 0 }));
+    expect(container.querySelector(".lucide-message-square")).toBeNull();
   });
 });

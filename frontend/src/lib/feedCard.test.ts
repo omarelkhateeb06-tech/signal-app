@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { Story } from "@/types/story";
-import { NATIVE_SOURCE_NAME, isNativeStory, splitHook } from "./feedCard";
+import {
+  NATIVE_SOURCE_NAME,
+  isNativeStory,
+  sourceDisplayLabel,
+  splitHook,
+} from "./feedCard";
 
 function story(overrides: Partial<Story> = {}): Story {
   return {
@@ -15,6 +20,7 @@ function story(overrides: Partial<Story> = {}): Story {
     commentary: null,
     commentary_source: null,
     generic_commentary: null,
+    generator_type: null,
     source_url: "https://example.com/a",
     source_name: "OutletA",
     primary_source_url: "https://example.com/a",
@@ -48,6 +54,93 @@ describe("isNativeStory", () => {
 
   it("is false for an ordinary ingested outlet", () => {
     expect(isNativeStory(story({ source_name: "OutletA" }))).toBe(false);
+  });
+});
+
+describe("sourceDisplayLabel", () => {
+  it("maps a branded native generator to its brand label", () => {
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: NATIVE_SOURCE_NAME,
+          generator_type: "arxiv-synthesis-native",
+        }),
+      ),
+    ).toBe("The Research Read");
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: NATIVE_SOURCE_NAME,
+          generator_type: "hn-synthesis-native",
+        }),
+      ),
+    ).toBe("Practitioner Brief");
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: NATIVE_SOURCE_NAME,
+          generator_type: "cross-sector-chain-native",
+        }),
+      ),
+    ).toBe("The Connection");
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: NATIVE_SOURCE_NAME,
+          generator_type: "tool-spotlight-native",
+        }),
+      ),
+    ).toBe("Worth an Afternoon");
+  });
+
+  it("keeps SIGNAL for a native post with no brand mapping", () => {
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: NATIVE_SOURCE_NAME,
+          generator_type: "github-trending-native",
+        }),
+      ),
+    ).toBe(NATIVE_SOURCE_NAME);
+  });
+
+  it("keeps SIGNAL for a native post with a null generator_type", () => {
+    expect(
+      sourceDisplayLabel(
+        story({ source_name: NATIVE_SOURCE_NAME, generator_type: null }),
+      ),
+    ).toBe(NATIVE_SOURCE_NAME);
+  });
+
+  it("returns the source name for an ingested story", () => {
+    expect(sourceDisplayLabel(story({ source_name: "OutletA" }))).toBe("OutletA");
+  });
+
+  it("ignores generator_type when the source is not native", () => {
+    // Defensive: a non-SIGNAL source never adopts a brand label even if a
+    // stray generator_type is present on the wire.
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: "OutletA",
+          generator_type: "arxiv-synthesis-native",
+        }),
+      ),
+    ).toBe("OutletA");
+  });
+
+  it("falls back to the primary source name when source_name is null", () => {
+    expect(
+      sourceDisplayLabel(
+        story({
+          source_name: null,
+          generator_type: "arxiv-synthesis-native",
+          sources: [
+            { url: "u", name: NATIVE_SOURCE_NAME, role: "primary" },
+          ],
+        }),
+      ),
+    ).toBe("The Research Read");
   });
 });
 

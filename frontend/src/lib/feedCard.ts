@@ -38,6 +38,37 @@ export function isNativeStory(story: StorySourceFields): boolean {
   return effectiveSourceName(story) === NATIVE_SOURCE_NAME;
 }
 
+// Phase 12o — branded section labels for the four editorial native
+// generators. Every native post shares the "SIGNAL" source display name;
+// the generator slug (on the wire as `generator_type`) is what lets the
+// card show a distinct brand per generator. Generators not in this map
+// (e.g. github-trending-native) and all ingested stories keep their
+// ordinary source attribution.
+const NATIVE_BRAND_LABELS: Record<string, string> = {
+  "arxiv-synthesis-native": "The Research Read",
+  "hn-synthesis-native": "Practitioner Brief",
+  "cross-sector-chain-native": "The Connection",
+  "tool-spotlight-native": "Worth an Afternoon",
+};
+
+type StoryBrandFields = StorySourceFields & Pick<Story, "generator_type">;
+
+/**
+ * The source label to render in a card's kicker chip. For a native post
+ * whose `generator_type` is one of the four branded generators, this is
+ * the brand label ("The Research Read", …). For every other native post
+ * it is the shared "SIGNAL" display name, and for ingested stories it is
+ * the effective source name. Returns null only when no source name
+ * resolves at all.
+ */
+export function sourceDisplayLabel(story: StoryBrandFields): string | null {
+  const base = effectiveSourceName(story);
+  if (base === NATIVE_SOURCE_NAME && story.generator_type) {
+    return NATIVE_BRAND_LABELS[story.generator_type] ?? base;
+  }
+  return base;
+}
+
 export interface HookSplit {
   /** Bold primary headline (first sentence of the hook). Never blank. */
   hookTitle: string;

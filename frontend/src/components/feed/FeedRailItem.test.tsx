@@ -16,6 +16,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     commentary: null,
     commentary_source: null,
     generic_commentary: null,
+    generator_type: null,
     source_url: "https://example.com/a",
     source_name: "OutletA",
     primary_source_url: "https://example.com/a",
@@ -75,5 +76,51 @@ describe("FeedRailItem hook-as-title", () => {
     expect(
       screen.queryByText("Native hook that must not headline"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("FeedRailItem branded labels + comment count", () => {
+  it("brands the source kicker for a mapped native generator", () => {
+    render(
+      <FeedRailItem
+        story={baseStory({
+          source_name: "SIGNAL",
+          sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+          generator_type: "cross-sector-chain-native",
+        })}
+        rank={2}
+      />,
+    );
+    expect(screen.getByText("· The Connection")).toBeInTheDocument();
+  });
+
+  it("keeps the SIGNAL byline for an unmapped native generator", () => {
+    render(
+      <FeedRailItem
+        story={baseStory({
+          source_name: "SIGNAL",
+          sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+          generator_type: "github-trending-native",
+        })}
+        rank={2}
+      />,
+    );
+    expect(screen.getByText("· SIGNAL")).toBeInTheDocument();
+  });
+
+  it("shows the comment count when comments exist", () => {
+    const { container } = render(
+      <FeedRailItem story={baseStory({ comment_count: 7 })} rank={2} />,
+    );
+    const badge = container.querySelector(".lucide-message-square");
+    expect(badge).not.toBeNull();
+    expect(badge?.parentElement?.textContent).toContain("7");
+  });
+
+  it("omits the comment count when there are none", () => {
+    const { container } = render(
+      <FeedRailItem story={baseStory({ comment_count: 0 })} rank={2} />,
+    );
+    expect(container.querySelector(".lucide-message-square")).toBeNull();
   });
 });

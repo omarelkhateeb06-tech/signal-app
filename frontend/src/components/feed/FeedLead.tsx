@@ -9,7 +9,7 @@ import { StorySaveButton } from "@/components/stories/StorySaveButton";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { isNativeStory, splitHook } from "@/lib/feedCard";
+import { isNativeStory, sourceDisplayLabel, splitHook } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 // "Intelligence Terminal × Editorial" front page — the lead story.
@@ -54,7 +54,9 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
-  const source = story.source_name ?? story.sources[0]?.name ?? null;
+  // Phase 12o — native posts brand the kicker by generator
+  // ("The Research Read", …); ingested posts show their source name.
+  const source = sourceDisplayLabel(story);
   // Ingested three-section split: hook title (first sentence) + body.
   const { hookTitle, commentaryBody } = splitHook(
     story.generic_commentary,
