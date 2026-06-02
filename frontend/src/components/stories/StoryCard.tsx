@@ -9,7 +9,7 @@ import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { isNativeStory, resolveCardHeadline } from "@/lib/feedCard";
+import { isNativeStory, splitHook } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 const VISIBILITY_ROOT_MARGIN = "1200px 0px";
@@ -75,18 +75,29 @@ export function StoryCard({
     return () => observer.disconnect();
   }, [shouldLoad]);
 
-  const commentaryQuery = useStoryCommentary(story.id, { enabled: shouldLoad });
+  // Only native cards still consume the per-user personalized commentary
+  // (they keep the classic lazy-loaded layout). Ingested cards build all
+  // three sections from `generic_commentary` on the wire, so they don't
+  // fetch — gating the query on `native` avoids a wasted request per card.
+  const native = isNativeStory(story);
+  const commentaryQuery = useStoryCommentary(story.id, {
+    enabled: shouldLoad && native,
+  });
   const apiCommentary =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
       ? commentaryQuery.data.commentary
       : null;
   const resolvedCommentary = apiCommentary ?? story.commentary ?? null;
   const isCommentaryLoading =
-    shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
+    shouldLoad && native && resolvedCommentary === null && commentaryQuery.isFetching;
 
   const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
-  const native = isNativeStory(story);
-  const headline = resolveCardHeadline(story, previewText);
+  // Ingested three-section split: hook title (first sentence) + body.
+  const { hookTitle, commentaryBody } = splitHook(
+    story.generic_commentary,
+    story.headline,
+  );
+  const attribution = hookTitle === story.headline ? null : story.headline;
   const sourceCount = story.sources.length;
   const primarySource = story.source_name ?? story.sources[0]?.name ?? null;
   const sourceLabel =
@@ -159,11 +170,12 @@ export function StoryCard({
             </>
           ) : (
             <>
-              {/* Ingested: the hook becomes the headline; the source
-                  article headline drops to a secondary attribution line. */}
+              {/* Ingested: three sections — hook title (first sentence of
+                  generic_commentary) as the headline, the source article
+                  headline as muted attribution, then the commentary body. */}
               <h2
                 className={[
-                  "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+                  "mb-1 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
                   isRead ? "text-ink-muted" : "text-ink",
                 ].join(" ")}
                 style={{
@@ -173,11 +185,24 @@ export function StoryCard({
                   overflow: "hidden",
                 }}
               >
-                {headline.primary}
+                {hookTitle}
               </h2>
-              {headline.attribution && (
-                <p className="truncate text-xs leading-relaxed text-ink-muted">
-                  {headline.attribution}
+              {attribution && (
+                <p className="mb-2 truncate text-xs leading-relaxed text-ink-muted">
+                  {attribution}
+                </p>
+              )}
+              {commentaryBody && (
+                <p
+                  className="text-sm leading-relaxed text-ink-muted"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {commentaryBody}
                 </p>
               )}
             </>

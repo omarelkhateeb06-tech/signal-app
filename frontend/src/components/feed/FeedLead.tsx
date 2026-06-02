@@ -9,7 +9,7 @@ import { StorySaveButton } from "@/components/stories/StorySaveButton";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { isNativeStory, resolveCardHeadline } from "@/lib/feedCard";
+import { isNativeStory, splitHook } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
 // "Intelligence Terminal × Editorial" front page — the lead story.
@@ -39,20 +39,28 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const commentaryQuery = useStoryCommentary(story.id, { enabled: true });
+  // Only native (SIGNAL editorial) leads keep the lazy personalized
+  // commentary. Ingested leads build all three sections from
+  // `generic_commentary` on the wire, so they don't fetch.
+  const native = isNativeStory(story);
+  const commentaryQuery = useStoryCommentary(story.id, { enabled: native });
   const resolved =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
       ? commentaryQuery.data.commentary
       : null;
-  const loading = resolved === null && commentaryQuery.isFetching;
+  const loading = native && resolved === null && commentaryQuery.isFetching;
   const body = resolved?.thesis ?? story.why_it_matters_to_you;
 
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
   const source = story.source_name ?? story.sources[0]?.name ?? null;
-  const native = isNativeStory(story);
-  const headline = resolveCardHeadline(story, body);
+  // Ingested three-section split: hook title (first sentence) + body.
+  const { hookTitle, commentaryBody } = splitHook(
+    story.generic_commentary,
+    story.headline,
+  );
+  const attribution = hookTitle === story.headline ? null : story.headline;
 
   return (
     <motion.article
@@ -145,10 +153,11 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
           </>
         ) : (
           <>
-            {/* Ingested: the hook becomes the hero headline; the source
-                article headline drops to a secondary attribution line.
-                The "Why it matters to you" label is dropped — the hook
-                now speaks for itself as the headline. */}
+            {/* Ingested: three sections — hook title (first sentence of
+                generic_commentary) as the hero headline, the source
+                article headline as muted attribution, then the commentary
+                body. The "Why it matters to you" label is dropped — the
+                hook now speaks for itself as the headline. */}
             <h2
               className={[
                 "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
@@ -161,11 +170,24 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                 overflow: "hidden",
               }}
             >
-              {headline.primary}
+              {hookTitle}
             </h2>
-            {headline.attribution && (
-              <p className="mt-4 max-w-[58ch] truncate text-[15px] leading-relaxed text-ink-muted">
-                {headline.attribution}
+            {attribution && (
+              <p className="mt-3 max-w-[58ch] truncate text-[15px] leading-relaxed text-ink-muted">
+                {attribution}
+              </p>
+            )}
+            {commentaryBody && (
+              <p
+                className="mt-4 max-w-[58ch] text-[16px] leading-relaxed text-ink-muted"
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {commentaryBody}
               </p>
             )}
           </>

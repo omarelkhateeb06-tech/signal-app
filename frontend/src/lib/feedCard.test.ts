@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Story } from "@/types/story";
-import {
-  NATIVE_SOURCE_NAME,
-  isNativeStory,
-  resolveCardHeadline,
-} from "./feedCard";
+import { NATIVE_SOURCE_NAME, isNativeStory, splitHook } from "./feedCard";
 
 function story(overrides: Partial<Story> = {}): Story {
   return {
@@ -18,6 +14,7 @@ function story(overrides: Partial<Story> = {}): Story {
     why_it_matters_to_you: "",
     commentary: null,
     commentary_source: null,
+    generic_commentary: null,
     source_url: "https://example.com/a",
     source_name: "OutletA",
     primary_source_url: "https://example.com/a",
@@ -54,31 +51,59 @@ describe("isNativeStory", () => {
   });
 });
 
-describe("resolveCardHeadline", () => {
-  it("swaps hook to primary and source headline to attribution for ingested", () => {
-    const result = resolveCardHeadline(story(), "The hook that matters.");
-    expect(result.primary).toBe("The hook that matters.");
-    expect(result.attribution).toBe("Source article headline");
+describe("splitHook", () => {
+  it("falls back to the headline when generic is null", () => {
+    expect(splitHook(null, "Fallback headline")).toEqual({
+      hookTitle: "Fallback headline",
+      commentaryBody: null,
+    });
   });
 
-  it("keeps the source headline primary for native (no swap)", () => {
-    const result = resolveCardHeadline(
-      story({ source_name: NATIVE_SOURCE_NAME }),
-      "A hook that should be ignored.",
+  it("falls back to the headline when generic is empty/whitespace", () => {
+    expect(splitHook("   ", "Fallback headline")).toEqual({
+      hookTitle: "Fallback headline",
+      commentaryBody: null,
+    });
+  });
+
+  it("returns the whole text (period stripped) for a single sentence", () => {
+    expect(splitHook("This is the only sentence.", "fallback")).toEqual({
+      hookTitle: "This is the only sentence",
+      commentaryBody: null,
+    });
+  });
+
+  it("splits a multi-sentence string at the first sentence boundary", () => {
+    const { hookTitle, commentaryBody } = splitHook(
+      "Nvidia blew past estimates. The data-center segment doubled. Margins held.",
+      "fallback",
     );
-    expect(result.primary).toBe("Source article headline");
-    expect(result.attribution).toBeNull();
+    expect(hookTitle).toBe("Nvidia blew past estimates");
+    expect(commentaryBody).toBe("The data-center segment doubled. Margins held.");
   });
 
-  it("falls back to the source headline when the hook is empty", () => {
-    const result = resolveCardHeadline(story(), "   ");
-    expect(result.primary).toBe("Source article headline");
-    expect(result.attribution).toBeNull();
+  it("splits on an em-dash clause break, excluding the dash", () => {
+    const { hookTitle, commentaryBody } = splitHook(
+      "Apple's services pivot is working — the revenue mix shifted hard.",
+      "fallback",
+    );
+    expect(hookTitle).toBe("Apple's services pivot is working");
+    expect(commentaryBody).toBe("the revenue mix shifted hard.");
   });
 
-  it("falls back to the source headline when the hook is null", () => {
-    const result = resolveCardHeadline(story(), null);
-    expect(result.primary).toBe("Source article headline");
-    expect(result.attribution).toBeNull();
+  it("keeps an exclamation / question mark on the hook title", () => {
+    expect(splitHook("Huge news today! Here is why it matters.", "fallback")).toEqual(
+      { hookTitle: "Huge news today!", commentaryBody: "Here is why it matters." },
+    );
+  });
+
+  it("does not split on a period that is not a sentence boundary", () => {
+    // "U.S." has no following capital-after-space at the dot, so the first
+    // real boundary is after "markets".
+    const { hookTitle } = splitHook(
+      "The U.S. moved markets. More follows.",
+      "fallback",
+    );
+    expect(hookTitle).toBe("The U.S. moved markets");
   });
 });

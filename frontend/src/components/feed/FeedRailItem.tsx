@@ -4,7 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
-import { resolveCardHeadline } from "@/lib/feedCard";
+import { isNativeStory, splitHook } from "@/lib/feedCard";
 import type { Story } from "@/types/story";
 
 // Secondary "top stories" rail item. Deliberately dense and text-only:
@@ -12,12 +12,13 @@ import type { Story } from "@/types/story";
 // and a mono meta line. No imagery, no commentary body — the rail is
 // for fast triage of the next-most-important stories beside the lead.
 //
-// Hook-as-title: like the lead and grid cards, ingested rail items
-// headline with the personalization hook and drop the source article
-// headline to a muted attribution line. The rail has no lazy commentary
-// fetch, so the hook comes straight from `why_it_matters_to_you` (the
-// 12b template floor, always present on the wire). Native (SIGNAL)
-// items keep their editorial headline untouched.
+// Three-section model (compact): ingested rail items headline with the
+// hook title (first sentence of generic_commentary, straight off the
+// wire — no lazy fetch) and drop the source article headline to a muted
+// attribution line. The rail omits the commentary body — it's too
+// compact. Native (SIGNAL) items keep their editorial headline untouched
+// (splitHook falls back to story.headline when generic_commentary is
+// absent, and native rows are read identically here).
 
 const EASE: [number, number, number, number] = [0.2, 0.8, 0.2, 1];
 
@@ -51,10 +52,14 @@ export function FeedRailItem({
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const source = story.source_name ?? story.sources[0]?.name ?? null;
-  // For native items resolveCardHeadline returns the editorial headline as
-  // primary with no attribution, so the rail renders byte-identically to
-  // before. For ingested items the hook becomes the headline.
-  const headline = resolveCardHeadline(story, story.why_it_matters_to_you);
+  // Native items render byte-identically to before (editorial headline, no
+  // attribution). Ingested items headline with the hook title and drop the
+  // source headline to a muted attribution line.
+  const native = isNativeStory(story);
+  const { hookTitle } = splitHook(story.generic_commentary, story.headline);
+  const railTitle = native ? story.headline : hookTitle;
+  const attribution =
+    native || hookTitle === story.headline ? null : story.headline;
 
   return (
     <motion.div variants={animated ? railItemVariants : undefined}>
@@ -92,11 +97,11 @@ export function FeedRailItem({
             overflow: "hidden",
           }}
         >
-          {headline.primary}
+          {railTitle}
         </h3>
-        {headline.attribution && (
+        {attribution && (
           <p className="mt-1 truncate text-xs leading-snug text-ink-muted">
-            {headline.attribution}
+            {attribution}
           </p>
         )}
         <div className="mt-2 flex items-center gap-3 text-ink-muted">

@@ -90,6 +90,12 @@ export interface Story {
   // jsonb shape that lands in commentary_cache.
   commentary: CommentaryShape | null;
   commentary_source: CommentarySource | null;
+  // Phase 12n — role-neutral commentary, always present on the feed
+  // wire (null only for legacy rows never backfilled). The feed card
+  // splits this into a hook title (first sentence, shown as the
+  // headline) and a commentary body (the remainder). Null falls back to
+  // the source `headline` as the hook title.
+  generic_commentary: string | null;
   source_url: string;
   source_name: string | null;
   // Phase 12e.7a: multi-source attribution for ingestion-written events.
