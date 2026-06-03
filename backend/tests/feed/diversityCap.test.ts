@@ -76,10 +76,13 @@ describe("applyDiversityCap", () => {
 
   it("(b) spreads an over-represented source clustered at the top", () => {
     // The realistic shape the cap targets: one firehose source dominates
-    // the top of the ranking (8 of the top 12), the rest of the pool is
-    // varied. Rank-greedy backfill must spread the firehose to ≤3 per
+    // the top of the ranking (5 of the top 9), the rest of the pool is
+    // varied. Rank-greedy backfill must spread the firehose to ≤2 per
     // window using the next-ranked other-source events, with no window
-    // anywhere exceeding the cap.
+    // anywhere exceeding the cap. (At cap=2/window=20 the most firehose a
+    // 57-item feed can legally hold is one pair per 20 positions, so the
+    // cluster is sized to stay spreadable rather than hit the degenerate
+    // best-effort fallback.)
     const input: TestRow[] = [
       ingested("f0", "Firehose"),
       ingested("f1", "Firehose"),
@@ -88,10 +91,7 @@ describe("applyDiversityCap", () => {
       ingested("f3", "Firehose"),
       ingested("f4", "Firehose"),
       ingested("o1", "OutletB"),
-      ingested("f5", "Firehose"),
-      ingested("f6", "Firehose"),
       ingested("o2", "OutletC"),
-      ingested("f7", "Firehose"),
       ingested("o3", "OutletD"),
     ];
     // Pad the tail with unique sources so the firehose has room to spread.
@@ -103,13 +103,13 @@ describe("applyDiversityCap", () => {
       MAX_PER_SOURCE,
     );
     expect(idSet(out)).toEqual(idSet(input));
-    // The first three firehose items keep their lead positions; the cap
+    // The first two firehose items keep their lead positions; the cap
     // only relocates the overflow.
     const firehosePositions = out
       .map((r, i) => ({ r, i }))
       .filter((x) => x.r.primarySourceName === "Firehose")
       .map((x) => x.i);
-    expect(firehosePositions.slice(0, 3)).toEqual([0, 1, 2]);
+    expect(firehosePositions.slice(0, 2)).toEqual([0, 1]);
   });
 
   it("(c) never caps native posts — a run of natives survives in order", () => {
@@ -162,7 +162,7 @@ describe("applyDiversityCap", () => {
   });
 
   it("(g) exposes the spec'd default constants", () => {
-    expect(MAX_PER_SOURCE).toBe(3);
+    expect(MAX_PER_SOURCE).toBe(2);
     expect(DIVERSITY_WINDOW).toBe(20);
   });
 });

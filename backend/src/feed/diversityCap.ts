@@ -10,15 +10,15 @@
 // Why a sliding window rather than a global per-source cap: the goal is
 // to break up visible "runs" of one outlet near the top of the feed
 // without permanently demoting a prolific-but-high-quality source to the
-// bottom. A source that fills 3 of positions 1–20 can appear again at
+// bottom. A source that fills 2 of positions 1–20 can appear again at
 // position 21+, just not clustered.
 //
 // Why this runs on the FULL pool before `slice(offset, offset+limit)`:
-// the feed paginates with offset/limit (default page size 10), but the
-// window is 20 — it spans two pages. Capping per-page-slice would let a
-// source put 3 events at the bottom of page 1 and 3 more at the top of
-// page 2 (6 in one 20-window). Reordering the whole ranked pool once,
-// then slicing, keeps pagination stable and the invariant intact.
+// the feed paginates with offset/limit, but the window is 20 — it spans
+// multiple pages. Capping per-page-slice would let a source put 2 events
+// at the bottom of page 1 and 2 more at the top of page 2 (4 in one
+// 20-window). Reordering the whole ranked pool once, then slicing, keeps
+// pagination stable and the invariant intact.
 //
 // Native posts (events.source_type === 'native', SIGNAL-authored
 // editorial) are exempt: they are never capped and never count toward
@@ -26,7 +26,7 @@
 // they carry no external source identity to cluster on.
 
 /** Max events from one source within any DIVERSITY_WINDOW-position window. */
-export const MAX_PER_SOURCE = 3;
+export const MAX_PER_SOURCE = 2;
 
 /** Sliding-window size, in feed positions, the cap is measured over. */
 export const DIVERSITY_WINDOW = 20;

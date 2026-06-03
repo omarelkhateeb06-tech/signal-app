@@ -4,13 +4,24 @@ import { useInfiniteQuery, type UseInfiniteQueryResult } from "@tanstack/react-q
 import { getFeedRequest } from "@/lib/api";
 import type { FeedResponse } from "@/types/story";
 
-// Feed page size. The front-page composition consumes a fixed 5 stories
-// off the top of each fetched page (1 lead + 4 rail) before the rest flow
-// into the 2-column "More in your sectors" river. 11 therefore yields 6
-// river cards on the first page — three complete rows instead of the
-// orphaned 2½ that a size of 10 produced. Infinite scroll is unaffected
-// (getNextPageParam keys off has_more + offset/limit, not this value).
-const PAGE_SIZE = 11;
+// Feed page sizes. The page param carries both offset and limit so the
+// first page and subsequent "load more" pages can fetch different counts.
+//
+// The front-page composition consumes a fixed 5 stories off the TOP of the
+// feed (1 lead + 4 rail); everything after flows into the 2-column "More in
+// your sectors" river grid. To keep that grid in complete rows of two:
+//   - first page fetches 11 → 5 consumed by lead+rail, 6 land in the river.
+//   - every later page fetches 6 → all 6 go straight to the river (lead and
+//     rail are already populated), so each load adds exactly three rows.
+// A flat size (e.g. 11 everywhere) would add 11 river cards per load — an
+// odd count that re-introduces the orphaned final card on every page.
+const FIRST_PAGE_SIZE = 11;
+const NEXT_PAGE_SIZE = 6;
+
+interface FeedPageParam {
+  offset: number;
+  limit: number;
+}
 
 interface UseStoriesOptions {
   sectors?: string[];
@@ -19,18 +30,24 @@ interface UseStoriesOptions {
 
 export function useStories(
   options: UseStoriesOptions = {},
-): UseInfiniteQueryResult<{ pages: FeedResponse[]; pageParams: number[] }, Error> {
+): UseInfiniteQueryResult<
+  { pages: FeedResponse[]; pageParams: FeedPageParam[] },
+  Error
+> {
   const sectors = options.sectors ?? [];
   return useInfiniteQuery({
     queryKey: ["feed", sectors],
-    initialPageParam: 0,
+    initialPageParam: { offset: 0, limit: FIRST_PAGE_SIZE } as FeedPageParam,
     queryFn: ({ pageParam }) =>
       getFeedRequest({
         sectors,
-        limit: PAGE_SIZE,
-        offset: typeof pageParam === "number" ? pageParam : 0,
+        limit: pageParam.limit,
+        offset: pageParam.offset,
       }),
-    getNextPageParam: (last) => (last.has_more ? last.offset + last.limit : undefined),
+    getNextPageParam: (last) =>
+      last.has_more
+        ? { offset: last.offset + last.limit, limit: NEXT_PAGE_SIZE }
+        : undefined,
     enabled: options.enabled ?? true,
   });
 }
