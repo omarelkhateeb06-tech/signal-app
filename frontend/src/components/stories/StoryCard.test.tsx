@@ -115,10 +115,10 @@ describe("StoryCard imagery (text-forward river card)", () => {
   });
 });
 
-// Phase 12s — native posts are the one exception to the text-forward river
-// card: they surface their editorial illustration as a thumbnail. Ingested
-// cards stay imageless.
-describe("StoryCard native illustration", () => {
+// Phase 12x — the river is uniformly text-forward: NO card type renders a
+// thumbnail (imagery is reserved for the feed lead). Native posts stay
+// distinguishable by their branded kicker, not an image.
+describe("StoryCard river is uniformly imageless", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -131,13 +131,11 @@ describe("StoryCard native illustration", () => {
     });
   }
 
-  it("renders the illustration thumbnail for a native card", () => {
+  it("renders no thumbnail for a native card even with an illustration", () => {
     const { container } = renderCard(
       nativeStory({ illustration_url: "https://cdn.example.com/n.png" }),
     );
-    expect(
-      container.querySelector('img[src="https://cdn.example.com/n.png"]'),
-    ).not.toBeNull();
+    expect(container.querySelectorAll("img").length).toBe(0);
   });
 
   it("renders no image for a native card without an illustration", () => {

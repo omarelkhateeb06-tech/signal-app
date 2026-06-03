@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
@@ -109,13 +108,11 @@ export function StoryCard({
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
 
-  // Phase 12s — ingested river cards stay deliberately text-forward (no
-  // image). Native posts are the exception: they surface their editorial
-  // illustration as a card thumbnail. image_url takes priority over the
-  // illustration when both are present.
-  const cardImage = native
-    ? (story.image_url ?? story.illustration_url ?? null)
-    : null;
+  // Phase 12x — the river is uniformly TEXT-FORWARD for every card type.
+  // Imagery is reserved for the feed lead (FeedLead); river cards (native
+  // and ingested alike) carry no thumbnail, so the two-column river reads
+  // as one consistent, scannable column instead of an image/no-image
+  // patchwork. Native posts stay distinguishable by their branded kicker.
 
   void index;
 
@@ -134,23 +131,6 @@ export function StoryCard({
           href={`/stories/${story.id}`}
           className="group flex flex-1 flex-col hover:no-underline"
         >
-          {/* Phase 12s — native editorial illustration thumbnail. Only
-              native cards render an image; ingested cards stay text-forward. */}
-          {cardImage && (
-            <div className="relative mb-3 overflow-hidden rounded-md border border-line">
-              <div className="aspect-[16/9] w-full">
-                <Image
-                  src={cardImage}
-                  alt=""
-                  fill
-                  unoptimized
-                  sizes="(max-width: 768px) 100vw, 33vw"
-                  className="object-cover transition-transform duration-[400ms] ease-soft-out group-hover:scale-[1.02]"
-                />
-              </div>
-            </div>
-          )}
-
           {/* Sector kicker — unified editorial dateline language */}
           <div className="mb-2 flex items-center gap-2">
             <span
