@@ -17,6 +17,7 @@ function story(overrides: Partial<Story> = {}): Story {
     context: "",
     why_it_matters: "",
     gated: false,
+    kind: "ingested",
     why_it_matters_to_you: "",
     commentary: null,
     commentary_source: null,
@@ -39,23 +40,23 @@ function story(overrides: Partial<Story> = {}): Story {
 }
 
 describe("isNativeStory", () => {
-  it("is true when source_name is the native display name", () => {
-    expect(isNativeStory(story({ source_name: NATIVE_SOURCE_NAME }))).toBe(true);
+  it("is true when kind is native", () => {
+    expect(isNativeStory(story({ kind: "native" }))).toBe(true);
   });
 
-  it("falls back to the primary source name when source_name is null", () => {
+  it("is false for an ingested story", () => {
+    expect(isNativeStory(story({ kind: "ingested" }))).toBe(false);
+  });
+
+  it("ignores the source display name — kind is authoritative", () => {
+    // A story whose source name happens to read "SIGNAL" is still NOT
+    // native unless the wire's `kind` says so. The string is no longer a
+    // backbone.
     expect(
       isNativeStory(
-        story({
-          source_name: null,
-          sources: [{ url: "u", name: NATIVE_SOURCE_NAME, role: "primary" }],
-        }),
+        story({ kind: "ingested", source_name: NATIVE_SOURCE_NAME }),
       ),
-    ).toBe(true);
-  });
-
-  it("is false for an ordinary ingested outlet", () => {
-    expect(isNativeStory(story({ source_name: "OutletA" }))).toBe(false);
+    ).toBe(false);
   });
 });
 
@@ -63,34 +64,22 @@ describe("sourceDisplayLabel", () => {
   it("maps a branded native generator to its brand label", () => {
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: NATIVE_SOURCE_NAME,
-          generator_type: "arxiv-synthesis-native",
-        }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: "arxiv-synthesis-native" }),
       ),
     ).toBe("The Research Read");
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: NATIVE_SOURCE_NAME,
-          generator_type: "hn-synthesis-native",
-        }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: "hn-synthesis-native" }),
       ),
     ).toBe("Practitioner Brief");
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: NATIVE_SOURCE_NAME,
-          generator_type: "cross-sector-chain-native",
-        }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: "cross-sector-chain-native" }),
       ),
     ).toBe("The Connection");
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: NATIVE_SOURCE_NAME,
-          generator_type: "tool-spotlight-native",
-        }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: "tool-spotlight-native" }),
       ),
     ).toBe("Worth an Afternoon");
   });
@@ -98,10 +87,7 @@ describe("sourceDisplayLabel", () => {
   it("keeps SIGNAL for a native post with no brand mapping", () => {
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: NATIVE_SOURCE_NAME,
-          generator_type: "github-trending-native",
-        }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: "github-trending-native" }),
       ),
     ).toBe(NATIVE_SOURCE_NAME);
   });
@@ -109,7 +95,7 @@ describe("sourceDisplayLabel", () => {
   it("keeps SIGNAL for a native post with a null generator_type", () => {
     expect(
       sourceDisplayLabel(
-        story({ source_name: NATIVE_SOURCE_NAME, generator_type: null }),
+        story({ kind: "native", source_name: NATIVE_SOURCE_NAME, generator_type: null }),
       ),
     ).toBe(NATIVE_SOURCE_NAME);
   });
@@ -118,15 +104,12 @@ describe("sourceDisplayLabel", () => {
     expect(sourceDisplayLabel(story({ source_name: "OutletA" }))).toBe("OutletA");
   });
 
-  it("ignores generator_type when the source is not native", () => {
-    // Defensive: a non-SIGNAL source never adopts a brand label even if a
-    // stray generator_type is present on the wire.
+  it("ignores generator_type when the story is not native", () => {
+    // Defensive: an ingested story never adopts a brand label even if a
+    // stray generator_type rides along on the wire.
     expect(
       sourceDisplayLabel(
-        story({
-          source_name: "OutletA",
-          generator_type: "arxiv-synthesis-native",
-        }),
+        story({ kind: "ingested", source_name: "OutletA", generator_type: "arxiv-synthesis-native" }),
       ),
     ).toBe("OutletA");
   });
@@ -135,11 +118,10 @@ describe("sourceDisplayLabel", () => {
     expect(
       sourceDisplayLabel(
         story({
+          kind: "native",
           source_name: null,
           generator_type: "arxiv-synthesis-native",
-          sources: [
-            { url: "u", name: NATIVE_SOURCE_NAME, role: "primary" },
-          ],
+          sources: [{ url: "u", name: NATIVE_SOURCE_NAME, role: "primary" }],
         }),
       ),
     ).toBe("The Research Read");

@@ -60,6 +60,13 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     save_count: 0,
     comment_count: 0,
     reading_time_minutes: 4,
+    // Tests predate the explicit `kind` field; derive it from the source
+    // name so existing native fixtures (source_name "SIGNAL") stay native.
+    kind:
+      overrides.source_name === "SIGNAL" ||
+      overrides.sources?.some((s) => s.name === "SIGNAL")
+        ? "native"
+        : "ingested",
     ...overrides,
   };
 }

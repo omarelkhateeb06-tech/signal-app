@@ -130,6 +130,11 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     commentary_source: null,
     source_url: row.sourceUrl,
     source_name: row.sourceName,
+    // Phase 12n.3 — explicit story kind on the wire. Legacy hand-curated
+    // stories are always 'ingested'. The client discriminates native vs
+    // ingested on THIS field rather than inferring it from the source
+    // display name ("SIGNAL"), which was a brittle, human-facing signal.
+    kind: "ingested" as const,
     // Phase 12o — legacy hand-curated stories are never native, so they
     // carry no generator brand label. Emitted as null (not omitted) to
     // keep the wire shape uniform with shapeEvent for the saved/search
@@ -176,8 +181,9 @@ interface EventRow {
   genericCommentary: string | null;
   primarySourceUrl: string;
   primarySourceName: string | null;
-  // Phase 12 — 'native' (SIGNAL-authored) vs 'ingested'. Used by the
-  // feed diversity cap to exempt native posts; stripped before the wire.
+  // Phase 12 — 'native' (SIGNAL-authored) vs 'ingested'. Used by the feed
+  // diversity cap to exempt native posts and (12n.3) to derive the wire
+  // `kind` discriminant. The raw column itself is not sent to the wire.
   sourceType: string;
   // Phase 12o — slug of the event's primary ingestion source (e.g.
   // 'arxiv-synthesis-native'). Drives the branded section label on the
@@ -240,6 +246,12 @@ function shapeEvent(
     // full attribution list.
     source_url: row.primarySourceUrl,
     source_name: row.primarySourceName,
+    // Phase 12n.3 — explicit story kind on the wire, derived from the
+    // event's source_type. The client discriminates native vs ingested on
+    // this field instead of the "SIGNAL" source display name.
+    kind: (row.sourceType === "native" ? "native" : "ingested") as
+      | "native"
+      | "ingested",
     // Phase 12o — branded section-label discriminant. Native events carry
     // the slug of their generating source (e.g. 'arxiv-synthesis-native'),
     // which the frontend maps to a brand label ("The Research Read", …).

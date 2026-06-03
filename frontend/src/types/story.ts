@@ -77,6 +77,12 @@ export interface Story {
   // Phase 12g — discriminant. Full Story payload always carries
   // `gated: false`; the gated branch is a separate envelope.
   gated: false;
+  // Phase 12n.3 — explicit story kind. "native" = SIGNAL-authored
+  // editorial synthesis; "ingested" = sourced from an external outlet.
+  // The client discriminates on THIS field (the server derives it from
+  // events.source_type) rather than inferring native-ness from the
+  // source display name, which was a brittle human-facing signal.
+  kind: "native" | "ingested";
   // Phase 12b personalization output. Kept on the payload through the
   // 12c rollout so any surface that hasn't been migrated to the
   // lazy-commentary hook still has something to render. Removed in 12d.

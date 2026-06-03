@@ -14,10 +14,10 @@ import type { Story } from "@/types/story";
 //
 // Native posts (SIGNAL-authored editorial) are exempt — their headline IS
 // the editorial entry point, so they keep the classic headline-then-
-// commentary layout. The feed wire intentionally strips `source_type`
-// (see storyController.ts), so the only native signal the client has is
-// the shared `source_name === "SIGNAL"` display name every native
-// generator is seeded with.
+// commentary layout. Phase 12n.3: native-ness is now read from the wire's
+// explicit `kind` discriminant (server-derived from events.source_type),
+// NOT inferred from the `source_name === "SIGNAL"` display string. A
+// display name is not a backbone; `kind` is the authoritative signal.
 
 /** Display name shared by every native (SIGNAL-authored) generator. */
 export const NATIVE_SOURCE_NAME = "SIGNAL";
@@ -30,12 +30,12 @@ function effectiveSourceName(story: StorySourceFields): string | null {
 }
 
 /**
- * A story is "native" (SIGNAL editorial) when its effective source name is
- * the shared native display name. Native cards are left untouched by the
+ * A story is "native" (SIGNAL editorial) when the wire declares
+ * `kind === "native"`. Native cards are left untouched by the
  * three-section swap.
  */
-export function isNativeStory(story: StorySourceFields): boolean {
-  return effectiveSourceName(story) === NATIVE_SOURCE_NAME;
+export function isNativeStory(story: Pick<Story, "kind">): boolean {
+  return story.kind === "native";
 }
 
 // Phase 12o — branded section labels for the four editorial native
@@ -51,7 +51,8 @@ const NATIVE_BRAND_LABELS: Record<string, string> = {
   "tool-spotlight-native": "Worth an Afternoon",
 };
 
-type StoryBrandFields = StorySourceFields & Pick<Story, "generator_type">;
+type StoryBrandFields = StorySourceFields &
+  Pick<Story, "generator_type" | "kind">;
 
 /**
  * The source label to render in a card's kicker chip. For a native post
@@ -59,12 +60,15 @@ type StoryBrandFields = StorySourceFields & Pick<Story, "generator_type">;
  * the brand label ("The Research Read", …). For every other native post
  * it is the shared "SIGNAL" display name, and for ingested stories it is
  * the effective source name. Returns null only when no source name
- * resolves at all.
+ * resolves at all. Native-ness is read from `kind`, not the source name.
  */
 export function sourceDisplayLabel(story: StoryBrandFields): string | null {
   const base = effectiveSourceName(story);
-  if (base === NATIVE_SOURCE_NAME && story.generator_type) {
-    return NATIVE_BRAND_LABELS[story.generator_type] ?? base;
+  if (story.kind === "native") {
+    if (story.generator_type) {
+      return NATIVE_BRAND_LABELS[story.generator_type] ?? base ?? NATIVE_SOURCE_NAME;
+    }
+    return base ?? NATIVE_SOURCE_NAME;
   }
   return base;
 }
