@@ -84,14 +84,17 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
       <Link href={`/stories/${story.id}`} className="block hover:no-underline">
         {heroImage && (
           <div className="relative mb-5 overflow-hidden rounded-lg border border-line">
-            <div className="aspect-[16/9] w-full">
+            {/* object-contain on a surface backdrop: a source's branded
+                title-card / logo og:image renders centered and intentional
+                instead of cropped-and-broken; real photos show in full. */}
+            <div className="aspect-[16/9] w-full bg-surface">
               <Image
                 src={heroImage}
                 alt=""
                 fill
                 unoptimized
                 sizes="(max-width: 1024px) 100vw, 60vw"
-                className="object-cover transition-transform duration-[600ms] ease-soft-out group-hover:scale-[1.02]"
+                className="object-contain transition-transform duration-[600ms] ease-soft-out group-hover:scale-[1.02]"
               />
             </div>
             <div
