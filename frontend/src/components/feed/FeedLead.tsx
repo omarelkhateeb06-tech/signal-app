@@ -121,7 +121,7 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                 commentary, left untouched by the hook-as-title swap. */}
             <h2
               className={[
-                "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
+                "font-display text-[32px] font-bold leading-[1.05] tracking-tight transition-colors duration-150 md:text-[42px]",
                 isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
               ].join(" ")}
             >
@@ -165,7 +165,7 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                 hook now speaks for itself as the headline. */}
             <h2
               className={[
-                "font-display text-[32px] font-semibold leading-[1.08] tracking-tight transition-colors duration-150 md:text-[40px]",
+                "font-display text-[32px] font-bold leading-[1.05] tracking-tight transition-colors duration-150 md:text-[42px]",
                 isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
               ].join(" ")}
               style={{

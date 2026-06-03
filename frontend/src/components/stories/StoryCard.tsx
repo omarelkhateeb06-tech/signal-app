@@ -128,7 +128,7 @@ export function StoryCard({
       <Card
         ref={cardRef}
         sectorAccent={sectorAccentFor(story.sector)}
-        className="flex h-full flex-col p-[18px]"
+        className="flex h-full flex-col p-[18px] transition-shadow duration-200 ease-soft-out hover:shadow-card-hover"
       >
         <Link
           href={`/stories/${story.id}`}
@@ -178,7 +178,7 @@ export function StoryCard({
                   layout, left untouched by the hook-as-title swap. */}
               <h2
                 className={[
-                  "mb-2 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+                  "mb-2 font-display text-[19px] font-bold leading-snug tracking-[-0.01em] transition-colors duration-150 group-hover:text-accent",
                   isRead ? "text-ink-muted" : "text-ink",
                 ].join(" ")}
               >
@@ -203,7 +203,7 @@ export function StoryCard({
                   headline as muted attribution, then the commentary body. */}
               <h2
                 className={[
-                  "mb-1 font-display text-[19px] font-semibold leading-snug transition-colors duration-150 group-hover:text-accent",
+                  "mb-1 font-display text-[19px] font-bold leading-snug tracking-[-0.01em] transition-colors duration-150 group-hover:text-accent",
                   isRead ? "text-ink-muted" : "text-ink",
                 ].join(" ")}
                 style={{
