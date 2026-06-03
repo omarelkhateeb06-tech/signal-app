@@ -59,6 +59,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
       { url: "https://example.com/article", name: "Example", role: "primary" },
     ],
     image_url: null,
+    illustration_url: null,
     published_at: "2026-05-10T00:00:00Z",
     created_at: "2026-05-10T00:00:00Z",
     author: null,
@@ -158,5 +159,34 @@ describe("StoryDetail native post layout", () => {
   it("renders 'via {source}' kicker for ingested posts", () => {
     const { getByText } = renderDetail(baseStory({ source_name: "Reuters" }));
     expect(getByText("via Reuters")).not.toBeNull();
+  });
+
+  // Phase 12s — native illustration hero.
+  it("renders the illustration hero for a native post with illustration_url", () => {
+    const { container } = renderDetail(
+      nativeStory({ illustration_url: "https://cdn.example.com/native-hero.png" }),
+    );
+    const img = container.querySelector(
+      'img[src="https://cdn.example.com/native-hero.png"]',
+    );
+    expect(img).not.toBeNull();
+    // alt is sourced from the headline (decorative hero, but labelled).
+    expect(img?.getAttribute("alt")).toBe("Detail headline");
+  });
+
+  it("renders no illustration hero when a native post has no illustration_url", () => {
+    const { container } = renderDetail(nativeStory({ illustration_url: null }));
+    expect(container.querySelectorAll("img").length).toBe(0);
+  });
+
+  it("does not render an illustration hero for an ingested post", () => {
+    const { container } = renderDetail(
+      baseStory({ illustration_url: "https://cdn.example.com/should-not-show.png" }),
+    );
+    expect(
+      container.querySelector(
+        'img[src="https://cdn.example.com/should-not-show.png"]',
+      ),
+    ).toBeNull();
   });
 });

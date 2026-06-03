@@ -145,6 +145,10 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     // Phase 12k — og:image URL or null. Null is the no-image path;
     // frontend renders no thumbnail / hero in that case.
     image_url: row.imageUrl,
+    // Phase 12s — legacy hand-curated stories are never native and never
+    // carry an editorial illustration. Always null to keep the wire shape
+    // uniform with shapeEvent.
+    illustration_url: null,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -182,6 +186,10 @@ interface EventRow {
   // shapeEvent).
   generatorSlug: string | null;
   imageUrl: string | null;
+  // Phase 12s — AI-generated editorial illustration (native posts only).
+  // Null for ingested events; surfaced on the wire for native posts so
+  // the feed lead / card and detail hero can render it.
+  illustrationUrl: string | null;
   publishedAt: Date | null;
   createdAt: Date;
   authorId: string | null;
@@ -242,6 +250,10 @@ function shapeEvent(
     sources,
     // Phase 12k — see shapeStory: null when no og:image was found.
     image_url: row.imageUrl,
+    // Phase 12s — editorial illustration for native posts. Null for
+    // ingested events (they never carry one); the frontend prefers
+    // image_url and falls back to this only for native posts.
+    illustration_url: row.illustrationUrl ?? null,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -555,6 +567,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         sourceType: events.sourceType,
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
+        illustrationUrl: events.illustrationUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,
@@ -1086,6 +1099,7 @@ export async function searchStories(
         sourceType: events.sourceType,
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
+        illustrationUrl: events.illustrationUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,
@@ -1184,6 +1198,7 @@ export async function getNativeStories(
         createdAt: events.createdAt,
         sector: events.sector,
         generatorSlug: eventGeneratorSlugExpr(),
+        illustrationUrl: events.illustrationUrl,
       })
       .from(events)
       .where(eq(events.sourceType, "native"))
@@ -1205,6 +1220,7 @@ export async function getNativeStories(
       created_at: row.createdAt,
       sector: row.sector,
       generator_type: row.generatorSlug ?? null,
+      illustration_url: row.illustrationUrl ?? null,
     }));
 
     res.json({
@@ -1282,6 +1298,7 @@ export async function getRelatedStories(
         sourceType: events.sourceType,
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
+        illustrationUrl: events.illustrationUrl,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,

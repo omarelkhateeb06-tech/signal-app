@@ -46,6 +46,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
       { url: "https://example.com/article", name: "Example", role: "primary" },
     ],
     image_url: null,
+    illustration_url: null,
     published_at: "2026-05-10T00:00:00Z",
     created_at: "2026-05-10T00:00:00Z",
     author: null,
@@ -82,6 +83,52 @@ describe("FeedLead hero imagery", () => {
 
   it("renders no img when story.image_url is null", () => {
     const { container } = renderLead(baseStory({ image_url: null }));
+    expect(container.querySelectorAll("img").length).toBe(0);
+  });
+
+  // Phase 12s — native posts fall back to their editorial illustration for
+  // the hero; image_url still takes priority when both are present.
+  const nativeOverrides = {
+    source_name: "SIGNAL",
+    sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" as const }],
+  };
+
+  it("uses illustration_url as the hero for a native story without image_url", () => {
+    const { container } = renderLead(
+      baseStory({
+        ...nativeOverrides,
+        image_url: null,
+        illustration_url: "https://cdn.example.com/native.png",
+      }),
+    );
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/native.png"]'),
+    ).not.toBeNull();
+  });
+
+  it("prefers image_url over illustration_url when both are set (native)", () => {
+    const { container } = renderLead(
+      baseStory({
+        ...nativeOverrides,
+        image_url: "https://cdn.example.com/og.jpg",
+        illustration_url: "https://cdn.example.com/native.png",
+      }),
+    );
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/og.jpg"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/native.png"]'),
+    ).toBeNull();
+  });
+
+  it("does not use illustration_url for an ingested story", () => {
+    const { container } = renderLead(
+      baseStory({
+        image_url: null,
+        illustration_url: "https://cdn.example.com/native.png",
+      }),
+    );
     expect(container.querySelectorAll("img").length).toBe(0);
   });
 

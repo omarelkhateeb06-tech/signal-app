@@ -31,7 +31,8 @@ const secondStoryId = "22222222-2222-2222-2222-222222222222";
 //   sourceUrl  → primarySourceUrl
 //   sourceName → primarySourceName
 // New fields added: genericCommentary, sourceType, generatorSlug,
-// imageUrl, effectiveScore (unused by shapeEvent but satisfies EventRow).
+// imageUrl, illustrationUrl, effectiveScore (unused by shapeEvent but
+// satisfies EventRow).
 function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: storyId,
@@ -46,6 +47,7 @@ function makeRow(overrides: Record<string, unknown> = {}): Record<string, unknow
     sourceType: "ingested",
     generatorSlug: null,
     imageUrl: null,
+    illustrationUrl: null,
     publishedAt: new Date("2026-04-01T00:00:00Z"),
     createdAt: new Date("2026-04-01T00:00:00Z"),
     authorId: "author-1",

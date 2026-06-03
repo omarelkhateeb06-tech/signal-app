@@ -396,6 +396,11 @@ async function writeEventOnce(
       `[ingestion-write-event] candidate=${candidateId} event=${eventId} sector=${candidate.sector} headline_len=${headline.length}`,
     );
 
+    // TODO Phase 13: trigger illustration generation via Higgsfield API
+    // after writeEvent for new native posts (when sourceAdapterType ===
+    // "native_generator"), then UPDATE events.illustration_url. Existing
+    // native rows are backfilled out-of-band via `npm run apply-illustrations`.
+
     return { eventId };
   });
 }

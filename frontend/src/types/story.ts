@@ -113,6 +113,10 @@ export interface Story {
   // enrichment. Null when no og:image / twitter:image was found; the UI
   // renders no thumbnail / hero in that case (no placeholder).
   image_url: string | null;
+  // Phase 12s — AI-generated editorial illustration for native (SIGNAL)
+  // posts. Null for ingested stories and legacy rows. The UI surfaces it
+  // only for native posts; `image_url` takes priority when both are set.
+  illustration_url: string | null;
   published_at: string | null;
   created_at: string;
   author: StoryAuthor | null;
@@ -191,6 +195,9 @@ export interface NativeArchiveItem {
   // Slug of the generating source (e.g. "arxiv-synthesis-native"), mapped
   // to a brand label by `brandLabelForGeneratorType` in feedCard.ts.
   generator_type: string | null;
+  // Phase 12s — editorial illustration URL (native posts only). Null
+  // until the post has been illustrated.
+  illustration_url: string | null;
 }
 
 export interface NativeArchiveParams {
