@@ -4,7 +4,13 @@ import { useInfiniteQuery, type UseInfiniteQueryResult } from "@tanstack/react-q
 import { getFeedRequest } from "@/lib/api";
 import type { FeedResponse } from "@/types/story";
 
-const PAGE_SIZE = 10;
+// Feed page size. The front-page composition consumes a fixed 5 stories
+// off the top of each fetched page (1 lead + 4 rail) before the rest flow
+// into the 2-column "More in your sectors" river. 11 therefore yields 6
+// river cards on the first page — three complete rows instead of the
+// orphaned 2½ that a size of 10 produced. Infinite scroll is unaffected
+// (getNextPageParam keys off has_more + offset/limit, not this value).
+const PAGE_SIZE = 11;
 
 interface UseStoriesOptions {
   sectors?: string[];

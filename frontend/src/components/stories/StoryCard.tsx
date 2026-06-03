@@ -128,7 +128,7 @@ export function StoryCard({
       <Card
         ref={cardRef}
         sectorAccent={sectorAccentFor(story.sector)}
-        className="flex h-full flex-col p-5"
+        className="flex h-full flex-col p-[18px]"
       >
         <Link
           href={`/stories/${story.id}`}
@@ -185,7 +185,7 @@ export function StoryCard({
                 {story.headline}
               </h2>
               <p
-                className="text-sm leading-relaxed text-ink-muted"
+                className="text-[13px] leading-relaxed text-ink-muted"
                 style={{
                   display: "-webkit-box",
                   WebkitLineClamp: 2,
@@ -222,7 +222,7 @@ export function StoryCard({
               )}
               {commentaryBody && (
                 <p
-                  className="text-sm leading-relaxed text-ink-muted"
+                  className="text-[13px] leading-relaxed text-ink-muted"
                   style={{
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
