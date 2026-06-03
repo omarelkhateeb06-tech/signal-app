@@ -91,34 +91,33 @@ function renderCard(story: Story): { container: HTMLElement } {
   return render(<StoryCard story={story} />, { wrapper: Wrapper });
 }
 
-describe("StoryCard imagery (text-forward river card)", () => {
+describe("StoryCard imagery (image-led river card)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // Editorial redesign: the river card is deliberately text-forward —
-  // imagery is reserved for the feed lead (FeedLead) so the river reads
-  // as a dense, scannable column. The card therefore renders NO <img>
-  // regardless of whether the story carries an og:image.
-  it("does not render a thumbnail even when story.image_url is set", () => {
+  // Phase 12z — every river card is image-led: it renders the story's
+  // og:image when present, otherwise a sector-tinted fallback panel (which
+  // carries no <img>).
+  it("renders the og:image when story.image_url is set", () => {
     const { container } = renderCard(
       baseStory({ image_url: "https://cdn.example.com/og.jpg" }),
     );
-    const imgs = container.querySelectorAll("img");
-    expect(imgs.length).toBe(0);
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/og.jpg"]'),
+    ).not.toBeNull();
   });
 
-  it("renders no img element when story.image_url is null", () => {
+  it("falls back to a panel (no img) when story.image_url is null", () => {
     const { container } = renderCard(baseStory({ image_url: null }));
-    const imgs = container.querySelectorAll("img");
-    expect(imgs.length).toBe(0);
+    expect(container.querySelectorAll("img").length).toBe(0);
   });
 });
 
 // Phase 12x — the river is uniformly text-forward: NO card type renders a
 // thumbnail (imagery is reserved for the feed lead). Native posts stay
 // distinguishable by their branded kicker, not an image.
-describe("StoryCard river is uniformly imageless", () => {
+describe("StoryCard native illustration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -131,11 +130,13 @@ describe("StoryCard river is uniformly imageless", () => {
     });
   }
 
-  it("renders no thumbnail for a native card even with an illustration", () => {
+  it("renders the illustration for a native card", () => {
     const { container } = renderCard(
       nativeStory({ illustration_url: "https://cdn.example.com/n.png" }),
     );
-    expect(container.querySelectorAll("img").length).toBe(0);
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/n.png"]'),
+    ).not.toBeNull();
   });
 
   it("renders no image for a native card without an illustration", () => {
@@ -205,7 +206,9 @@ describe("StoryCard branded labels + comment count", () => {
         generator_type: "hn-synthesis-native",
       }),
     );
-    expect(screen.getByText(/Practitioner Brief/)).toBeInTheDocument();
+    // The brand label appears in the kicker (and the image fallback panel
+    // when there's no illustration), so allow more than one match.
+    expect(screen.getAllByText(/Practitioner Brief/).length).toBeGreaterThan(0);
   });
 
   it("keeps the SIGNAL byline for an unmapped native generator", () => {
@@ -216,7 +219,7 @@ describe("StoryCard branded labels + comment count", () => {
         generator_type: "github-trending-native",
       }),
     );
-    expect(screen.getByText(/SIGNAL/)).toBeInTheDocument();
+    expect(screen.getAllByText(/SIGNAL/).length).toBeGreaterThan(0);
   });
 
   it("shows the comment count when comments exist", () => {

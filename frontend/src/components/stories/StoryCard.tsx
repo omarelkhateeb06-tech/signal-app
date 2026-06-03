@@ -5,6 +5,7 @@ import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import { StorySaveButton } from "./StorySaveButton";
+import { FeatureImage } from "@/components/feed/FeatureImage";
 import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
@@ -108,11 +109,10 @@ export function StoryCard({
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
 
-  // Phase 12x — the river is uniformly TEXT-FORWARD for every card type.
-  // Imagery is reserved for the feed lead (FeedLead); river cards (native
-  // and ingested alike) carry no thumbnail, so the two-column river reads
-  // as one consistent, scannable column instead of an image/no-image
-  // patchwork. Native posts stay distinguishable by their branded kicker.
+  // Phase 12z — image-led river. Every card carries a FeatureImage: the
+  // story's photo / native illustration when present, else a sector-tinted
+  // editorial fallback panel — so the whole feed reads image-rich (CNBC-
+  // style) and never as a bare image/no-image patchwork.
 
   void index;
 
@@ -131,6 +131,15 @@ export function StoryCard({
           href={`/stories/${story.id}`}
           className="group flex flex-1 flex-col hover:no-underline"
         >
+          {/* Image-led: photo / illustration, or a sector-tinted fallback. */}
+          <div className="relative mb-3 overflow-hidden rounded-md border border-line">
+            <FeatureImage
+              story={story}
+              className="aspect-[16/9] w-full"
+              sizes="(max-width: 768px) 100vw, 33vw"
+            />
+          </div>
+
           {/* Sector kicker — unified editorial dateline language */}
           <div className="mb-2 flex items-center gap-2">
             <span
