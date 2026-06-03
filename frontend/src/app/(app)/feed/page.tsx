@@ -155,6 +155,17 @@ export default function FeedPage(): JSX.Element {
         stories: afterSpot.filter((s) => s.sector === sec).slice(0, 4),
       }))
       .filter((g) => g.stories.length > 0);
+    // Float a story WITH a real image to the front of each section so the
+    // big featured slot is a photo, not a fallback panel.
+    const hasImage = (s: Story & { gated: false }): boolean =>
+      Boolean(s.image_url || (s.kind === "native" && s.illustration_url));
+    groups.forEach((g) => {
+      const idx = g.stories.findIndex(hasImage);
+      if (idx > 0) {
+        const [withImg] = g.stories.splice(idx, 1);
+        g.stories.unshift(withImg);
+      }
+    });
     groups.forEach((g) => g.stories.forEach((s) => used.add(s.id)));
 
     const riverItems = items.filter((i) => !used.has(i.id));

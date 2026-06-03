@@ -62,28 +62,31 @@ export function FeatureImage({
     );
   }
 
-  // Fallback editorial panel — sector-tinted gradient + a large sector
-  // watermark and the source name. Keyed entirely off design tokens so it
-  // re-skins with light/dark and the terminal theme.
+  // Fallback editorial panel — a sector-tinted gradient with the source
+  // centered. Reads as intentional at any size (hero or 96px thumbnail),
+  // keyed off design tokens so it re-skins across light/dark/terminal.
   return (
     <div
-      className={`relative overflow-hidden ${className ?? ""}`}
+      className={`relative flex items-center justify-center overflow-hidden ${className ?? ""}`}
       style={{
-        background: `radial-gradient(120% 120% at 0% 0%, color-mix(in srgb, ${color} 30%, var(--surface)) 0%, var(--surface) 60%)`,
+        background: `linear-gradient(135deg, color-mix(in srgb, ${color} 26%, var(--surface)) 0%, var(--surface) 72%)`,
       }}
     >
-      <span
-        aria-hidden
-        className="absolute -right-2 bottom-1 font-display text-[64px] font-bold leading-none opacity-[0.13]"
-        style={{ color }}
-      >
-        {sector.slice(0, 3)}
-      </span>
-      <span className="absolute left-4 top-4 font-mono text-[10px] uppercase tracking-[0.18em]">
-        <span style={{ color }}>{sector}</span>
-      </span>
-      <span className="absolute bottom-3 left-4 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
-        {source}
+      <span className="flex max-w-full flex-col items-center gap-1.5 px-3 text-center">
+        <span
+          aria-hidden
+          className="h-2 w-2 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="truncate font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink">
+          {source}
+        </span>
+        <span
+          className="font-mono text-[9px] uppercase tracking-[0.14em]"
+          style={{ color }}
+        >
+          {sector}
+        </span>
       </span>
       <span
         aria-hidden
