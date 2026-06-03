@@ -18,6 +18,8 @@ import { SectorSection } from "@/components/feed/SectorSection";
 import { SectorTriptych } from "@/components/feed/SectorTriptych";
 import { SectorMosaic } from "@/components/feed/SectorMosaic";
 import { SpotlightBand } from "@/components/feed/SpotlightBand";
+import { ResearchReadBand } from "@/components/feed/ResearchReadBand";
+import { LatestStrip } from "@/components/feed/LatestStrip";
 import { SectorBadge } from "@/components/stories/SectorBadge";
 import type { SectionProps } from "@/components/feed/sectionShared";
 import { extractApiError } from "@/lib/api";
@@ -128,7 +130,7 @@ export default function FeedPage(): JSX.Element {
   //      2-column grid that powers infinite scroll.
   // Gated items never become lead/rail/spotlight/featured — they only ever
   // appear in the tail river.
-  const { lead, rail, spotlight, sectorGroups, river } = useMemo(() => {
+  const { lead, rail, spotlight, research, sectorGroups, latest, river } = useMemo(() => {
     const sectorPref = profile?.sectors ?? [];
     const nonGated = items.filter((i): i is Story & { gated: false } =>
       !isGatedFeedItem(i),
@@ -145,6 +147,12 @@ export default function FeedPage(): JSX.Element {
     const remaining = nonGated.filter((s) => !used.has(s.id));
     const spot = remaining.find((s) => s.sources.length > 1) ?? null;
     if (spot) used.add(spot.id);
+
+    // VALO Originals (native editorial synthesis) get their own band.
+    const research = nonGated
+      .filter((s) => !used.has(s.id) && s.kind === "native")
+      .slice(0, 4);
+    research.forEach((s) => used.add(s.id));
 
     const SECTOR_ORDER = ["ai", "finance", "semiconductors"];
     const order = Array.from(new Set([...sectorPref, ...SECTOR_ORDER]));
@@ -168,12 +176,25 @@ export default function FeedPage(): JSX.Element {
     });
     groups.forEach((g) => g.stories.forEach((s) => used.add(s.id)));
 
+    // "Latest" — the most-recent leftovers as a dense timestamped strip.
+    const afterSectors = nonGated.filter((s) => !used.has(s.id));
+    const latest = [...afterSectors]
+      .sort(
+        (a, b) =>
+          new Date(b.published_at ?? b.created_at).getTime() -
+          new Date(a.published_at ?? a.created_at).getTime(),
+      )
+      .slice(0, 9);
+    latest.forEach((s) => used.add(s.id));
+
     const riverItems = items.filter((i) => !used.has(i.id));
     return {
       lead: leadStory,
       rail: railStories,
       spotlight: spot,
+      research,
       sectorGroups: groups,
+      latest,
       river: riverItems,
     };
   }, [items, profile?.sectors]);
@@ -307,11 +328,17 @@ export default function FeedPage(): JSX.Element {
       {/* ===== Developing spotlight ===== */}
       {spotlight && <SpotlightBand story={spotlight} />}
 
+      {/* ===== VALO Originals (native editorial) ===== */}
+      {research.length > 0 && <ResearchReadBand stories={research} />}
+
       {/* ===== Per-sector sections (alternating layout shapes) ===== */}
       {sectorGroups.map((g, i) => {
         const Layout = SECTION_LAYOUTS[i % SECTION_LAYOUTS.length];
         return <Layout key={g.sector} sector={g.sector} stories={g.stories} />;
       })}
+
+      {/* ===== Latest (dense timestamped strip) ===== */}
+      {latest.length > 0 && <LatestStrip stories={latest} />}
 
       {/* ===== Tail river (catch-all + infinite scroll) ===== */}
       {river.length > 0 && (
