@@ -133,7 +133,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           )}
         </div>
 
-        <h1 className="font-display text-[32px] font-semibold leading-[1.12] tracking-tight text-ink md:text-[38px]">
+        <h1 className="font-display text-[34px] font-bold leading-[1.08] tracking-tight text-ink md:text-[42px]">
           {story.headline}
         </h1>
 
@@ -172,7 +172,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
             The synthesis
           </p>
-          <p className="text-[15px] leading-[1.75] text-ink">
+          <p className="text-[16px] leading-[1.8] text-ink">
             {story.generic_commentary}
           </p>
         </section>
@@ -289,24 +289,26 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </section>
       )}
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-ink-muted">
-        <span className="inline-flex items-center gap-1">
-          <MessageSquare className="h-4 w-4" />
-          {story.comment_count} {story.comment_count === 1 ? "comment" : "comments"}
-        </span>
-        {story.source_url && (
-          <div className="flex flex-col items-end gap-1">
-            <a
-              href={story.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-ink-muted transition-colors hover:text-accent"
-            >
-              {story.source_name ?? "Read source"}
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
+      {/* Phase 12u — editorial "read the full story" callout. The primary
+          source link, promoted from a footer afterthought to a real CTA
+          block so the reading column resolves to a clear next action.
+          Ingested only — native posts have no external primary to link to. */}
+      {!native && story.source_url && (
+        <a
+          href={story.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center justify-between gap-4 rounded-lg border border-line bg-surface px-5 py-4 no-underline transition-colors hover:border-accent hover:no-underline"
+        >
+          <span className="flex flex-col gap-0.5">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+              Read the full story
+            </span>
+            <span className="font-display text-[17px] font-semibold leading-snug text-ink">
+              {story.source_name ?? "View original source"}
+            </span>
             {story.sources.length > 1 && (
-              <span className="text-xs text-ink-muted/80">
+              <span className="mt-0.5 text-xs text-ink-muted">
                 Also covered by{" "}
                 {story.sources
                   .filter((s) => s.role === "alternate")
@@ -314,8 +316,19 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
                   .join(", ")}
               </span>
             )}
-          </div>
-        )}
+          </span>
+          <ExternalLink
+            className="h-5 w-5 flex-none text-ink-muted transition-colors group-hover:text-accent"
+            aria-hidden
+          />
+        </a>
+      )}
+
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm text-ink-muted">
+        <span className="inline-flex items-center gap-1">
+          <MessageSquare className="h-4 w-4" />
+          {story.comment_count} {story.comment_count === 1 ? "comment" : "comments"}
+        </span>
       </footer>
     </article>
   );
