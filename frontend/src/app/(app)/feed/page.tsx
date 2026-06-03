@@ -14,26 +14,11 @@ import { GatedStoryCard } from "@/components/stories/GatedStoryCard";
 import { FeedLead } from "@/components/feed/FeedLead";
 import { FeedRailItem } from "@/components/feed/FeedRailItem";
 import { SectorFilter } from "@/components/feed/SectorFilter";
-import { SectorSection } from "@/components/feed/SectorSection";
-import { SectorTriptych } from "@/components/feed/SectorTriptych";
-import { SectorMosaic } from "@/components/feed/SectorMosaic";
 import { SpotlightBand } from "@/components/feed/SpotlightBand";
 import { ResearchReadBand } from "@/components/feed/ResearchReadBand";
-import { LatestStrip } from "@/components/feed/LatestStrip";
 import { SectorBadge } from "@/components/stories/SectorBadge";
-import type { SectionProps } from "@/components/feed/sectionShared";
 import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
-
-// Each sector band uses a structurally DIFFERENT layout, cycled by
-// position, so no two sections down the scroll share a shape (the
-// Bloomberg "nothing repeats" feel): feature+list, then triptych, then
-// big-feature+thumbnail-mosaic.
-const SECTION_LAYOUTS: Array<(props: SectionProps) => JSX.Element | null> = [
-  SectorSection,
-  SectorTriptych,
-  SectorMosaic,
-];
 
 const ROLE_LABELS: Record<string, string> = {
   founder: "Founder",
@@ -117,21 +102,20 @@ export default function FeedPage(): JSX.Element {
     [data],
   );
 
-  // Modular front-page composition (Phase 12y) — a briefing with rhythm,
-  // not a uniform feed:
-  //   1. LEAD package — a non-gated story (preferring one with a hero image)
+  // Front-page composition (Phase 12z) — re-centered on RANK + personalization
+  // after the advisory board flagged sector-partitioning as fighting the
+  // "the few that matter, for you" promise. The feed stays in ranked order;
+  // a few conditional editorial moments sit on top, then one ranked river:
+  //   1. LEAD package — top non-gated story (preferring a real hero image)
   //      + a numbered "Top stories" rail.
-  //   2. DEVELOPING spotlight — the first multi-source story left over gets
-  //      its own wide, image-led band.
-  //   3. SECTOR sections — remaining stories grouped by industry, each its
-  //      own band (featured image card + supporting list), user's sectors
-  //      first.
-  //   4. TAIL river — anything left (incl. gated soft-blocks) flows into the
-  //      2-column grid that powers infinite scroll.
-  // Gated items never become lead/rail/spotlight/featured — they only ever
-  // appear in the tail river.
-  const { lead, rail, spotlight, research, sectorGroups, latest, river } = useMemo(() => {
-    const sectorPref = profile?.sectors ?? [];
+  //   2. DEVELOPING — the first multi-source (widely-covered) story, as a
+  //      wide image-led band (only when one exists).
+  //   3. VALO ORIGINALS — native editorial synthesis, its own band (only
+  //      when native posts exist).
+  //   4. RIVER — everything else, in RANK ORDER, as one grid (sector shown
+  //      as the card tag; the filter pills above slice by sector on demand).
+  //      Gated soft-blocks only ever appear here.
+  const { lead, rail, spotlight, research, river } = useMemo(() => {
     const nonGated = items.filter((i): i is Story & { gated: false } =>
       !isGatedFeedItem(i),
     );
@@ -149,55 +133,21 @@ export default function FeedPage(): JSX.Element {
     if (spot) used.add(spot.id);
 
     // VALO Originals (native editorial synthesis) get their own band.
-    const research = nonGated
+    const researchItems = nonGated
       .filter((s) => !used.has(s.id) && s.kind === "native")
       .slice(0, 4);
-    research.forEach((s) => used.add(s.id));
+    researchItems.forEach((s) => used.add(s.id));
 
-    const SECTOR_ORDER = ["ai", "finance", "semiconductors"];
-    const order = Array.from(new Set([...sectorPref, ...SECTOR_ORDER]));
-    const afterSpot = nonGated.filter((s) => !used.has(s.id));
-    const groups = order
-      .map((sec) => ({
-        sector: sec,
-        stories: afterSpot.filter((s) => s.sector === sec).slice(0, 4),
-      }))
-      .filter((g) => g.stories.length > 0);
-    // Float a story WITH a real image to the front of each section so the
-    // big featured slot is a photo, not a fallback panel.
-    const hasImage = (s: Story & { gated: false }): boolean =>
-      Boolean(s.image_url || (s.kind === "native" && s.illustration_url));
-    groups.forEach((g) => {
-      const idx = g.stories.findIndex(hasImage);
-      if (idx > 0) {
-        const [withImg] = g.stories.splice(idx, 1);
-        g.stories.unshift(withImg);
-      }
-    });
-    groups.forEach((g) => g.stories.forEach((s) => used.add(s.id)));
-
-    // "Latest" — the most-recent leftovers as a dense timestamped strip.
-    const afterSectors = nonGated.filter((s) => !used.has(s.id));
-    const latest = [...afterSectors]
-      .sort(
-        (a, b) =>
-          new Date(b.published_at ?? b.created_at).getTime() -
-          new Date(a.published_at ?? a.created_at).getTime(),
-      )
-      .slice(0, 9);
-    latest.forEach((s) => used.add(s.id));
-
+    // Everything else flows into one ranked river (order preserved).
     const riverItems = items.filter((i) => !used.has(i.id));
     return {
       lead: leadStory,
       rail: railStories,
       spotlight: spot,
-      research,
-      sectorGroups: groups,
-      latest,
+      research: researchItems,
       river: riverItems,
     };
-  }, [items, profile?.sectors]);
+  }, [items]);
 
   // Stagger the river only on the first load; later infinite-scroll
   // batches mount without entrance animation.
@@ -211,7 +161,6 @@ export default function FeedPage(): JSX.Element {
   const date = useMemo(() => todayLabel(), []);
   const roleLabel = profile?.role ? ROLE_LABELS[profile.role] ?? profile.role : null;
   const userSectors = profile?.sectors ?? [];
-  const storyCount = data?.pages?.[0]?.total ?? items.length;
 
   return (
     <div className="space-y-10 pb-16 pt-2">
@@ -225,12 +174,8 @@ export default function FeedPage(): JSX.Element {
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
               {date}
               {roleLabel ? ` · ${roleLabel}` : ""}
-              {storyCount > 0 ? (
-                <>
-                  {" · "}
-                  <span className="text-ink">{storyCount} stories today</span>
-                </>
-              ) : null}
+              {" · "}
+              <span className="text-ink">Ranked for you</span>
             </p>
           </div>
           <div className="flex items-center gap-3 pb-0.5">
@@ -331,16 +276,7 @@ export default function FeedPage(): JSX.Element {
       {/* ===== VALO Originals (native editorial) ===== */}
       {research.length > 0 && <ResearchReadBand stories={research} />}
 
-      {/* ===== Per-sector sections (alternating layout shapes) ===== */}
-      {sectorGroups.map((g, i) => {
-        const Layout = SECTION_LAYOUTS[i % SECTION_LAYOUTS.length];
-        return <Layout key={g.sector} sector={g.sector} stories={g.stories} />;
-      })}
-
-      {/* ===== Latest (dense timestamped strip) ===== */}
-      {latest.length > 0 && <LatestStrip stories={latest} />}
-
-      {/* ===== Tail river (catch-all + infinite scroll) ===== */}
+      {/* ===== The ranked river — everything else, in order ===== */}
       {river.length > 0 && (
         <section className="space-y-5">
           <div className="flex items-center gap-3">
@@ -349,7 +285,7 @@ export default function FeedPage(): JSX.Element {
               className="h-2 w-2 flex-none rounded-[2px] bg-accent"
             />
             <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-              More stories
+              The rest of your briefing
             </h2>
             <span className="h-px flex-1 bg-line" aria-hidden />
           </div>
