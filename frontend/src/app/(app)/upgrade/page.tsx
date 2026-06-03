@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, Loader2, ShieldCheck } from "lucide-react";
 import { useTier } from "@/hooks/useTier";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createCheckoutSession, extractApiError, type BillingPlan } from "@/lib/api";
+import { track } from "@/lib/analytics";
 
 // Phase 12g — /upgrade. Phase 12v — rebuilt as a real offer surface on
 // the Value Equation (dream outcome × likelihood ÷ time × effort) with
@@ -27,6 +28,33 @@ const PRO_FEATURES: ReadonlyArray<string> = [
   "Unlimited search",
   "Daily 7am intelligence digest",
 ];
+
+// Niche the dream outcome — three role-specific promises so "for whom"
+// is answered concretely rather than "for professionals."
+const SECTOR_OUTCOMES: ReadonlyArray<{ label: string; line: string }> = [
+  {
+    label: "AI",
+    line: "The model release, paper, or raise your roadmap depends on — before it's everywhere.",
+  },
+  {
+    label: "Finance",
+    line: "The print, filing, or rate move that repositions a book — with the read on why.",
+  },
+  {
+    label: "Semis",
+    line: "The node, capex, or export-control shift that resets the supply chain — first.",
+  },
+];
+
+// A real, fully-rendered sample so a prospect can TASTE the product on
+// the offer page instead of taking "tailored commentary" on faith.
+const SAMPLE = {
+  kicker: "Semiconductors · TSMC",
+  role: "If you run a semis equity book",
+  headline: "TSMC lifts 2026 capex to $52B on AI-accelerator demand",
+  commentary:
+    "The raise is almost entirely leading-edge (N2/A16) and advanced packaging — not mature nodes. That widens TSMC's lead on advanced capacity and is a tell on where hyperscaler accelerator orders actually land through 2027. Watch CoWoS: it's the binding constraint, and this capex says they're betting it stays that way.",
+} as const;
 
 function PlanCard({
   name,
@@ -93,7 +121,12 @@ export default function UpgradePage(): JSX.Element {
   const [submitting, setSubmitting] = useState<BillingPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    track("upgrade_viewed", { tier: tier ?? "unknown", trialAvailable });
+  }, [tier, trialAvailable]);
+
   const startCheckout = async (plan: BillingPlan): Promise<void> => {
+    track("checkout_started", { plan, trialAvailable });
     setSubmitting(plan);
     setError(null);
     try {
@@ -132,6 +165,18 @@ export default function UpgradePage(): JSX.Element {
         </p>
       </header>
 
+      {/* Niche the promise — concrete, per-sector outcomes. */}
+      <section className="grid gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-3">
+        {SECTOR_OUTCOMES.map((o) => (
+          <div key={o.label} className="bg-surface p-4">
+            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+              {o.label}
+            </p>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink">{o.line}</p>
+          </div>
+        ))}
+      </section>
+
       {tier === "pro_trial" && days !== null && (
         <div
           className="rounded-md border px-4 py-3 text-center text-sm text-ink"
@@ -155,6 +200,36 @@ export default function UpgradePage(): JSX.Element {
       <section className="grid gap-4 md:grid-cols-2">
         <PlanCard name="Free" price="$0" features={FREE_FEATURES} />
         <PlanCard name="Pro" price="$10/mo" features={PRO_FEATURES} emphasized />
+      </section>
+
+      {/* Taste the product — a real rendered sample of role-tailored
+          commentary, so "personalized" isn't taken on faith. */}
+      <section className="space-y-3">
+        <p className="text-center font-mono text-[11px] uppercase tracking-[0.14em] text-ink-muted">
+          See exactly what Pro reads for you
+        </p>
+        <Card flat className="space-y-3 border-t-2 border-t-sector-semis p-5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-semis">
+              {SAMPLE.kicker}
+            </span>
+          </div>
+          <h3 className="font-display text-[19px] font-bold leading-snug text-ink">
+            {SAMPLE.headline}
+          </h3>
+          <div className="space-y-1.5">
+            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+              {SAMPLE.role}
+            </p>
+            <p className="text-[14px] leading-[1.7] text-ink-muted">
+              {SAMPLE.commentary}
+            </p>
+          </div>
+          <p className="border-t border-line pt-2 text-[11px] text-ink-muted">
+            Sample — your commentary is written for your role, seniority, and
+            the sectors you follow.
+          </p>
+        </Card>
       </section>
 
       {/* Price anchor — cost of inaction + the analyst-hour comparison. The
@@ -213,11 +288,11 @@ export default function UpgradePage(): JSX.Element {
           </p>
         )}
 
-        <p className="flex items-center justify-center gap-1.5 text-xs text-ink-muted">
-          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+        <p className="mx-auto flex max-w-[44ch] items-center justify-center gap-1.5 text-xs leading-relaxed text-ink-muted">
+          <ShieldCheck className="h-3.5 w-3.5 flex-none" aria-hidden />
           {trialAvailable
-            ? "No charge today. Cancel anytime during your trial."
-            : "Cancel anytime. Secure checkout via Stripe."}
+            ? "No charge today. If your first week doesn't surface a story you act on, cancel in one click — we won't ask why."
+            : "Cancel in one click, anytime. Secure checkout via Stripe."}
         </p>
       </section>
     </div>
