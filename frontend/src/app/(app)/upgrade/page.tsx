@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Check, Clock, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { useTier } from "@/hooks/useTier";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -248,6 +248,23 @@ export default function UpgradePage(): JSX.Element {
             every morning before you do.
           </span>
         </p>
+      </section>
+
+      {/* Trust strip — honest, verifiable signals (no fabricated proof). */}
+      <section className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+        {[
+          { icon: Clock, label: "Cancel in one click" },
+          { icon: Lock, label: "Your reading stays private" },
+          { icon: ShieldCheck, label: "Secure Stripe checkout" },
+        ].map(({ icon: Icon, label }) => (
+          <div
+            key={label}
+            className="flex items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 py-2.5 text-xs text-ink-muted"
+          >
+            <Icon className="h-3.5 w-3.5 flex-none text-accent" aria-hidden />
+            {label}
+          </div>
+        ))}
       </section>
 
       <section className="space-y-4 text-center">
