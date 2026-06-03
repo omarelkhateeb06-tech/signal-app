@@ -204,7 +204,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
       <section className="space-y-3 rounded-lg border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
-            Why it matters to you
+            {isFree ? "Why it matters" : "Why it matters to you"}
           </p>
           <DepthToggle
             value={depth}
@@ -265,10 +265,18 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
             ) : resolvedCommentary ? (
               <Commentary commentary={resolvedCommentary} />
             ) : (
-              <PersonalizationBox
-                text={story.why_it_matters_to_you}
-                loading={isCommentaryLoading}
-              />
+              <>
+                <PersonalizationBox
+                  text={story.why_it_matters_to_you}
+                  loading={isCommentaryLoading}
+                />
+                {commentaryQuery.isError && !isCommentaryLoading && (
+                  <p className="mt-2 text-xs text-ink-muted">
+                    Showing the standard take — your tailored commentary could
+                    not load just now.
+                  </p>
+                )}
+              </>
             )}
           </motion.div>
         </AnimatePresence>
