@@ -34,7 +34,7 @@ export default function AppShellLayout({
         <div className="flex">
           <Sidebar />
           <main className="flex-1 px-4 py-8 md:px-8">
-            <div className="mx-auto max-w-[1500px]">
+            <div className="mx-auto max-w-[1500px] 2xl:max-w-[1760px]">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={pathname}

@@ -122,7 +122,7 @@ export default function FeedPage(): JSX.Element {
     const leadStory =
       nonGated.slice(0, 5).find((s) => s.image_url) ?? nonGated[0] ?? null;
     const railStories = leadStory
-      ? nonGated.filter((s) => s.id !== leadStory.id).slice(0, 4)
+      ? nonGated.filter((s) => s.id !== leadStory.id).slice(0, 5)
       : [];
     const used = new Set<string>(
       [leadStory, ...railStories].filter(Boolean).map((s) => (s as Story).id),
@@ -285,13 +285,13 @@ export default function FeedPage(): JSX.Element {
               className="h-2 w-2 flex-none rounded-[2px] bg-accent"
             />
             <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-              The rest of your briefing
+              Ranked feed
             </h2>
             <span className="h-px flex-1 bg-line" aria-hidden />
           </div>
 
           <motion.div
-            className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6 xl:grid-cols-3"
+            className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 md:gap-6 xl:grid-cols-3"
             variants={{
               hidden: {},
               visible: { transition: { staggerChildren: 0.06 } },
