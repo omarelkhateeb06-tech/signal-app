@@ -151,7 +151,15 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                         }
                   }
                 >
-                  {loading ? "Generating your briefing…" : body}
+                  {loading ? (
+                    <span aria-hidden className="block space-y-2">
+                      <span className="skeleton block h-4 w-full rounded" />
+                      <span className="skeleton block h-4 w-11/12 rounded" />
+                      <span className="skeleton block h-4 w-3/4 rounded" />
+                    </span>
+                  ) : (
+                    body
+                  )}
                 </motion.p>
               </AnimatePresence>
             </div>

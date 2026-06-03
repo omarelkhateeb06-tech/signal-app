@@ -148,13 +148,26 @@ export default function UpgradePage(): JSX.Element {
           VALO Pro
         </p>
         <h1 className="font-display text-[38px] font-bold leading-[1.06] tracking-tight text-ink">
-          Never miss the one story that moves your market.
+          Walk into every room already knowing what moved your market.
         </h1>
         <p className="mx-auto max-w-[46ch] text-base leading-relaxed text-ink-muted">
           Pro reads AI, Finance, and Semiconductors for you and tells you why
-          each story matters to your role — in the time it takes to drink your
-          coffee.
+          each story matters to your role — in the five minutes before your
+          first coffee. Never miss the one that matters.
         </p>
+        <div className="pt-1">
+          <Button
+            size="lg"
+            onClick={() => startCheckout("monthly")}
+            disabled={submitting !== null}
+          >
+            {submitting === "monthly" ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              primaryLabel
+            )}
+          </Button>
+        </div>
       </header>
 
       {/* Niche the promise — concrete, per-sector outcomes. */}

@@ -60,6 +60,7 @@ export function DepthToggle({
             type="button"
             role="tab"
             aria-selected={isActive}
+            aria-label={isLocked ? `${opt.label} — Pro feature, locked` : opt.label}
             data-testid={`depth-toggle-${opt.value}`}
             onClick={() => {
               if (isLocked) {
