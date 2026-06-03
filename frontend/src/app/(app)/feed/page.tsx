@@ -15,10 +15,23 @@ import { FeedLead } from "@/components/feed/FeedLead";
 import { FeedRailItem } from "@/components/feed/FeedRailItem";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { SectorSection } from "@/components/feed/SectorSection";
+import { SectorTriptych } from "@/components/feed/SectorTriptych";
+import { SectorMosaic } from "@/components/feed/SectorMosaic";
 import { SpotlightBand } from "@/components/feed/SpotlightBand";
 import { SectorBadge } from "@/components/stories/SectorBadge";
+import type { SectionProps } from "@/components/feed/sectionShared";
 import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
+
+// Each sector band uses a structurally DIFFERENT layout, cycled by
+// position, so no two sections down the scroll share a shape (the
+// Bloomberg "nothing repeats" feel): feature+list, then triptych, then
+// big-feature+thumbnail-mosaic.
+const SECTION_LAYOUTS: Array<(props: SectionProps) => JSX.Element | null> = [
+  SectorSection,
+  SectorTriptych,
+  SectorMosaic,
+];
 
 const ROLE_LABELS: Record<string, string> = {
   founder: "Founder",
@@ -283,10 +296,11 @@ export default function FeedPage(): JSX.Element {
       {/* ===== Developing spotlight ===== */}
       {spotlight && <SpotlightBand story={spotlight} />}
 
-      {/* ===== Per-sector sections ===== */}
-      {sectorGroups.map((g) => (
-        <SectorSection key={g.sector} sector={g.sector} stories={g.stories} />
-      ))}
+      {/* ===== Per-sector sections (alternating layout shapes) ===== */}
+      {sectorGroups.map((g, i) => {
+        const Layout = SECTION_LAYOUTS[i % SECTION_LAYOUTS.length];
+        return <Layout key={g.sector} sector={g.sector} stories={g.stories} />;
+      })}
 
       {/* ===== Tail river (catch-all + infinite scroll) ===== */}
       {river.length > 0 && (
@@ -303,7 +317,7 @@ export default function FeedPage(): JSX.Element {
           </div>
 
           <motion.div
-            className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6"
+            className="grid grid-cols-1 gap-5 md:grid-cols-2 md:gap-6 xl:grid-cols-3"
             variants={{
               hidden: {},
               visible: { transition: { staggerChildren: 0.06 } },
