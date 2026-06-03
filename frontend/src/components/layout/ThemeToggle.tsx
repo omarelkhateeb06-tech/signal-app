@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 // Phase 12v — dark-mode toggle. The actual theme class is set pre-paint
 // by the inline script in layout.tsx (reads localStorage `theme`, falls
@@ -24,6 +25,7 @@ export function ThemeToggle(): JSX.Element {
       // localStorage can throw in private-mode / blocked-cookie contexts;
       // the toggle still works for the session, it just won't persist.
     }
+    track("theme_toggled", { theme: next ? "dark" : "light" });
     setDark(next);
   };
 
