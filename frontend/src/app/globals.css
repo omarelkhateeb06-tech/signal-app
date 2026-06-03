@@ -113,6 +113,33 @@
     color-scheme: dark;
   }
 
+  /*
+   * Design B — "The Terminal" (12x parallel build). A dark, OLED-grade
+   * intelligence surface (Bloomberg-terminal × editorial). Scoped to a
+   * `.theme-terminal` wrapper so it coexists with the light Design A
+   * without touching global state. Reuses the token utilities (bg-surface,
+   * text-ink, border-line, sector hues) — only the token VALUES change,
+   * so the whole subtree re-skins automatically. Sector + accent hues are
+   * brightened for legibility on near-black (WCAG AA+ on --bg).
+   */
+  .theme-terminal {
+    --bg: #07090d;
+    --surface: #0f141c;
+    --ink: #f4f6f9;
+    --ink-muted: #8b94a3;
+    --line: #222a37;
+    --accent: #3ad6bd;
+    --accent-hover: #5ce3cd;
+    --accent-fg: #052420;
+    --ai: #9a8cff;
+    --finance: #34cf8f;
+    --semis: #f0a15a;
+    --ok: #34cf8f;
+    --warn: #f0c14a;
+    --err: #f06a6a;
+    color-scheme: dark;
+  }
+
   /* Global resets / defaults */
   * {
     border-color: var(--line);
