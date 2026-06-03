@@ -16,6 +16,12 @@ vi.mock("@/hooks/useStorySave", () => ({
   useStorySave: () => ({ isSaved: false, toggleSave: vi.fn(), isLoading: false }),
 }));
 
+// Pro tier so the personalized "Why it matters to you" label renders for the
+// native-lead assertions; the honest plain label is the free-tier path.
+vi.mock("@/hooks/useTier", () => ({
+  useTier: () => ({ data: { tier: "pro", trial_available: false } }),
+}));
+
 vi.mock("next/image", () => ({
   default: (
     props: React.ImgHTMLAttributes<HTMLImageElement> & { src: string; alt: string },

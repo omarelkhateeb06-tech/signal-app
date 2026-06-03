@@ -47,6 +47,10 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
 
   const tierQuery = useTier();
   const isFree = tierQuery.data?.tier === "free";
+  // The "to you" label only when commentary is actually personalized
+  // (confirmed Pro/trial); loading/free shows the honest plain label.
+  const isPersonalized =
+    tierQuery.data?.tier === "pro" || tierQuery.data?.tier === "pro_trial";
   const trialAvailable = tierQuery.data?.trial_available ?? false;
 
   const [depth, setDepth] = useState<DepthOverride>("accessible");
@@ -204,7 +208,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
       <section className="space-y-3 rounded-lg border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
-            {isFree ? "Why it matters" : "Why it matters to you"}
+            {isPersonalized ? "Why it matters to you" : "Why it matters"}
           </p>
           <DepthToggle
             value={depth}

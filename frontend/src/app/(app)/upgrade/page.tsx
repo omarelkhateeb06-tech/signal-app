@@ -145,7 +145,7 @@ export default function UpgradePage(): JSX.Element {
 
       <header className="space-y-3 text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
-          VALO Pro
+          SIGNAL Pro
         </p>
         <h1 className="font-display text-[38px] font-bold leading-[1.06] tracking-tight text-ink">
           Walk into every room already knowing what moved your market.
@@ -211,38 +211,29 @@ export default function UpgradePage(): JSX.Element {
           all three depths so "personalized commentary" isn't taken on faith. */}
       <DepthDemo />
 
-      {/* Price anchor — cost of inaction + the analyst-hour comparison. The
-          point is to move the decision off "$10" and onto perceived value. */}
-      <section
-        className="rounded-lg border px-5 py-4 text-center"
-        style={{
-          backgroundColor: "color-mix(in srgb, var(--accent) 5%, var(--surface))",
-          borderColor: "color-mix(in srgb, var(--accent) 20%, var(--line))",
-        }}
-      >
-        <p className="text-[15px] leading-relaxed text-ink">
+      {/* Price anchor — plain text, not a box, so the guarantee below is the
+          only emphasized block. Moves the decision off price onto value. */}
+      <section className="text-center">
+        <p className="mx-auto max-w-[48ch] text-[15px] leading-relaxed text-ink">
           One missed signal costs more than a year of Pro.{" "}
           <span className="text-ink-muted">
-            At $10/month, Pro is less than a single analyst-hour — and it works
-            every morning before you do.
+            Pro is less than a single analyst-hour — and it works every morning
+            before you do.
           </span>
         </p>
       </section>
 
-      {/* Trust strip — honest, verifiable signals (no fabricated proof). */}
-      <section className="grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+      {/* Trust signals — one quiet row, not three boxes. */}
+      <section className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-ink-muted">
         {[
           { icon: Clock, label: "Cancel in one click" },
           { icon: Lock, label: "Your reading stays private" },
           { icon: ShieldCheck, label: "Secure Stripe checkout" },
         ].map(({ icon: Icon, label }) => (
-          <div
-            key={label}
-            className="flex items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 py-2.5 text-xs text-ink-muted"
-          >
+          <span key={label} className="inline-flex items-center gap-1.5">
             <Icon className="h-3.5 w-3.5 flex-none text-accent" aria-hidden />
             {label}
-          </div>
+          </span>
         ))}
       </section>
 
@@ -259,7 +250,7 @@ export default function UpgradePage(): JSX.Element {
         <p className="text-[14px] leading-relaxed text-ink">
           <span className="font-semibold">The 7-day promise.</span>{" "}
           {trialAvailable
-            ? "If VALO doesn't surface at least one story worth acting on in your first week, cancel in one click before day 7 — you're never charged. No email, no “are you sure,” no friction."
+            ? "If SIGNAL doesn't surface at least one story worth acting on in your first week, cancel in one click before day 7 — you're never charged. No email, no “are you sure,” no friction."
             : "Cancel in one click, anytime — no email, no “are you sure,” no friction. Your subscription ends the moment you say so."}
         </p>
       </section>
@@ -269,7 +260,7 @@ export default function UpgradePage(): JSX.Element {
           <p className="font-display text-[30px] font-bold text-ink">
             $10<span className="text-lg font-normal text-ink-muted">/month</span>
           </p>
-          <p className="text-sm text-ink-muted">7 days free, then $10/month.</p>
+          <p className="text-sm text-ink-muted">7 days free, then cancel anytime.</p>
         </div>
 
         <Button
@@ -289,11 +280,11 @@ export default function UpgradePage(): JSX.Element {
           type="button"
           onClick={() => startCheckout("annual")}
           disabled={submitting !== null}
-          className="text-sm text-ink-muted underline-offset-2 transition-colors hover:text-ink hover:underline disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-60"
         >
           {submitting === "annual"
             ? "Opening checkout…"
-            : "Prefer annual? Pay $96/year — save 20%"}
+            : "Or pay annually — $96/year (save 20%)"}
         </button>
 
         {error && (
