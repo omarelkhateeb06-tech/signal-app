@@ -51,17 +51,19 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
 
   const [depth, setDepth] = useState<DepthOverride>("accessible");
   const [lockedAttempt, setLockedAttempt] = useState<DepthOverride | null>(null);
-  const [shared, setShared] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
 
   const handleShare = async (): Promise<void> => {
     const url = typeof window !== "undefined" ? window.location.href : "";
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
         await navigator.share({ title: story.headline, url });
+        setShareMsg("Shared");
+        setTimeout(() => setShareMsg(null), 2000);
       } else if (typeof navigator !== "undefined" && navigator.clipboard) {
         await navigator.clipboard.writeText(url);
-        setShared(true);
-        setTimeout(() => setShared(false), 2000);
+        setShareMsg("Link copied");
+        setTimeout(() => setShareMsg(null), 2000);
       }
     } catch {
       // user dismissed the share sheet, or the API is unavailable — no-op.
@@ -354,7 +356,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           aria-label="Share this story"
         >
           <Share2 className="h-4 w-4" aria-hidden />
-          {shared ? "Link copied" : "Share"}
+          <span aria-live="polite">{shareMsg ?? "Share"}</span>
         </button>
       </footer>
     </article>

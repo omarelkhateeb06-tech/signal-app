@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { createCheckoutSession, extractApiError, type BillingPlan } from "@/lib/api";
 import { track } from "@/lib/analytics";
+import { DepthDemo } from "@/components/upgrade/DepthDemo";
 
 // Phase 12g — /upgrade. Phase 12v — rebuilt as a real offer surface on
 // the Value Equation (dream outcome × likelihood ÷ time × effort) with
@@ -46,15 +47,6 @@ const SECTOR_OUTCOMES: ReadonlyArray<{ label: string; line: string }> = [
   },
 ];
 
-// A real, fully-rendered sample so a prospect can TASTE the product on
-// the offer page instead of taking "tailored commentary" on faith.
-const SAMPLE = {
-  kicker: "Semiconductors · TSMC",
-  role: "If you run a semis equity book",
-  headline: "TSMC lifts 2026 capex to $52B on AI-accelerator demand",
-  commentary:
-    "The raise is almost entirely leading-edge (N2/A16) and advanced packaging — not mature nodes. That widens TSMC's lead on advanced capacity and is a tell on where hyperscaler accelerator orders actually land through 2027. Watch CoWoS: it's the binding constraint, and this capex says they're betting it stays that way.",
-} as const;
 
 function PlanCard({
   name,
@@ -202,35 +194,9 @@ export default function UpgradePage(): JSX.Element {
         <PlanCard name="Pro" price="$10/mo" features={PRO_FEATURES} emphasized />
       </section>
 
-      {/* Taste the product — a real rendered sample of role-tailored
-          commentary, so "personalized" isn't taken on faith. */}
-      <section className="space-y-3">
-        <p className="text-center font-mono text-[11px] uppercase tracking-[0.14em] text-ink-muted">
-          See exactly what Pro reads for you
-        </p>
-        <Card flat className="space-y-3 border-t-2 border-t-sector-semis p-5">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-semis">
-              {SAMPLE.kicker}
-            </span>
-          </div>
-          <h3 className="font-display text-[19px] font-bold leading-snug text-ink">
-            {SAMPLE.headline}
-          </h3>
-          <div className="space-y-1.5">
-            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
-              {SAMPLE.role}
-            </p>
-            <p className="text-[14px] leading-[1.7] text-ink-muted">
-              {SAMPLE.commentary}
-            </p>
-          </div>
-          <p className="border-t border-line pt-2 text-[11px] text-ink-muted">
-            Sample — your commentary is written for your role, seniority, and
-            the sectors you follow.
-          </p>
-        </Card>
-      </section>
+      {/* Taste the product — the depth toggle, demonstrated. Same story at
+          all three depths so "personalized commentary" isn't taken on faith. */}
+      <DepthDemo />
 
       {/* Price anchor — cost of inaction + the analyst-hour comparison. The
           point is to move the decision off "$10" and onto perceived value. */}
@@ -265,6 +231,24 @@ export default function UpgradePage(): JSX.Element {
             {label}
           </div>
         ))}
+      </section>
+
+      {/* Guarantee — a named promise with an honest mechanism, framed and
+          placed right above the CTA where it does the most work. */}
+      <section
+        className="flex items-start gap-3 rounded-lg border px-5 py-4"
+        style={{
+          backgroundColor: "color-mix(in srgb, var(--accent) 6%, var(--surface))",
+          borderColor: "color-mix(in srgb, var(--accent) 28%, var(--line))",
+        }}
+      >
+        <ShieldCheck className="mt-0.5 h-5 w-5 flex-none text-accent" aria-hidden />
+        <p className="text-[14px] leading-relaxed text-ink">
+          <span className="font-semibold">The 7-day promise.</span>{" "}
+          {trialAvailable
+            ? "If VALO doesn't surface at least one story worth acting on in your first week, cancel in one click before day 7 — you're never charged. No email, no “are you sure,” no friction."
+            : "Cancel in one click, anytime — no email, no “are you sure,” no friction. Your subscription ends the moment you say so."}
+        </p>
       </section>
 
       <section className="space-y-4 text-center">
@@ -305,11 +289,10 @@ export default function UpgradePage(): JSX.Element {
           </p>
         )}
 
-        <p className="mx-auto flex max-w-[44ch] items-center justify-center gap-1.5 text-xs leading-relaxed text-ink-muted">
-          <ShieldCheck className="h-3.5 w-3.5 flex-none" aria-hidden />
+        <p className="text-xs text-ink-muted">
           {trialAvailable
-            ? "No charge today. If your first week doesn't surface a story you act on, cancel in one click — we won't ask why."
-            : "Cancel in one click, anytime. Secure checkout via Stripe."}
+            ? "No charge today · secure checkout via Stripe"
+            : "Secure checkout via Stripe · cancel anytime"}
         </p>
       </section>
     </div>
