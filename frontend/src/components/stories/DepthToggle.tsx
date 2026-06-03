@@ -74,7 +74,7 @@ export function DepthToggle({
               "rounded-[6px] px-3 py-1.5 text-sm font-medium",
               "transition-colors duration-150",
               isActive ? "text-ink" : "text-ink-muted hover:text-ink",
-              isLocked ? "opacity-90" : "",
+              isLocked ? "cursor-default opacity-55" : "",
             ].join(" ")}
           >
             {isLocked && <Lock className="h-3 w-3" aria-hidden />}

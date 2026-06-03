@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bookmark, MessageSquare } from "lucide-react";
 import { StorySaveButton } from "@/components/stories/StorySaveButton";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
+import { useTier } from "@/hooks/useTier";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
 import { timeAgo } from "@/lib/timeAgo";
 import { isNativeStory, sourceDisplayLabel, splitHook } from "@/lib/feedCard";
@@ -52,6 +53,10 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const body = resolved?.thesis ?? story.why_it_matters_to_you;
 
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
+  // Honest framing: the intimate "to you" claim only appears when the
+  // commentary is actually personalized. Free-tier reads generic copy, so
+  // it gets the plain "Why it matters" label.
+  const isFree = useTier().data?.tier === "free";
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
   // Phase 12o — native posts brand the kicker by generator
@@ -129,7 +134,7 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
             </h2>
 
             <p className="mb-1.5 mt-5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
-              Why it matters to you
+              {isFree ? "Why it matters" : "Why it matters to you"}
             </p>
             <div className="relative min-h-[4.5rem]">
               <AnimatePresence mode="wait" initial={false}>
