@@ -14,6 +14,8 @@ import { GatedStoryCard } from "@/components/stories/GatedStoryCard";
 import { FeedLead } from "@/components/feed/FeedLead";
 import { FeedRailItem } from "@/components/feed/FeedRailItem";
 import { SectorFilter } from "@/components/feed/SectorFilter";
+import { SectorSection } from "@/components/feed/SectorSection";
+import { SpotlightBand } from "@/components/feed/SpotlightBand";
 import { SectorBadge } from "@/components/stories/SectorBadge";
 import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
@@ -100,17 +102,21 @@ export default function FeedPage(): JSX.Element {
     [data],
   );
 
-  // Front-page composition: a non-gated story anchors the page (lead), the
-  // next few fill the right-hand rail, everything else flows into the river
-  // grid below. Gated items never become the lead/rail — they always render
-  // as the soft-block card in the river.
-  //
-  // Lead selection prefers a story WITH a hero image: scan the top 5 non-gated
-  // stories and pick the first with an image_url, falling back to the top
-  // story when none of the leaders have one. A leader displaced from the lead
-  // slot isn't dropped — it stays in the rail/river (the rail excludes the
-  // chosen lead by id rather than assuming it's index 0).
-  const { lead, rail, river } = useMemo(() => {
+  // Modular front-page composition (Phase 12y) — a briefing with rhythm,
+  // not a uniform feed:
+  //   1. LEAD package — a non-gated story (preferring one with a hero image)
+  //      + a numbered "Top stories" rail.
+  //   2. DEVELOPING spotlight — the first multi-source story left over gets
+  //      its own wide, image-led band.
+  //   3. SECTOR sections — remaining stories grouped by industry, each its
+  //      own band (featured image card + supporting list), user's sectors
+  //      first.
+  //   4. TAIL river — anything left (incl. gated soft-blocks) flows into the
+  //      2-column grid that powers infinite scroll.
+  // Gated items never become lead/rail/spotlight/featured — they only ever
+  // appear in the tail river.
+  const { lead, rail, spotlight, sectorGroups, river } = useMemo(() => {
+    const sectorPref = profile?.sectors ?? [];
     const nonGated = items.filter((i): i is Story & { gated: false } =>
       !isGatedFeedItem(i),
     );
@@ -122,9 +128,31 @@ export default function FeedPage(): JSX.Element {
     const used = new Set<string>(
       [leadStory, ...railStories].filter(Boolean).map((s) => (s as Story).id),
     );
+
+    const remaining = nonGated.filter((s) => !used.has(s.id));
+    const spot = remaining.find((s) => s.sources.length > 1) ?? null;
+    if (spot) used.add(spot.id);
+
+    const SECTOR_ORDER = ["ai", "finance", "semiconductors"];
+    const order = Array.from(new Set([...sectorPref, ...SECTOR_ORDER]));
+    const afterSpot = nonGated.filter((s) => !used.has(s.id));
+    const groups = order
+      .map((sec) => ({
+        sector: sec,
+        stories: afterSpot.filter((s) => s.sector === sec).slice(0, 4),
+      }))
+      .filter((g) => g.stories.length > 0);
+    groups.forEach((g) => g.stories.forEach((s) => used.add(s.id)));
+
     const riverItems = items.filter((i) => !used.has(i.id));
-    return { lead: leadStory, rail: railStories, river: riverItems };
-  }, [items]);
+    return {
+      lead: leadStory,
+      rail: railStories,
+      spotlight: spot,
+      sectorGroups: groups,
+      river: riverItems,
+    };
+  }, [items, profile?.sectors]);
 
   // Stagger the river only on the first load; later infinite-scroll
   // batches mount without entrance animation.
@@ -138,6 +166,7 @@ export default function FeedPage(): JSX.Element {
   const date = useMemo(() => todayLabel(), []);
   const roleLabel = profile?.role ? ROLE_LABELS[profile.role] ?? profile.role : null;
   const userSectors = profile?.sectors ?? [];
+  const storyCount = data?.pages?.[0]?.total ?? items.length;
 
   return (
     <div className="space-y-10 pb-16 pt-2">
@@ -151,6 +180,12 @@ export default function FeedPage(): JSX.Element {
             <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
               {date}
               {roleLabel ? ` · ${roleLabel}` : ""}
+              {storyCount > 0 ? (
+                <>
+                  {" · "}
+                  <span className="text-ink">{storyCount} stories today</span>
+                </>
+              ) : null}
             </p>
           </div>
           <div className="flex items-center gap-3 pb-0.5">
@@ -215,10 +250,12 @@ export default function FeedPage(): JSX.Element {
       {/* ===== Lead + rail ===== */}
       {lead && (
         <section className="grid grid-cols-1 gap-8 lg:grid-cols-[1.7fr_1fr] lg:gap-12">
-          <FeedLead story={lead} />
+          <div className="min-w-0">
+            <FeedLead story={lead} />
+          </div>
 
           {rail.length > 0 && (
-            <aside className="lg:border-l lg:border-line lg:pl-8">
+            <aside className="min-w-0 lg:border-l lg:border-line lg:pl-8">
               <div className="mb-1 flex items-center gap-2">
                 <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
                 <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
@@ -243,7 +280,15 @@ export default function FeedPage(): JSX.Element {
         </section>
       )}
 
-      {/* ===== River ===== */}
+      {/* ===== Developing spotlight ===== */}
+      {spotlight && <SpotlightBand story={spotlight} />}
+
+      {/* ===== Per-sector sections ===== */}
+      {sectorGroups.map((g) => (
+        <SectorSection key={g.sector} sector={g.sector} stories={g.stories} />
+      ))}
+
+      {/* ===== Tail river (catch-all + infinite scroll) ===== */}
       {river.length > 0 && (
         <section className="space-y-5">
           <div className="flex items-center gap-3">
@@ -252,7 +297,7 @@ export default function FeedPage(): JSX.Element {
               className="h-2 w-2 flex-none rounded-[2px] bg-accent"
             />
             <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-              More in your sectors
+              More stories
             </h2>
             <span className="h-px flex-1 bg-line" aria-hidden />
           </div>
