@@ -47,6 +47,16 @@ export function DepthDemo(): JSX.Element {
   const activeIndex = Math.max(0, DEPTHS.findIndex((d) => d.value === depth));
   const active = DEPTHS[activeIndex];
 
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setDepth(DEPTHS[(activeIndex + 1) % DEPTHS.length].value);
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setDepth(DEPTHS[(activeIndex - 1 + DEPTHS.length) % DEPTHS.length].value);
+    }
+  };
+
   return (
     <section className="space-y-3">
       <div className="text-center">
@@ -61,6 +71,7 @@ export function DepthDemo(): JSX.Element {
       <div
         role="tablist"
         aria-label="Commentary depth"
+        onKeyDown={onKeyDown}
         className="relative mx-auto flex w-full max-w-[420px] items-stretch rounded-md border border-line bg-bg p-1"
       >
         <motion.div
@@ -75,7 +86,10 @@ export function DepthDemo(): JSX.Element {
             key={d.value}
             type="button"
             role="tab"
+            id={`depth-tab-${d.value}`}
             aria-selected={d.value === depth}
+            aria-controls="depth-demo-panel"
+            tabIndex={d.value === depth ? 0 : -1}
             onClick={() => setDepth(d.value)}
             className={[
               "relative z-10 flex flex-1 items-center justify-center",
@@ -90,7 +104,12 @@ export function DepthDemo(): JSX.Element {
 
       <p className="text-center text-xs text-ink-muted">{active.blurb}</p>
 
-      <div className="rounded-lg border border-t-2 border-line border-t-sector-semis bg-surface p-5">
+      <div
+        role="tabpanel"
+        id="depth-demo-panel"
+        aria-labelledby={`depth-tab-${depth}`}
+        className="rounded-lg border border-t-2 border-line border-t-sector-semis bg-surface p-5"
+      >
         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-semis">
           Semiconductors · TSMC
         </span>

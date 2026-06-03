@@ -182,12 +182,12 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           the primary body text above the "Why it matters" section. Hidden
           for ingested posts where generic_commentary is a role-neutral
           hook/teaser, not a long-form synthesis. */}
+      {/* Native posts ARE an editorial synthesis — that is their one hero
+          read. Framed like the personalized hero so both post types resolve
+          to a single commentary block. */}
       {native && story.generic_commentary && (
-        <section
-          className="space-y-2 border-l-[3px] pl-4"
-          style={{ borderColor: "var(--accent)" }}
-        >
-          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+        <section className="space-y-2 rounded-lg border border-line bg-surface p-5 shadow-card">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
             The synthesis
           </p>
           <p className="text-[16px] leading-[1.8] text-ink">
@@ -196,9 +196,12 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </section>
       )}
 
-      {/* The personalized commentary is the product's whole promise — frame
-          it as the editorial hero of the page, not a sub-section. */}
-      <section className="space-y-4 rounded-lg border border-line bg-surface p-5 shadow-card">
+      {/* Ingested posts carry the personalized commentary as the page's
+          editorial hero. Native posts already lead with their synthesis
+          above; showing both would stack two editorial bodies, so this
+          block is ingested-only — one story, one hero read. */}
+      {!native && (
+      <section className="space-y-3 rounded-lg border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
             Why it matters to you
@@ -214,9 +217,17 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           />
         </div>
 
+        {/* The depth control, named in-app — not three bare words. */}
+        <p className="text-xs leading-relaxed text-ink-muted">
+          Pick your depth — <span className="text-ink">Accessible</span> in plain
+          English, <span className="text-ink">Briefed</span> for an adjacent pro,{" "}
+          <span className="text-ink">Technical</span> for insiders.
+          {isFree ? " Briefed and Technical are part of Pro." : ""}
+        </p>
+
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
-            key={lockedAttempt ?? serverGate ? "gate" : commentaryKey}
+            key={lockedAttempt || serverGate ? "gate" : commentaryKey}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -262,6 +273,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           </motion.div>
         </AnimatePresence>
       </section>
+      )}
 
       {story.sources.length > 1 && (
         <section className="space-y-2">

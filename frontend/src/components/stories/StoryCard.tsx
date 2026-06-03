@@ -193,7 +193,14 @@ export function StoryCard({
                   overflow: "hidden",
                 }}
               >
-                {isCommentaryLoading ? "Generating your briefing…" : previewText}
+                {isCommentaryLoading ? (
+                  <span aria-hidden className="block space-y-1.5">
+                    <span className="skeleton block h-3.5 w-full rounded" />
+                    <span className="skeleton block h-3.5 w-2/3 rounded" />
+                  </span>
+                ) : (
+                  previewText
+                )}
               </p>
             </>
           ) : (
