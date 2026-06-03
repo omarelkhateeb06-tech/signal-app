@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ExternalLink, Lock, MessageSquare } from "lucide-react";
+import { ExternalLink, Lock, MessageSquare, Share2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { StorySaveButton } from "./StorySaveButton";
 import { PersonalizationBox } from "./PersonalizationBox";
@@ -51,6 +51,22 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
 
   const [depth, setDepth] = useState<DepthOverride>("accessible");
   const [lockedAttempt, setLockedAttempt] = useState<DepthOverride | null>(null);
+  const [shared, setShared] = useState(false);
+
+  const handleShare = async (): Promise<void> => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ title: story.headline, url });
+      } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      }
+    } catch {
+      // user dismissed the share sheet, or the API is unavailable — no-op.
+    }
+  };
 
   const commentaryQuery = useStoryCommentary(story.id, {
     enabled: true,
@@ -178,9 +194,11 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
         </section>
       )}
 
-      <div className="space-y-4">
+      {/* The personalized commentary is the product's whole promise — frame
+          it as the editorial hero of the page, not a sub-section. */}
+      <section className="space-y-4 rounded-lg border border-line bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent">
             Why it matters to you
           </p>
           <DepthToggle
@@ -241,7 +259,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
             )}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </section>
 
       {story.sources.length > 1 && (
         <section className="space-y-2">
@@ -329,6 +347,15 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           <MessageSquare className="h-4 w-4" />
           {story.comment_count} {story.comment_count === 1 ? "comment" : "comments"}
         </span>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="inline-flex items-center gap-1.5 text-ink-muted transition-colors hover:text-accent"
+          aria-label="Share this story"
+        >
+          <Share2 className="h-4 w-4" aria-hidden />
+          {shared ? "Link copied" : "Share"}
+        </button>
       </footer>
     </article>
   );
