@@ -25,8 +25,8 @@ export function SectorFilter({ selected, onChange }: SectorFilterProps): JSX.Ele
         className={clsx(
           "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
           selected.length === 0
-            ? "border-slate-900 bg-slate-900 text-white"
-            : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+            ? "border-accent bg-accent text-accent-fg"
+            : "border-line bg-surface text-ink-muted hover:border-ink-muted hover:text-ink",
         )}
       >
         All
@@ -41,8 +41,8 @@ export function SectorFilter({ selected, onChange }: SectorFilterProps): JSX.Ele
             className={clsx(
               "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
               active
-                ? "border-violet-600 bg-violet-600 text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                ? "border-accent bg-accent text-accent-fg"
+                : "border-line bg-surface text-ink-muted hover:border-ink-muted hover:text-ink",
             )}
           >
             {sector.label}

@@ -57,7 +57,7 @@ export function SpotlightBand({ story }: { story: Story }): JSX.Element {
       >
         <FeatureImage
           story={story}
-          className="aspect-[16/10] w-full md:aspect-auto md:h-full"
+          className="aspect-[16/9] w-full md:aspect-auto md:h-full"
           sizes="(max-width: 768px) 100vw, 50vw"
         />
         <div className="flex min-w-0 flex-col justify-center gap-3 p-6 md:p-8">
