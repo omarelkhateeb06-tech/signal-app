@@ -89,6 +89,26 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
           />
         </div>
       )}
+      {/* Phase 12s — native illustration hero. Native posts carry no
+          scraped og:image; their editorial illustration serves as the
+          hero. 16:9, object-cover, alt from the headline. Gated on
+          !image_url so a native post that somehow has both never renders
+          two heroes (og:image wins). */}
+      {native && story.illustration_url && !story.image_url && (
+        <div className="relative -mx-1 overflow-hidden rounded-lg border border-line">
+          <div className="aspect-[16/9] w-full">
+            <Image
+              src={story.illustration_url}
+              alt={story.headline}
+              fill
+              unoptimized
+              loading="lazy"
+              sizes="(max-width: 768px) 100vw, 720px"
+              className="object-cover"
+            />
+          </div>
+        </div>
+      )}
       <header className="space-y-4">
         {/* Sector kicker + source dateline — same editorial language as
             the feed lead, so the click-through feels continuous. */}

@@ -57,6 +57,9 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   // Phase 12o — native posts brand the kicker by generator
   // ("The Research Read", …); ingested posts show their source name.
   const source = sourceDisplayLabel(story);
+  // Phase 12s — native posts carry no scraped og:image; fall back to the
+  // editorial illustration for the hero. image_url always takes priority.
+  const heroImage = story.image_url ?? (native ? story.illustration_url : null);
   // Ingested three-section split: hook title (first sentence) + body.
   const { hookTitle, commentaryBody } = splitHook(
     story.generic_commentary,
@@ -72,11 +75,11 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
       className="group relative"
     >
       <Link href={`/stories/${story.id}`} className="block hover:no-underline">
-        {story.image_url && (
+        {heroImage && (
           <div className="relative mb-5 overflow-hidden rounded-lg border border-line">
             <div className="aspect-[16/9] w-full">
               <Image
-                src={story.image_url}
+                src={heroImage}
                 alt=""
                 fill
                 unoptimized

@@ -27,6 +27,7 @@ function story(overrides: Partial<Story> = {}): Story {
     primary_source_url: "https://example.com/a",
     sources: [{ url: "https://example.com/a", name: "OutletA", role: "primary" }],
     image_url: null,
+    illustration_url: null,
     published_at: null,
     created_at: "2026-05-10T00:00:00Z",
     author: null,

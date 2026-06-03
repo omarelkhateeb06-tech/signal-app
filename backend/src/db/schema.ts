@@ -657,6 +657,10 @@ export const events = pgTable(
     // by writeEvent from the candidate row. Null when extraction failed
     // or the page didn't carry one.
     imageUrl: text("image_url"),
+    // Phase 12s — AI-generated editorial illustration for native posts
+    // (Higgsfield). Null for ingested events. The read side renders it
+    // only for native posts; image_url takes priority when both exist.
+    illustrationUrl: text("illustration_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

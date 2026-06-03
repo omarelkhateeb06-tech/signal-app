@@ -65,6 +65,7 @@ function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, u
     primarySourceUrl: "https://example.com/post",
     primarySourceName: "Example",
     imageUrl: null,
+    illustrationUrl: null,
     publishedAt: new Date("2026-04-01T00:00:00Z"),
     createdAt: new Date("2026-04-01T00:00:00Z"),
     authorId: "author-1",
@@ -144,6 +145,8 @@ describe("stories endpoints", () => {
       expect(res.body.data.stories[0].why_it_matters_to_you).toContain(
         "As an engineer",
       );
+      // Phase 12s — ingested events carry illustration_url: null on the wire.
+      expect(res.body.data.stories[0].illustration_url).toBeNull();
       expect(res.body.data.total).toBe(1);
       expect(res.body.data.has_more).toBe(false);
     });
@@ -488,7 +491,7 @@ describe("stories endpoints", () => {
       expect(res.body.data.has_more).toBe(false);
     });
 
-    it("returns native events with generator_type on the wire", async () => {
+    it("returns native events with generator_type and illustration_url on the wire", async () => {
       mock.queueSelect([
         {
           id: eventId,
@@ -497,6 +500,7 @@ describe("stories endpoints", () => {
           createdAt: new Date("2026-05-01T00:00:00Z"),
           sector: "ai",
           generatorSlug: "arxiv-synthesis-native",
+          illustrationUrl: "https://cdn.example.com/illustration.png",
         },
       ]); // events query
       mock.queueSelect([{ count: 1 }]); // count
@@ -510,6 +514,9 @@ describe("stories endpoints", () => {
       expect(res.body.data.items[0].id).toBe(eventId);
       expect(res.body.data.items[0].headline).toBe("The Research Read: AI Weekly");
       expect(res.body.data.items[0].generator_type).toBe("arxiv-synthesis-native");
+      expect(res.body.data.items[0].illustration_url).toBe(
+        "https://cdn.example.com/illustration.png",
+      );
       expect(res.body.data.items[0].sector).toBe("ai");
       expect(res.body.data.total).toBe(1);
       expect(res.body.data.has_more).toBe(false);

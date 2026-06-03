@@ -63,6 +63,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
       { url: "https://example.com/article", name: "Example", role: "primary" },
     ],
     image_url: null,
+    illustration_url: null,
     published_at: "2026-05-10T00:00:00Z",
     created_at: "2026-05-10T00:00:00Z",
     author: null,
@@ -104,6 +105,44 @@ describe("StoryCard imagery (text-forward river card)", () => {
     const { container } = renderCard(baseStory({ image_url: null }));
     const imgs = container.querySelectorAll("img");
     expect(imgs.length).toBe(0);
+  });
+});
+
+// Phase 12s — native posts are the one exception to the text-forward river
+// card: they surface their editorial illustration as a thumbnail. Ingested
+// cards stay imageless.
+describe("StoryCard native illustration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function nativeStory(overrides: Partial<Story> = {}): Story {
+    return baseStory({
+      source_name: "SIGNAL",
+      sources: [{ url: "https://signal.so", name: "SIGNAL", role: "primary" }],
+      ...overrides,
+    });
+  }
+
+  it("renders the illustration thumbnail for a native card", () => {
+    const { container } = renderCard(
+      nativeStory({ illustration_url: "https://cdn.example.com/n.png" }),
+    );
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/n.png"]'),
+    ).not.toBeNull();
+  });
+
+  it("renders no image for a native card without an illustration", () => {
+    const { container } = renderCard(nativeStory({ illustration_url: null }));
+    expect(container.querySelectorAll("img").length).toBe(0);
+  });
+
+  it("renders no image for an ingested card even when illustration_url is set", () => {
+    const { container } = renderCard(
+      baseStory({ illustration_url: "https://cdn.example.com/x.png" }),
+    );
+    expect(container.querySelectorAll("img").length).toBe(0);
   });
 });
 
