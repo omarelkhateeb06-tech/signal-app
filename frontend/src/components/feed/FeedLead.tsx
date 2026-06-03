@@ -145,7 +145,7 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                       ? { color: "var(--ink-muted)" }
                       : {
                           display: "-webkit-box",
-                          WebkitLineClamp: 3,
+                          WebkitLineClamp: 4,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }
