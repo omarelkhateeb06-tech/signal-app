@@ -50,7 +50,21 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Phase 12v — set the theme class before first paint so dark mode
+            never flashes. Reads the saved choice, falls back to the OS
+            preference. Inlined (not a module) so it runs synchronously in
+            <head> ahead of body render. */}
+        <script
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-bg font-sans text-ink antialiased">
         <QueryProvider>{children}</QueryProvider>
       </body>

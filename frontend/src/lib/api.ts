@@ -81,6 +81,26 @@ export function extractApiError(error: unknown, fallback = "Something went wrong
   return fallback;
 }
 
+// Phase 12h/12v — billing. Creates a Stripe Checkout session for the
+// $10/mo Pro plan (monthly or annual) and returns the hosted-checkout
+// URL the caller redirects to. The tier flips to `pro` on the webhook
+// after a successful payment (server side).
+export type BillingPlan = "monthly" | "annual";
+
+export interface CheckoutSession {
+  url: string;
+}
+
+export async function createCheckoutSession(
+  plan: BillingPlan = "monthly",
+): Promise<CheckoutSession> {
+  const res = await api.post<{ data: CheckoutSession }>(
+    "/api/v1/billing/checkout",
+    { plan },
+  );
+  return res.data.data;
+}
+
 export interface SignupInput {
   email: string;
   password: string;

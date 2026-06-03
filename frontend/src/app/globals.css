@@ -16,8 +16,11 @@
  *   Semis sector     #A04D17   burnt orange (5.31:1 on cream, AA)
  *   Success / warn / err — sparingly.
  *
- * Dark mode is deliberately not wired (post-launch). The .dark block
- * below stays for the shadcn-style legacy variables only.
+ * Dark mode (12v) is wired via a `.dark` class on <html>, set pre-paint
+ * by the inline theme script in layout.tsx (no FOUC) and toggled from
+ * the header. The new design tokens flip under `.dark`; the legacy
+ * shadcn HSL tokens are left light (only a few low-traffic primitives
+ * read them) and will be migrated in a later pass.
  */
 
 @layer base {
@@ -60,6 +63,32 @@
     --input: 40 25% 87%;
     --ring: 186 85% 26%;
     --radius: 8px;
+  }
+
+  /*
+   * Dark mode (12v). A deep editorial dark — near-black blue-gray base,
+   * a raised surface one notch lighter for cards, near-white ink. The
+   * accent teal and sector hues are brightened just enough to hold
+   * legibility on the dark surface (the light-mode values go muddy on
+   * dark). Only the new design tokens are overridden; layout/spacing is
+   * untouched, so every token-driven surface flips automatically.
+   */
+  .dark {
+    --bg: #0e1116;
+    --surface: #171c26;
+    --ink: #f3f1ee;
+    --ink-muted: #99a1ad;
+    --line: #283040;
+    --accent: #25b0c0;
+    --accent-hover: #46c4d2;
+    --accent-fg: #052228;
+    --ai: #8e84ff;
+    --finance: #2fc78a;
+    --semis: #e0954f;
+    --ok: #2fc78a;
+    --warn: #e0a93a;
+    --err: #e26a6a;
+    color-scheme: dark;
   }
 
   /* Global resets / defaults */

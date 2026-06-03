@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bookmark, LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { TeamSwitcher } from "@/components/layout/TeamSwitcher";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { TrialBadge } from "@/components/layout/TrialBadge";
 
 // Phase 12j — top navigation. Fixed top bar, full-width, page-bg
@@ -67,6 +68,7 @@ export function Header(): JSX.Element {
         <nav className="flex items-center gap-3 text-sm">
           {user && <TrialBadge />}
           {user && <TeamSwitcher />}
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => router.push("/search")}
