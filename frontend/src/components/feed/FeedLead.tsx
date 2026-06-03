@@ -54,9 +54,11 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
 
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
   // Honest framing: the intimate "to you" claim only appears when the
-  // commentary is actually personalized. Free-tier reads generic copy, so
-  // it gets the plain "Why it matters" label.
-  const isFree = useTier().data?.tier === "free";
+  // commentary is actually personalized (confirmed Pro/trial). While the
+  // tier query is loading — or for free readers — we show the plain "Why it
+  // matters" label rather than flicker through an over-claim.
+  const tier = useTier().data?.tier;
+  const isPersonalized = tier === "pro" || tier === "pro_trial";
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
   // Phase 12o — native posts brand the kicker by generator
@@ -134,7 +136,7 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
             </h2>
 
             <p className="mb-1.5 mt-5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
-              {isFree ? "Why it matters" : "Why it matters to you"}
+              {isPersonalized ? "Why it matters to you" : "Why it matters"}
             </p>
             <div className="relative min-h-[4.5rem]">
               <AnimatePresence mode="wait" initial={false}>
