@@ -13,13 +13,12 @@ import { timeAgo } from "@/lib/timeAgo";
 import { isNativeStory, sourceDisplayLabel, splitHook } from "@/lib/feedCard";
 import { isGatePayload, type Story } from "@/types/story";
 
-// "Intelligence Terminal × Editorial" front page — the lead story.
-// One commanding story at the top-left of the briefing: large hero
-// image, sector kicker, oversized serif headline, two lines of
-// personalized commentary, and an editorial meta line. Commentary
-// hydrates immediately (this is above the fold and is the single most
-// important thing on the page — it has to sell the "why it matters to
-// you" promise on first paint).
+// The lead — a commanding magazine "cover". A full-bleed hero image under
+// a dark scrim with the kicker + oversized serif headline OVERLAID in
+// white; the scrim darkens whatever the source image is (a photo OR a
+// branded logo card), so the headline always dominates and the lead reads
+// as an editorial front page, not a thumbnail. The personalized "why it
+// matters" payoff sits directly below.
 
 const EASE: [number, number, number, number] = [0.2, 0.8, 0.2, 1];
 
@@ -40,9 +39,6 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Only native (SIGNAL editorial) leads keep the lazy personalized
-  // commentary. Ingested leads build all three sections from
-  // `generic_commentary` on the wire, so they don't fetch.
   const native = isNativeStory(story);
   const commentaryQuery = useStoryCommentary(story.id, { enabled: native });
   const resolved =
@@ -53,26 +49,18 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
   const body = resolved?.thesis ?? story.why_it_matters_to_you;
 
   const isRead = useReadStoriesStore((s) => s.isRead(story.id));
-  // Honest framing: the intimate "to you" claim only appears when the
-  // commentary is actually personalized (confirmed Pro/trial). While the
-  // tier query is loading — or for free readers — we show the plain "Why it
-  // matters" label rather than flicker through an over-claim.
   const tier = useTier().data?.tier;
   const isPersonalized = tier === "pro" || tier === "pro_trial";
   const sectorColor = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sectorLabel = SECTOR_LABEL[story.sector] ?? story.sector;
-  // Phase 12o — native posts brand the kicker by generator
-  // ("The Research Read", …); ingested posts show their source name.
   const source = sourceDisplayLabel(story);
-  // Phase 12s — native posts carry no scraped og:image; fall back to the
-  // editorial illustration for the hero. image_url always takes priority.
   const heroImage = story.image_url ?? (native ? story.illustration_url : null);
-  // Ingested three-section split: hook title (first sentence) + body.
   const { hookTitle, commentaryBody } = splitHook(
     story.generic_commentary,
     story.headline,
   );
   const attribution = hookTitle === story.headline ? null : story.headline;
+  const overlayHeadline = native ? story.headline : hookTitle;
 
   return (
     <motion.article
@@ -82,20 +70,73 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
       className="group relative"
     >
       <Link href={`/stories/${story.id}`} className="block hover:no-underline">
-        {heroImage && (
-          <div className="relative mb-5 overflow-hidden rounded-lg border border-line">
-            {/* object-contain on a surface backdrop: a source's branded
-                title-card / logo og:image renders centered and intentional
-                instead of cropped-and-broken; real photos show in full. */}
-            <div className="aspect-[16/9] w-full bg-surface">
+        {/* Commanding hero with overlaid headline */}
+        <div className="relative mb-5 overflow-hidden rounded-xl border border-line">
+          <div className="relative aspect-[16/10] w-full sm:aspect-[16/9]">
+            {heroImage ? (
               <Image
                 src={heroImage}
                 alt=""
                 fill
                 unoptimized
-                sizes="(max-width: 1024px) 100vw, 60vw"
-                className="object-contain transition-transform duration-[600ms] ease-soft-out group-hover:scale-[1.02]"
+                priority
+                sizes="(max-width: 1024px) 100vw, 62vw"
+                className="object-cover transition-transform duration-[600ms] ease-soft-out group-hover:scale-[1.03]"
               />
+            ) : (
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  background: `linear-gradient(135deg, color-mix(in srgb, ${sectorColor} 60%, #050505) 0%, #070707 78%)`,
+                }}
+              />
+            )}
+            {/* Legibility scrim */}
+            <div
+              aria-hidden
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 36%, rgba(0,0,0,0.05) 72%)",
+              }}
+            />
+            {/* Overlaid kicker + headline */}
+            <div className="absolute inset-x-0 bottom-0 p-5 md:p-7">
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-white">
+                  <span
+                    aria-hidden
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: sectorColor }}
+                  />
+                  {sectorLabel}
+                </span>
+                {source && (
+                  <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-white/60">
+                    via {source}
+                  </span>
+                )}
+              </div>
+              <h2
+                className={[
+                  "font-display text-[28px] font-bold leading-[1.04] tracking-tight text-white md:text-[44px]",
+                  isRead ? "opacity-70" : "",
+                ].join(" ")}
+                style={{
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {overlayHeadline}
+              </h2>
+              {!native && attribution && (
+                <p className="mt-2 max-w-[64ch] truncate text-[13px] text-white/70">
+                  {attribution}
+                </p>
+              )}
             </div>
             <div
               aria-hidden
@@ -103,42 +144,12 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
               style={{ backgroundColor: sectorColor }}
             />
           </div>
-        )}
-
-        {/* Sector kicker + source — uppercase mono, the "section dateline" */}
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span
-            className="inline-flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em]"
-            style={{ color: sectorColor }}
-          >
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: sectorColor }}
-            />
-            {sectorLabel}
-          </span>
-          {source && (
-            <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">
-              via {source}
-            </span>
-          )}
         </div>
 
+        {/* The personalized payoff, directly under the hero */}
         {native ? (
           <>
-            {/* Native (SIGNAL editorial): classic headline + framed
-                commentary, left untouched by the hook-as-title swap. */}
-            <h2
-              className={[
-                "font-display text-[32px] font-bold leading-[1.05] tracking-tight transition-colors duration-150 md:text-[42px]",
-                isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
-              ].join(" ")}
-            >
-              {story.headline}
-            </h2>
-
-            <p className="mb-1.5 mt-5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
+            <p className="mb-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-accent">
               {isPersonalized ? "Why it matters to you" : "Why it matters"}
             </p>
             <div className="relative min-h-[4.5rem]">
@@ -149,13 +160,13 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.18, ease: EASE }}
-                  className="max-w-[58ch] text-[16px] leading-relaxed text-ink-muted"
+                  className="max-w-[64ch] text-[16px] leading-relaxed text-ink-muted"
                   style={
                     loading
                       ? { color: "var(--ink-muted)" }
                       : {
                           display: "-webkit-box",
-                          WebkitLineClamp: 4,
+                          WebkitLineClamp: 3,
                           WebkitBoxOrient: "vertical",
                           overflow: "hidden",
                         }
@@ -175,45 +186,19 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
             </div>
           </>
         ) : (
-          <>
-            {/* Ingested: three sections — hook title (first sentence of
-                generic_commentary) as the hero headline, the source
-                article headline as muted attribution, then the commentary
-                body. The "Why it matters to you" label is dropped — the
-                hook now speaks for itself as the headline. */}
-            <h2
-              className={[
-                "font-display text-[32px] font-bold leading-[1.05] tracking-tight transition-colors duration-150 md:text-[42px]",
-                isRead ? "text-ink-muted" : "text-ink group-hover:text-accent",
-              ].join(" ")}
+          commentaryBody && (
+            <p
+              className="max-w-[64ch] text-[16px] leading-relaxed text-ink-muted"
               style={{
                 display: "-webkit-box",
-                WebkitLineClamp: 3,
+                WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical",
                 overflow: "hidden",
               }}
             >
-              {hookTitle}
-            </h2>
-            {attribution && (
-              <p className="mt-3 max-w-[58ch] truncate text-[15px] leading-relaxed text-ink-muted">
-                {attribution}
-              </p>
-            )}
-            {commentaryBody && (
-              <p
-                className="mt-4 max-w-[58ch] text-[16px] leading-relaxed text-ink-muted"
-                style={{
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                }}
-              >
-                {commentaryBody}
-              </p>
-            )}
-          </>
+              {commentaryBody}
+            </p>
+          )
         )}
       </Link>
 
