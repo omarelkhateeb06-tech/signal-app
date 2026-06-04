@@ -37,6 +37,9 @@ interface StoryCardProps {
   story: Story;
   index?: number;
   animated?: boolean;
+  // Global feed rank (1-based). Shown as a badge so the ranked feed reads
+  // as ranked, not chronological.
+  rank?: number;
 }
 
 function sectorAccentFor(sector: string): CardSectorAccent {
@@ -50,6 +53,7 @@ export function StoryCard({
   story,
   index = 0,
   animated = false,
+  rank,
 }: StoryCardProps): JSX.Element {
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
@@ -138,6 +142,11 @@ export function StoryCard({
               className="aspect-[16/9] w-full"
               sizes="(max-width: 768px) 100vw, 33vw"
             />
+            {rank != null && (
+              <span className="absolute left-2 top-2 inline-flex items-center rounded-md bg-black/65 px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">
+                #{rank}
+              </span>
+            )}
           </div>
 
           {/* Sector kicker — unified editorial dateline language */}
