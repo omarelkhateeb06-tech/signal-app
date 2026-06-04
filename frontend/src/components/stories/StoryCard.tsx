@@ -88,8 +88,13 @@ export function StoryCard({
   // three sections from `generic_commentary` on the wire, so they don't
   // fetch — gating the query on `native` avoids a wasted request per card.
   const native = isNativeStory(story);
+  // Phase 13 — every card (not just native) now hydrates the per-user
+  // "why it matters to YOU" commentary, lazily when it nears the viewport
+  // (IntersectionObserver → shouldLoad) and throttled by the 8-slot
+  // commentary queue. Free users get pre-generated generic text (no Haiku);
+  // Pro users get the role-aware thesis, which becomes the card's lead line.
   const commentaryQuery = useStoryCommentary(story.id, {
-    enabled: shouldLoad && native,
+    enabled: shouldLoad,
   });
   const apiCommentary =
     commentaryQuery.data && !isGatePayload(commentaryQuery.data)
@@ -97,7 +102,7 @@ export function StoryCard({
       : null;
   const resolvedCommentary = apiCommentary ?? story.commentary ?? null;
   const isCommentaryLoading =
-    shouldLoad && native && resolvedCommentary === null && commentaryQuery.isFetching;
+    shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
 
   const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
   // Ingested three-section split: hook title (first sentence) + body.
@@ -209,31 +214,43 @@ export function StoryCard({
             </>
           ) : (
             <>
-              {/* Ingested: three sections — hook title (first sentence of
-                  generic_commentary) as the headline, the source article
-                  headline as muted attribution, then the commentary body. */}
-              <h2
-                className={[
-                  "mb-1 font-display text-[19px] font-bold leading-snug tracking-[-0.01em] transition-colors duration-150 group-hover:text-accent",
-                  isRead ? "text-ink-muted" : "text-ink",
-                ].join(" ")}
-                style={{
-                  display: "-webkit-box",
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                }}
-              >
-                {hookTitle}
-              </h2>
+              {/* Inverted hierarchy (Phase 13): the source article headline
+                  is demoted to a small kicker; the personalized "why it
+                  matters to YOU" thesis (or the role-neutral hook as a
+                  fallback) is the dominant headline-weight line. */}
               {attribution && (
-                <p className="mb-2 truncate text-xs leading-relaxed text-ink-muted">
+                <p className="mb-1.5 truncate text-[11px] font-medium uppercase tracking-wide text-ink-muted">
                   {attribution}
                 </p>
               )}
-              {commentaryBody && (
+              <h2
+                className={[
+                  "font-display text-[19px] font-bold leading-snug tracking-[-0.01em] transition-colors duration-150 group-hover:text-accent",
+                  isRead ? "text-ink-muted" : "text-ink",
+                ].join(" ")}
+                style={
+                  isCommentaryLoading
+                    ? undefined
+                    : {
+                        display: "-webkit-box",
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }
+                }
+              >
+                {isCommentaryLoading ? (
+                  <span aria-hidden className="block space-y-1.5">
+                    <span className="skeleton block h-4 w-full rounded" />
+                    <span className="skeleton block h-4 w-4/5 rounded" />
+                  </span>
+                ) : (
+                  (resolvedCommentary?.thesis ?? hookTitle)
+                )}
+              </h2>
+              {!resolvedCommentary && commentaryBody && (
                 <p
-                  className="text-[13px] leading-relaxed text-ink-muted"
+                  className="mt-1.5 text-[13px] leading-relaxed text-ink-muted"
                   style={{
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
