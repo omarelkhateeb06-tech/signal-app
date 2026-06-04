@@ -140,6 +140,32 @@
     color-scheme: dark;
   }
 
+  /*
+   * Swiss editorial theme (Phase 13). A warm, paper-like light palette
+   * inspired by the signal-briefing Swiss design: Playfair Display serif,
+   * Lora body, DM Mono metadata, terracotta accent, sharp 0px radius,
+   * dot-grid texture. Scoped to `.theme-swiss` so it coexists with the
+   * dark default. The token names match the existing system, so
+   * token-driven components re-skin automatically.
+   */
+  .theme-swiss {
+    --bg: #faf6f0;
+    --surface: #ffffff;
+    --ink: #2a2520;
+    --ink-muted: #7a7268;
+    --line: #e0d8cc;
+    --accent: #8b4513;
+    --accent-hover: #a0522d;
+    --accent-fg: #ffffff;
+    --ai: #6b4fd9;
+    --finance: #0c7259;
+    --semis: #a04d17;
+    --ok: #1f8a4c;
+    --warn: #c77d14;
+    --err: #b83a3a;
+    color-scheme: light;
+  }
+
   /* Global resets / defaults */
   * {
     border-color: var(--line);
