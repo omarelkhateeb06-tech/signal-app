@@ -249,7 +249,11 @@ export default function FeedPage(): JSX.Element {
       {lead && (
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr] lg:gap-8">
           <div className="min-w-0">
-            <FeedLead story={lead} />
+            <FeedLead
+              story={lead}
+              rank={rankOf.get(lead.id)}
+              followed={userSectors.includes(lead.sector)}
+            />
           </div>
 
           {rail.length > 0 && (
@@ -320,6 +324,7 @@ export default function FeedPage(): JSX.Element {
                   story={item}
                   index={i}
                   rank={rankOf.get(item.id)}
+                  followed={userSectors.includes(item.sector)}
                   animated={animated}
                 />
               );
