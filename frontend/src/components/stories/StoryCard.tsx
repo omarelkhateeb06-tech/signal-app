@@ -147,8 +147,10 @@ export function StoryCard({
           href={`/stories/${story.id}`}
           className="group flex flex-1 flex-col hover:no-underline"
         >
-          {/* Image-led: photo / illustration, or a sector-tinted fallback. */}
-          <div className="relative mb-3 overflow-hidden rounded-md border border-line">
+          {/* Image-led: photo / illustration, or a sector-tinted fallback.
+              max-h-[340px] caps the image so full-width feature cards
+              don't consume the entire viewport on wide screens. */}
+          <div className="relative mb-3 max-h-[340px] overflow-hidden rounded-md border border-line">
             <FeatureImage
               story={story}
               className="aspect-[16/9] w-full"
