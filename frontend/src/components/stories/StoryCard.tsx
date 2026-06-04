@@ -152,15 +152,7 @@ export function StoryCard({
             />
           </div>
 
-          {/* Visible personalization: why this is in YOUR feed. */}
-          <RelevanceLine
-            story={story}
-            rank={rank}
-            followed={followed}
-            className="mb-1.5"
-          />
-
-          {/* Sector kicker — unified editorial dateline language */}
+          {/* Sector kicker — clean card: image → kicker → headline → meta */}
           <div className="mb-2 flex items-center gap-2">
             <span
               className="inline-flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em]"
@@ -218,11 +210,6 @@ export function StoryCard({
                   is demoted to a small kicker; the personalized "why it
                   matters to YOU" thesis (or the role-neutral hook as a
                   fallback) is the dominant headline-weight line. */}
-              {attribution && (
-                <p className="mb-1.5 truncate text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  {attribution}
-                </p>
-              )}
               <h2
                 className={[
                   "font-display text-[19px] font-bold leading-snug tracking-[-0.01em] transition-colors duration-150 group-hover:text-accent",

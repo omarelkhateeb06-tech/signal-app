@@ -171,7 +171,7 @@ export default function FeedPage(): JSX.Element {
   const userSectors = profile?.sectors ?? [];
 
   return (
-    <div className="space-y-10 pb-16 pt-2">
+    <div className="space-y-14 pb-16 pt-2">
       {/* ===== Masthead (newspaper nameplate) ===== */}
       <header className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b-2 border-line pb-4">
@@ -266,72 +266,92 @@ export default function FeedPage(): JSX.Element {
         </section>
       )}
 
-      {/* ===== Numbered "Top stories" strip (the rest of the top tier) ===== */}
-      {rail.length > 2 && (
-        <section className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
-            <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-              Top stories
-            </h2>
-            <span className="h-px flex-1 bg-line" aria-hidden />
-          </div>
-          <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
-            {rail.slice(2).map((story, i) => (
-              <FeedRailItem key={story.id} story={story} rank={i + 4} animated />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ===== Developing spotlight ===== */}
       {spotlight && <SpotlightBand story={spotlight} />}
 
       {/* ===== VALO Originals (native editorial) ===== */}
       {research.length > 0 && <ResearchReadBand stories={research} />}
 
-      {/* ===== The ranked river — everything else, in order ===== */}
-      {river.length > 0 && (
-        <section className="space-y-5">
-          <div className="flex items-center gap-3">
-            <span
-              aria-hidden
-              className="h-2 w-2 flex-none rounded-[2px] bg-accent"
-            />
-            <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-              Ranked feed
-            </h2>
-            <span className="h-px flex-1 bg-line" aria-hidden />
-          </div>
+      {/* ===== Ranked river with editorial RHYTHM =====
+          The old "Top Stories" text strip is gone — those items merge into
+          the river as featured cards. The river alternates between a WIDE
+          feature card and a standard 3-col row, with breathing room
+          between clusters (space-y-10), so the scroll never becomes wallpaper. */}
+      {(() => {
+        const merged: FeedItem[] = [
+          ...rail.slice(2).map((s) => ({ ...s } as FeedItem)),
+          ...river,
+        ];
+        if (merged.length === 0) return null;
 
-          <motion.div
-            className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 md:gap-6 xl:grid-cols-3"
-            variants={{
-              hidden: {},
-              visible: { transition: { staggerChildren: 0.06 } },
-            }}
-            initial="hidden"
-            animate="visible"
-          >
-            {river.map((item, i) => {
-              const initialCount = initialRiverRef.current ?? river.length;
-              const animated = i < initialCount;
-              return isGatedFeedItem(item) ? (
-                <GatedStoryCard key={item.id} story={item} index={i} animated={animated} />
-              ) : (
-                <StoryCard
-                  key={item.id}
-                  story={item}
-                  index={i}
-                  rank={rankOf.get(item.id)}
-                  followed={userSectors.includes(item.sector)}
-                  animated={animated}
-                />
-              );
-            })}
-          </motion.div>
-        </section>
-      )}
+        const clusters: Array<{ feature: FeedItem | null; standard: FeedItem[] }> = [];
+        let idx = 0;
+        while (idx < merged.length) {
+          const feature = merged[idx] ?? null;
+          idx++;
+          const batch: FeedItem[] = [];
+          while (batch.length < 3 && idx < merged.length) {
+            batch.push(merged[idx]);
+            idx++;
+          }
+          clusters.push({ feature, standard: batch });
+        }
+
+        return (
+          <section className="space-y-10">
+            <div className="flex items-center gap-3">
+              <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
+              <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
+                Ranked for you
+              </h2>
+              <span className="h-px flex-1 bg-line" aria-hidden />
+            </div>
+
+            {clusters.map((cluster, ci) => (
+              <div key={ci} className="space-y-8">
+                {cluster.feature && !isGatedFeedItem(cluster.feature) && (
+                  <StoryCard
+                    story={cluster.feature}
+                    index={0}
+                    rank={rankOf.get(cluster.feature.id)}
+                    followed={userSectors.includes(cluster.feature.sector)}
+                  />
+                )}
+                {cluster.feature && isGatedFeedItem(cluster.feature) && (
+                  <GatedStoryCard story={cluster.feature} index={0} />
+                )}
+
+                {cluster.standard.length > 0 && (
+                  <motion.div
+                    className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 xl:grid-cols-3"
+                    variants={{
+                      hidden: {},
+                      visible: { transition: { staggerChildren: 0.06 } },
+                    }}
+                    initial="hidden"
+                    animate="visible"
+                  >
+                    {cluster.standard.map((item, si) =>
+                      isGatedFeedItem(item) ? (
+                        <GatedStoryCard key={item.id} story={item} index={si} animated />
+                      ) : (
+                        <StoryCard
+                          key={item.id}
+                          story={item}
+                          index={si}
+                          rank={rankOf.get(item.id)}
+                          followed={userSectors.includes(item.sector)}
+                          animated
+                        />
+                      ),
+                    )}
+                  </motion.div>
+                )}
+              </div>
+            ))}
+          </section>
+        );
+      })()}
 
       <div ref={sentinelRef} className="h-8" />
 

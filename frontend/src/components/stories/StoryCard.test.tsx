@@ -160,7 +160,7 @@ describe("StoryCard three-section model", () => {
   // Ingested cards build three sections from generic_commentary: the hook
   // title (first sentence) as the headline, the source headline as muted
   // attribution, and the remainder as the commentary body.
-  it("splits generic_commentary into hook title + attribution + body", () => {
+  it("renders the personalized thesis (or hook) as the headline, source headline absent", () => {
     renderCard(
       baseStory({
         headline: "Source wire headline",
@@ -169,10 +169,7 @@ describe("StoryCard three-section model", () => {
       }),
     );
     expect(screen.getByText("The hook that leads the card")).toBeInTheDocument();
-    expect(screen.getByText("Source wire headline")).toBeInTheDocument();
-    expect(
-      screen.getByText("Plus the body that follows it."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Source wire headline")).not.toBeInTheDocument();
   });
 
   // Native (SIGNAL) cards keep the classic headline-then-commentary layout,
