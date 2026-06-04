@@ -101,10 +101,14 @@ export function StoryCard({
       ? commentaryQuery.data.commentary
       : null;
   const resolvedCommentary = apiCommentary ?? story.commentary ?? null;
-  const isCommentaryLoading =
-    shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching;
-
   const previewText = resolvedCommentary?.thesis ?? story.why_it_matters_to_you;
+  // Only show a skeleton when there is genuinely NOTHING to render — not
+  // when the Haiku call is in flight but we already have a fallback
+  // (hookTitle, previewText, generic_commentary). This prevents the
+  // "skeleton with text already visible" mid-load flash.
+  const hasFallbackText = Boolean(previewText || story.generic_commentary);
+  const isCommentaryLoading =
+    shouldLoad && resolvedCommentary === null && commentaryQuery.isFetching && !hasFallbackText;
   // Ingested three-section split: hook title (first sentence) + body.
   const { hookTitle, commentaryBody } = splitHook(
     story.generic_commentary,
