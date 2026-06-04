@@ -12,6 +12,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { StoryCard } from "@/components/stories/StoryCard";
 import { GatedStoryCard } from "@/components/stories/GatedStoryCard";
 import { FeedLead } from "@/components/feed/FeedLead";
+import { CoverCard } from "@/components/feed/CoverCard";
 import { FeedRailItem } from "@/components/feed/FeedRailItem";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { SpotlightBand } from "@/components/feed/SpotlightBand";
@@ -244,36 +245,38 @@ export default function FeedPage(): JSX.Element {
         </div>
       )}
 
-      {/* ===== Lead + rail ===== */}
+      {/* ===== Front-page hero: the lead + two image cover-cards ===== */}
       {lead && (
-        <section className="grid grid-cols-1 gap-8 lg:grid-cols-[1.7fr_1fr] lg:gap-12">
+        <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr] lg:gap-8">
           <div className="min-w-0">
             <FeedLead story={lead} />
           </div>
 
           {rail.length > 0 && (
-            <aside className="min-w-0 lg:border-l lg:border-line lg:pl-8">
-              <div className="mb-1 flex items-center gap-2">
-                <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
-                <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
-                  Top stories
-                </h2>
-              </div>
-              <motion.div
-                className="divide-y divide-line"
-                variants={{
-                  hidden: {},
-                  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.15 } },
-                }}
-                initial="hidden"
-                animate="visible"
-              >
-                {rail.map((story, i) => (
-                  <FeedRailItem key={story.id} story={story} rank={i + 2} animated />
-                ))}
-              </motion.div>
-            </aside>
+            <div className="grid min-w-0 grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-1">
+              {rail.slice(0, 2).map((story, i) => (
+                <CoverCard key={story.id} story={story} rank={i + 2} />
+              ))}
+            </div>
           )}
+        </section>
+      )}
+
+      {/* ===== Numbered "Top stories" strip (the rest of the top tier) ===== */}
+      {rail.length > 2 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span aria-hidden className="h-2 w-2 flex-none rounded-[2px] bg-accent" />
+            <h2 className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-ink">
+              Top stories
+            </h2>
+            <span className="h-px flex-1 bg-line" aria-hidden />
+          </div>
+          <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+            {rail.slice(2).map((story, i) => (
+              <FeedRailItem key={story.id} story={story} rank={i + 4} animated />
+            ))}
+          </div>
         </section>
       )}
 
