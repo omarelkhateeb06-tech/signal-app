@@ -146,6 +146,15 @@ export function FeedLead({
                   {attribution}
                 </p>
               )}
+              {/* Personalization payoff inside the hero — visible without
+                  scrolling past the image. Accent-colored so it pops. */}
+              {(rank != null || followed) && (
+                <p className="mt-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-accent">
+                  {rank != null && `#${rank} for you`}
+                  {rank != null && followed && " · "}
+                  {followed && `${sectorLabel} · your focus`}
+                </p>
+              )}
             </div>
             <div
               aria-hidden
@@ -154,14 +163,6 @@ export function FeedLead({
             />
           </div>
         </div>
-
-        {/* Visible personalization, leading the payoff under the hero */}
-        <RelevanceLine
-          story={story}
-          rank={rank}
-          followed={followed}
-          className="mb-2"
-        />
 
         {/* The personalized payoff, directly under the hero */}
         {native ? (
