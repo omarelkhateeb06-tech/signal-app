@@ -102,6 +102,13 @@ export default function FeedPage(): JSX.Element {
     [data],
   );
 
+  // 1-based global feed rank per item, so the ranked river can show the
+  // ranking visibly (it's the lead=#1, rail=#2–6, river=#7+ continuation).
+  const rankOf = useMemo(
+    () => new Map(items.map((it, i) => [it.id, i + 1])),
+    [items],
+  );
+
   // Front-page composition (Phase 12z) — re-centered on RANK + personalization
   // after the advisory board flagged sector-partitioning as fighting the
   // "the few that matter, for you" promise. The feed stays in ranked order;
@@ -305,7 +312,13 @@ export default function FeedPage(): JSX.Element {
               return isGatedFeedItem(item) ? (
                 <GatedStoryCard key={item.id} story={item} index={i} animated={animated} />
               ) : (
-                <StoryCard key={item.id} story={item} index={i} animated={animated} />
+                <StoryCard
+                  key={item.id}
+                  story={item}
+                  index={i}
+                  rank={rankOf.get(item.id)}
+                  animated={animated}
+                />
               );
             })}
           </motion.div>
