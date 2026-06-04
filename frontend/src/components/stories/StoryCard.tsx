@@ -6,6 +6,7 @@ import { MessageSquare } from "lucide-react";
 import { motion } from "framer-motion";
 import { StorySaveButton } from "./StorySaveButton";
 import { FeatureImage } from "@/components/feed/FeatureImage";
+import { RelevanceLine } from "@/components/feed/RelevanceLine";
 import { Card, type CardSectorAccent } from "@/components/ui/Card";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
@@ -37,9 +38,10 @@ interface StoryCardProps {
   story: Story;
   index?: number;
   animated?: boolean;
-  // Global feed rank (1-based). Shown as a badge so the ranked feed reads
-  // as ranked, not chronological.
+  // Global feed rank (1-based). Shown so the ranked feed reads as ranked.
   rank?: number;
+  // Story sector is one the user follows — drives the "your focus" signal.
+  followed?: boolean;
 }
 
 function sectorAccentFor(sector: string): CardSectorAccent {
@@ -54,6 +56,7 @@ export function StoryCard({
   index = 0,
   animated = false,
   rank,
+  followed = false,
 }: StoryCardProps): JSX.Element {
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
@@ -142,12 +145,15 @@ export function StoryCard({
               className="aspect-[16/9] w-full"
               sizes="(max-width: 768px) 100vw, 33vw"
             />
-            {rank != null && (
-              <span className="absolute left-2 top-2 inline-flex items-center rounded-md bg-black/65 px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-white backdrop-blur-sm">
-                #{rank}
-              </span>
-            )}
           </div>
+
+          {/* Visible personalization: why this is in YOUR feed. */}
+          <RelevanceLine
+            story={story}
+            rank={rank}
+            followed={followed}
+            className="mb-1.5"
+          />
 
           {/* Sector kicker — unified editorial dateline language */}
           <div className="mb-2 flex items-center gap-2">

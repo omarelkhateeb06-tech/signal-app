@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bookmark, MessageSquare } from "lucide-react";
 import { StorySaveButton } from "@/components/stories/StorySaveButton";
+import { RelevanceLine } from "@/components/feed/RelevanceLine";
 import { useStoryCommentary } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
 import { useReadStoriesStore } from "@/store/readStoriesStore";
@@ -34,7 +35,15 @@ const SECTOR_VAR: Record<string, string> = {
   semiconductors: "var(--semis)",
 };
 
-export function FeedLead({ story }: { story: Story }): JSX.Element {
+export function FeedLead({
+  story,
+  rank,
+  followed = false,
+}: {
+  story: Story;
+  rank?: number;
+  followed?: boolean;
+}): JSX.Element {
   const stamp = timeAgo(story.published_at ?? story.created_at);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -145,6 +154,14 @@ export function FeedLead({ story }: { story: Story }): JSX.Element {
             />
           </div>
         </div>
+
+        {/* Visible personalization, leading the payoff under the hero */}
+        <RelevanceLine
+          story={story}
+          rank={rank}
+          followed={followed}
+          className="mb-2"
+        />
 
         {/* The personalized payoff, directly under the hero */}
         {native ? (
