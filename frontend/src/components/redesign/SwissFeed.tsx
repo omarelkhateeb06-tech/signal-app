@@ -20,22 +20,28 @@ const SECTOR_LABEL: Record<string, string> = {
   semiconductors: "SEMICONDUCTORS",
 };
 
-function relevanceScore(story: Story): number {
-  // Approximate relevance from the story's position in the ranked feed
-  // (the backend already ranked it). Use source count as a proxy for
-  // coverage depth, bounded 50-95.
-  const base = Math.min(95, 50 + story.sources.length * 8);
-  return base;
+function relevanceFromRank(rank: number, sourceCount: number): number {
+  // The backend already ranked stories by effective_score; derive a
+  // visible relevance % from the rank position so the number is both
+  // real (rank-derived) and naturally varying per card (Rank 1 ≈ 92%,
+  // Rank 11 ≈ 55%). Source count provides a small boost.
+  const base = Math.max(50, 95 - (rank - 1) * 4);
+  const sourceBonus = Math.min(8, (sourceCount - 1) * 3);
+  return Math.min(98, base + sourceBonus);
 }
 
 function StoryEntry({
   story,
   rank,
   defaultExpanded = false,
+  tier = "standard",
 }: {
   story: Story;
   rank: number;
   defaultExpanded?: boolean;
+  // Visual tier: "lead" (Rank 1, expanded), "featured" (Ranks 2-3,
+  // shows a bold thesis pull-quote), "standard" (everything else).
+  tier?: "lead" | "featured" | "standard";
 }): JSX.Element {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const native = isNativeStory(story);
@@ -47,7 +53,7 @@ function StoryEntry({
   );
   const title = native ? story.headline : hookTitle;
   const summary = commentaryBody ?? story.why_it_matters_to_you ?? "";
-  const rel = relevanceScore(story);
+  const rel = relevanceFromRank(rank, story.sources.length);
   const sectors = [story.sector]
     .map((s) => SECTOR_LABEL[s] ?? s.toUpperCase());
 
@@ -61,7 +67,9 @@ function StoryEntry({
         {story.reading_time_minutes != null && (
           <span>{story.reading_time_minutes} min read</span>
         )}
-        <span>{story.sources.length} sources analyzed</span>
+        <span>
+          {story.sources.length} {story.sources.length === 1 ? "source" : "sources"} analyzed
+        </span>
         <span className="ml-auto flex items-center gap-1">
           Relevance:
           <span className="rounded-none border border-accent px-1.5 py-0.5 font-semibold text-accent">
@@ -86,8 +94,20 @@ function StoryEntry({
         )}
       </button>
 
-      {/* Preview when collapsed */}
-      {!expanded && summary && (
+      {/* Featured tier: a bold thesis pull-quote (Ranks 2-3) */}
+      {!expanded && tier === "featured" && story.why_it_matters_to_you && (
+        <p
+          className="mt-3 border-l-[3px] pl-4 font-serif text-[16px] font-medium italic leading-relaxed text-ink"
+          style={{ borderColor: "var(--accent)" }}
+        >
+          {story.why_it_matters_to_you.length > 160
+            ? story.why_it_matters_to_you.slice(0, 160) + "…"
+            : story.why_it_matters_to_you}
+        </p>
+      )}
+
+      {/* Standard preview when collapsed */}
+      {!expanded && tier !== "featured" && summary && (
         <p
           className="mt-2 font-sans text-[15px] leading-relaxed text-ink-muted"
           style={{
@@ -307,14 +327,20 @@ export function SwissFeed({
             </div>
 
             <div>
-              {stories.map((story, i) => (
-                <StoryEntry
-                  key={story.id}
-                  story={story}
-                  rank={i + 1}
-                  defaultExpanded={i === 0}
-                />
-              ))}
+              {stories.map((story, i) => {
+                const rank = i + 1;
+                const tier: "lead" | "featured" | "standard" =
+                  rank === 1 ? "lead" : rank <= 3 ? "featured" : "standard";
+                return (
+                  <StoryEntry
+                    key={story.id}
+                    story={story}
+                    rank={rank}
+                    defaultExpanded={rank === 1}
+                    tier={tier}
+                  />
+                );
+              })}
             </div>
           </main>
 
