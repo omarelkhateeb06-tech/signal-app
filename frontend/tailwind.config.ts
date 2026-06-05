@@ -34,7 +34,7 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "Georgia", "serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
-        display: ["var(--font-serif)", "Georgia", "serif"],
+        display: ["var(--font-display)", "var(--font-serif)", "Georgia", "serif"],
       },
       colors: {
         // Surfaces + text

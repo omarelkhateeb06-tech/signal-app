@@ -71,7 +71,7 @@ export function DepthToggle({
             }}
             className={[
               "relative z-10 flex flex-1 items-center justify-center gap-1.5",
-              "rounded-[6px] px-3 py-1.5 text-sm font-medium",
+              "rounded-[6px] px-3 py-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.1em]",
               "transition-colors duration-150",
               isActive ? "text-ink" : "text-ink-muted hover:text-ink",
               isLocked ? "cursor-default opacity-55" : "",

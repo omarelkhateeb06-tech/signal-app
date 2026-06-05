@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono, Newsreader } from "next/font/google";
+import { DM_Mono, IBM_Plex_Sans, Lora, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
-// Phase 12j — design system. Three Google Fonts via next/font for
-// zero-runtime-cost subsetting + zero FOIT. The CSS variables flow
-// into Tailwind's font-family theme extension and the globals.css
-// utility classes (.font-display, etc.).
+// Design system — the Swiss editorial type stack, matching the briefing
+// design. Four Google Fonts via next/font for zero-runtime-cost subsetting
+// + zero FOIT. The CSS variables flow into Tailwind's font-family theme
+// extension and the globals.css utility classes (.font-display, etc.).
 //
-//   Newsreader     — editorial serif. Display headlines, page titles,
-//                    auth-card headings. "Variable" weight axis is
-//                    used between 400 and 700.
-//   IBM Plex Sans  — humanist body sans. Default for UI + reading.
-//                    Carries tech credibility without sacrificing warmth.
-//   JetBrains Mono — numeric / timestamp / SIGNAL-rating contexts.
-//                    Used sparingly per the brief.
-const fontSerif = Newsreader({
+//   Playfair Display — high-contrast display serif. Masthead wordmark,
+//                      headlines, story titles (--font-display).
+//   Lora             — warm reading serif. Body prose, pull-quotes, the
+//                      italic "why it matters" / preview text (--font-serif).
+//   IBM Plex Sans    — humanist body sans. UI chrome, forms, nav.
+//   DM Mono          — metadata / labels / badges / depth toggle / kickers.
+const fontDisplay = Playfair_Display({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+  weight: ["400", "500", "600", "700", "800", "900"],
+});
+
+const fontSerif = Lora({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-serif",
@@ -29,7 +35,7 @@ const fontSans = IBM_Plex_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
-const fontMono = JetBrains_Mono({
+const fontMono = DM_Mono({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-mono",
@@ -49,7 +55,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`}
+      className={`${fontDisplay.variable} ${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`}
       suppressHydrationWarning
     >
       <head>

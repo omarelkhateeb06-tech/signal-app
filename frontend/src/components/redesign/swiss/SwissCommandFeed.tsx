@@ -249,17 +249,21 @@ export function SwissCommandFeed(): JSX.Element {
 
   const hasStories = items.length > 0;
 
-  // Full-bleed, fixed-height surface that fills the viewport below the 56px
-  // app header. The masthead is pinned; the two panels scroll on their own.
+  // Fixed-height surface that fills the viewport below the 56px app header.
+  // The page bg runs to the edges, but the briefing itself is held in a
+  // centered, gutter-padded column so it breathes instead of going fully
+  // edge-to-edge. The masthead is pinned; the two panels scroll on their own.
   return (
-    <div className="theme-swiss flex h-[calc(100dvh_-_3.5rem)] flex-col overflow-hidden bg-bg text-ink">
-      <SwissMasthead
-        preparedFor={user?.name ?? "Reader"}
-        sectors={profile?.sectors ?? []}
-        onRefresh={handleRefresh}
-        isRefreshing={isRefreshing}
-      />
-      {region}
+    <div className="theme-swiss h-[calc(100dvh_-_3.5rem)] overflow-hidden bg-bg text-ink">
+      <div className="mx-auto flex h-full max-w-[1760px] flex-col px-0 md:px-8 lg:px-12">
+        <SwissMasthead
+          preparedFor={user?.name ?? "Reader"}
+          sectors={profile?.sectors ?? []}
+          onRefresh={handleRefresh}
+          isRefreshing={isRefreshing}
+        />
+        {region}
+      </div>
 
       {/* Mobile drawer backdrop */}
       {hasStories && drawerOpen && (
