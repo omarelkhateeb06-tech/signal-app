@@ -13,7 +13,6 @@ import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
 import { SignalOriginals } from "./SignalOriginals";
-import { markStoryRead } from "./readStories";
 
 // Design C — "Swiss Command Center". A two-panel editorial intelligence
 // briefing on warm cream. Self-contained: it owns the feed query, sector
@@ -50,12 +49,11 @@ export function SwissCommandFeed(): JSX.Element {
     ]).finally(() => setIsRefreshing(false));
   };
 
-  // Selecting a story opens it on the right, marks it read (worklist: you
-  // worked through it), and opens the mobile drawer; on ≥lg the drawer
-  // styles are inert (the panel is always visible) so that part is a no-op.
+  // Selecting a story opens it on the right and opens the mobile drawer; on
+  // ≥lg the drawer styles are inert (the panel is always visible) so that
+  // part is a no-op.
   const handleSelect = (id: string): void => {
     setSelectedId(id);
-    markStoryRead(id);
     setDrawerOpen(true);
   };
 

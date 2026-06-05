@@ -4,7 +4,6 @@ import { type RefObject } from "react";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { isGatedFeedItem, type FeedItem } from "@/types/story";
 import { GatedExhibit, StoryExhibit } from "./StoryExhibit";
-import { useReadStories } from "./readStories";
 
 // Left panel: the ranked stream — a pure scannable index. Every entry is a
 // collapsed, clickable row; the active row (open in the detail panel) is
@@ -33,23 +32,12 @@ export function RankedStream({
   isFetchingNextPage,
   hasNextPage,
 }: RankedStreamProps): JSX.Element {
-  const read = useReadStories();
-  const total = items.length;
-  const readCount = items.reduce((n, it) => (read.has(it.id) ? n + 1 : n), 0);
-
   return (
     <section className="min-w-0 px-6 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-3">
-          <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
-            Ranked Stream
-          </h2>
-          {total > 0 && (
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
-              {readCount}/{total} read
-            </span>
-          )}
-        </div>
+        <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+          Ranked Stream
+        </h2>
         <SectorFilter selected={sectors} onChange={onSectorsChange} />
       </div>
 
