@@ -255,7 +255,7 @@ export function SwissCommandFeed(): JSX.Element {
   // edge-to-edge. The masthead is pinned; the two panels scroll on their own.
   return (
     <div className="theme-swiss h-[calc(100dvh_-_3.5rem)] overflow-hidden bg-bg text-ink">
-      <div className="mx-auto flex h-full max-w-[1760px] flex-col px-0 md:px-8 lg:px-12">
+      <div className="mx-auto flex h-full w-full max-w-[1840px] flex-col px-4 md:px-12 lg:px-20 2xl:px-32">
         <SwissMasthead
           preparedFor={user?.name ?? "Reader"}
           sectors={profile?.sectors ?? []}

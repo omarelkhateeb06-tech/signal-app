@@ -29,7 +29,12 @@ export default function AppShellLayout({
     // toggle pill, page-transition slide) snap to their end state, while
     // opacity fades are preserved. Covers the whole authenticated app.
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-bg">
+      {/* `theme-swiss` is applied to the whole authenticated shell (not just
+          the feed) so the header, nav, and every page share the Swiss
+          palette — warm cream / dark editorial with the terracotta accent —
+          instead of the legacy teal default. The dark variant
+          (`.dark .theme-swiss`) keeps both modes coherent. */}
+      <div className="theme-swiss min-h-screen bg-bg">
         <Header />
         {/* The feed is a full-bleed, fixed-height two-panel surface and owns
             its own layout; every other page keeps the centered, padded
