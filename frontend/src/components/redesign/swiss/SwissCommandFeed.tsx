@@ -70,6 +70,10 @@ export function SwissCommandFeed(): JSX.Element {
     };
   }, [drawerOpen]);
 
+  // The left ranked stream scrolls inside its own column now (fixed-height
+  // dual-pane), so the infinite-scroll observer watches that container as
+  // its root rather than the viewport.
+  const leftScrollRef = useRef<HTMLDivElement | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -80,7 +84,7 @@ export function SwissCommandFeed(): JSX.Element {
           void fetchNextPage();
         }
       },
-      { rootMargin: "600px" },
+      { root: leftScrollRef.current, rootMargin: "600px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -124,32 +128,43 @@ export function SwissCommandFeed(): JSX.Element {
     };
   }, [nonGated]);
 
-  // Mobile slide-over + desktop sticky column, one DetailPanel instance.
+  // Right panel: an in-flow column that scrolls within the fixed-height
+  // region on ≥lg; a slide-over drawer below lg.
   const detailContainerClass = clsx(
     "min-w-0 bg-bg px-6 py-6 md:px-8",
     // mobile: fixed slide-over drawer
     "fixed inset-y-0 right-0 z-50 w-[88%] max-w-[440px] overflow-y-auto border-l border-line shadow-2xl transition-transform duration-300 ease-out",
     drawerOpen ? "translate-x-0" : "translate-x-full",
-    // ≥lg: in-flow sticky column below the 56px sticky app header (so it
-    // doesn't tuck under it on scroll and its inner scrollbar fits), no
-    // transform / shadow / fixed offsets.
-    "lg:sticky lg:inset-y-auto lg:right-auto lg:top-14 lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:max-h-[calc(100dvh_-_3.5rem)] lg:self-start lg:border-l lg:shadow-none lg:transition-none",
+    // ≥lg: in-flow flex column that scrolls independently of the left
+    "lg:static lg:z-auto lg:w-auto lg:max-w-none lg:flex-1 lg:translate-x-0 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:shadow-none lg:transition-none",
   );
 
-  const body = ((): JSX.Element => {
+  const footer = (
+    <footer className="border-t border-line px-6 py-5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted md:px-8">
+      © 2026 SIGNAL Intelligence
+      <span className="mx-2 text-line">·</span>Terms
+      <span className="mx-2 text-line">·</span>Privacy
+    </footer>
+  );
+
+  // Everything below the fixed masthead. Loading / error / empty fill the
+  // region; the success state is two independently-scrolling panels.
+  const region = ((): JSX.Element => {
     if (isLoading) {
       return (
-        <div className="grid grid-cols-1 gap-8 px-6 py-8 md:px-8 lg:grid-cols-[1.5fr_1fr]">
-          <div className="space-y-4">
-            <div className="skeleton h-4 w-40" />
-            <div className="skeleton h-10 w-5/6" />
-            <div className="skeleton h-24 w-full" />
-            <div className="skeleton h-16 w-full" />
-          </div>
-          <div className="space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skeleton h-12 w-full" />
-            ))}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 gap-8 px-6 py-8 md:px-8 lg:grid-cols-[1.5fr_1fr]">
+            <div className="space-y-4">
+              <div className="skeleton h-4 w-40" />
+              <div className="skeleton h-10 w-5/6" />
+              <div className="skeleton h-24 w-full" />
+              <div className="skeleton h-16 w-full" />
+            </div>
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="skeleton h-12 w-full" />
+              ))}
+            </div>
           </div>
         </div>
       );
@@ -157,40 +172,25 @@ export function SwissCommandFeed(): JSX.Element {
 
     if (error) {
       return (
-        <div className="m-6 border border-err/40 bg-err/5 p-4 text-sm text-err md:m-8">
-          {extractApiError(error, "Failed to load briefing.")}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="m-6 border border-err/40 bg-err/5 p-4 text-sm text-err md:m-8">
+            {extractApiError(error, "Failed to load briefing.")}
+          </div>
         </div>
       );
     }
 
     if (items.length === 0) {
       return (
-        <div className="m-6 border border-dashed border-line bg-bg p-12 text-center md:m-8">
-          <p className="font-display text-xl text-ink">
-            Your briefing is being prepared.
-          </p>
-          <p className="mt-1 text-sm text-ink-muted">
-            Check back shortly — or adjust your sectors below.
-          </p>
-          <div className="mt-6">
-            <RankedStream
-              items={items}
-              activeId={activeId}
-              onSelect={handleSelect}
-              sectors={sectors}
-              onSectorsChange={setSectors}
-              sentinelRef={sentinelRef}
-              isFetchingNextPage={isFetchingNextPage}
-              hasNextPage={Boolean(hasNextPage)}
-            />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="m-6 border border-dashed border-line bg-bg p-12 text-center md:m-8">
+            <p className="font-display text-xl text-ink">
+              Your briefing is being prepared.
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">
+              Check back shortly — or adjust your sectors below.
+            </p>
           </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid grid-cols-1 items-start lg:grid-cols-[1.5fr_1fr]">
-        <div className="lg:border-r lg:border-line">
           <RankedStream
             items={items}
             activeId={activeId}
@@ -202,6 +202,30 @@ export function SwissCommandFeed(): JSX.Element {
             hasNextPage={Boolean(hasNextPage)}
           />
         </div>
+      );
+    }
+
+    return (
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        {/* Left: ranked index — scrolls independently */}
+        <div
+          ref={leftScrollRef}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:flex-[1.5] lg:border-r lg:border-line"
+        >
+          <RankedStream
+            items={items}
+            activeId={activeId}
+            onSelect={handleSelect}
+            sectors={sectors}
+            onSectorsChange={setSectors}
+            sentinelRef={sentinelRef}
+            isFetchingNextPage={isFetchingNextPage}
+            hasNextPage={Boolean(hasNextPage)}
+          />
+          {footer}
+        </div>
+
+        {/* Right: detail / profile — scrolls independently (drawer on mobile) */}
         <div className={detailContainerClass}>
           <button
             type="button"
@@ -225,22 +249,17 @@ export function SwissCommandFeed(): JSX.Element {
 
   const hasStories = items.length > 0;
 
+  // Full-bleed, fixed-height surface that fills the viewport below the 56px
+  // app header. The masthead is pinned; the two panels scroll on their own.
   return (
-    <div className="theme-swiss -mx-4 -my-8 min-h-screen bg-bg text-ink md:-mx-8">
-      <div className="mx-auto max-w-[1600px]">
-        <SwissMasthead
-          preparedFor={user?.name ?? "Reader"}
-          sectors={profile?.sectors ?? []}
-          onRefresh={handleRefresh}
-          isRefreshing={isRefreshing}
-        />
-        {body}
-        <footer className="border-t border-line px-6 py-5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted md:px-10">
-          © 2026 SIGNAL Intelligence
-          <span className="mx-2 text-line">·</span>Terms
-          <span className="mx-2 text-line">·</span>Privacy
-        </footer>
-      </div>
+    <div className="theme-swiss flex h-[calc(100dvh_-_3.5rem)] flex-col overflow-hidden bg-bg text-ink">
+      <SwissMasthead
+        preparedFor={user?.name ?? "Reader"}
+        sectors={profile?.sectors ?? []}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+      />
+      {region}
 
       {/* Mobile drawer backdrop */}
       {hasStories && drawerOpen && (

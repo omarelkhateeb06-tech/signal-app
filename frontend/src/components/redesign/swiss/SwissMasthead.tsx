@@ -55,7 +55,7 @@ export function SwissMasthead({
       : "AI · SEMICONDUCTORS · FINANCE";
 
   return (
-    <header className="border-b-2 border-ink px-6 pb-5 pt-6 md:px-10">
+    <header className="shrink-0 border-b-2 border-ink px-6 pb-5 pt-6 md:px-10">
       <p className="font-mono text-[11px] font-medium uppercase tracking-[0.28em] text-accent">
         Daily Intelligence Briefing
       </p>

@@ -4,7 +4,6 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { useRequireOnboarded } from "@/hooks/useRequireOnboarded";
 import { Header } from "@/components/layout/Header";
-import { Sidebar } from "@/components/layout/Sidebar";
 
 export default function AppShellLayout({
   children,
@@ -13,6 +12,7 @@ export default function AppShellLayout({
 }): JSX.Element | null {
   const { ready } = useRequireOnboarded();
   const pathname = usePathname();
+  const isFeed = pathname === "/feed";
 
   if (!ready) {
     return (
@@ -31,24 +31,30 @@ export default function AppShellLayout({
     <MotionConfig reducedMotion="user">
       <div className="min-h-screen bg-bg">
         <Header />
-        <div className="flex">
-          <Sidebar />
-          <main className="flex-1 px-4 py-8 md:px-8">
-            <div className="mx-auto max-w-[1500px] 2xl:max-w-[1760px]">
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={pathname}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15, ease: "easeInOut" }}
-                >
-                  {children}
-                </motion.div>
-              </AnimatePresence>
-            </div>
-          </main>
-        </div>
+        {/* The feed is a full-bleed, fixed-height two-panel surface and owns
+            its own layout; every other page keeps the centered, padded
+            column. The nav lives in the Header now (no left sidebar). */}
+        <main>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15, ease: "easeInOut" }}
+            >
+              {isFeed ? (
+                children
+              ) : (
+                <div className="px-4 py-8 md:px-8">
+                  <div className="mx-auto max-w-[1500px] 2xl:max-w-[1760px]">
+                    {children}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </main>
       </div>
     </MotionConfig>
   );
