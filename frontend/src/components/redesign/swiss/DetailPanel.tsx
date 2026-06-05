@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Bookmark } from "lucide-react";
+import { ArrowLeft, Bookmark, Copy } from "lucide-react";
 import { useStoryCommentary, type DepthOverride } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
 import { DepthToggle } from "@/components/stories/DepthToggle";
@@ -15,7 +15,6 @@ import { isGatePayload, type Story } from "@/types/story";
 import type { UserProfile } from "@/types/auth";
 import {
   SECTOR_LABEL,
-  SECTOR_SHORT,
   fullStoryView,
   indicatorsNote,
   sectorColor,
@@ -51,14 +50,6 @@ const MARKET_INDICES: ReadonlyArray<{
 const MANIFESTO =
   "Artificial intelligence is not a software vertical. It is the substrate the next decade of finance and silicon will be built on — and the people who see the convergence first will own the room.";
 
-// Live counts off the ranked feed, surfaced in the default panel so it
-// earns its space with data rather than static chrome.
-export interface BriefingSummary {
-  total: number;
-  sectors: Array<{ key: string; count: number }>;
-  topMatch: number;
-}
-
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
     <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
@@ -70,52 +61,34 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
 function ProfileDefault({
   userName,
   profile,
-  summary,
 }: {
   userName: string | null;
   profile: UserProfile | null;
-  summary: BriefingSummary;
 }): JSX.Element {
   const role = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : null;
   const sectors = profile?.sectors ?? [];
   const savedList = [...useSavedTakeaways().values()];
+  const [copied, setCopied] = useState(false);
+
+  const handleExport = (): void => {
+    if (savedList.length === 0) return;
+    const body = savedList.map((e, i) => `${i + 1}. ${e.text}`).join("\n");
+    const text = `SIGNAL — Saved Takeaways\n\n${body}\n`;
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        })
+        .catch(() => {
+          /* clipboard blocked — no-op */
+        });
+    }
+  };
 
   return (
     <div className="space-y-8">
-      {summary.total > 0 && (
-        <div>
-          <SectionLabel>Today&apos;s Briefing</SectionLabel>
-          <div className="mt-3 grid grid-cols-2 gap-px border border-line bg-line">
-            <div className="bg-bg p-3">
-              <div className="font-display text-[28px] font-bold leading-none text-ink tabular-nums">
-                {summary.total}
-              </div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
-                stories ranked
-              </div>
-            </div>
-            <div className="bg-bg p-3">
-              <div className="font-display text-[28px] font-bold leading-none text-accent tabular-nums">
-                {summary.topMatch}%
-              </div>
-              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
-                top match
-              </div>
-            </div>
-          </div>
-          {summary.sectors.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em]">
-              {summary.sectors.map((s) => (
-                <span key={s.key} style={{ color: sectorColor(s.key) }}>
-                  {SECTOR_SHORT[s.key] ?? s.key}{" "}
-                  <span className="text-ink-muted">{s.count}</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       <div>
         <SectionLabel>Intelligence Profile</SectionLabel>
         <dl className="mt-3 divide-y divide-line border-y border-line">
@@ -160,9 +133,21 @@ function ProfileDefault({
         <div className="flex items-baseline justify-between">
           <SectionLabel>Saved Takeaways</SectionLabel>
           {savedList.length > 0 && (
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
-              {savedList.length} pinned
-            </span>
+            <button
+              type="button"
+              onClick={handleExport}
+              aria-label="Copy all saved takeaways to clipboard"
+              className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent transition-colors hover:text-accent-hover"
+            >
+              {copied ? (
+                "Copied ✓"
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" aria-hidden />
+                  Export {savedList.length}
+                </>
+              )}
+            </button>
           )}
         </div>
         {savedList.length > 0 ? (
@@ -389,7 +374,6 @@ interface DetailPanelProps {
   selectedStory: Story | null;
   profile: UserProfile | null;
   userName: string | null;
-  summary: BriefingSummary;
   onBack: () => void;
 }
 
@@ -399,12 +383,11 @@ export function DetailPanel({
   selectedStory,
   profile,
   userName,
-  summary,
   onBack,
 }: DetailPanelProps): JSX.Element {
   return selectedStory ? (
     <StoryDetail story={selectedStory} profile={profile} onBack={onBack} />
   ) : (
-    <ProfileDefault userName={userName} profile={profile} summary={summary} />
+    <ProfileDefault userName={userName} profile={profile} />
   );
 }

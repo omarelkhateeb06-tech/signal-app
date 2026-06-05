@@ -11,8 +11,8 @@ import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
-import { DetailPanel, type BriefingSummary } from "./DetailPanel";
-import { matchPercent } from "./swissView";
+import { DetailPanel } from "./DetailPanel";
+import { markStoryRead } from "./readStories";
 
 // Design C — "Swiss Command Center". A two-panel editorial intelligence
 // briefing on warm cream. Self-contained: it owns the feed query, sector
@@ -49,10 +49,12 @@ export function SwissCommandFeed(): JSX.Element {
     ]).finally(() => setIsRefreshing(false));
   };
 
-  // Selecting a story opens the mobile drawer; on ≥lg the drawer styles are
-  // inert (the panel is always visible) so this is a no-op there.
+  // Selecting a story opens it on the right, marks it read (worklist: you
+  // worked through it), and opens the mobile drawer; on ≥lg the drawer
+  // styles are inert (the panel is always visible) so that part is a no-op.
   const handleSelect = (id: string): void => {
     setSelectedId(id);
+    markStoryRead(id);
     setDrawerOpen(true);
   };
 
@@ -108,25 +110,6 @@ export function SwissCommandFeed(): JSX.Element {
     [selectedId, nonGated],
   );
   const activeId = selectedStory ? selectedStory.id : null;
-
-  // Live "Today's Briefing" summary — real counts off the ranked feed so the
-  // default right panel earns its space with data, not static chrome.
-  const summary = useMemo<BriefingSummary>(() => {
-    const bySector = new Map<string, number>();
-    for (const s of nonGated) {
-      bySector.set(s.sector, (bySector.get(s.sector) ?? 0) + 1);
-    }
-    const topMatch = nonGated.length
-      ? matchPercent(1, Math.max(1, nonGated[0].sources.length))
-      : 0;
-    return {
-      total: nonGated.length,
-      sectors: [...bySector.entries()]
-        .map(([key, count]) => ({ key, count }))
-        .sort((a, b) => b.count - a.count),
-      topMatch,
-    };
-  }, [nonGated]);
 
   // Right panel: an in-flow column that scrolls within the fixed-height
   // region on ≥lg; a slide-over drawer below lg.
@@ -239,7 +222,6 @@ export function SwissCommandFeed(): JSX.Element {
             selectedStory={selectedStory}
             profile={profile}
             userName={user?.name ?? null}
-            summary={summary}
             onBack={() => setSelectedId(null)}
           />
         </div>

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
+import { toggleStoryRead, useReadStories } from "./readStories";
 
 // One entry in the ranked stream (left panel). The left is a pure
 // scannable index — every row is collapsed; reading the full structured
@@ -73,53 +74,78 @@ export function StoryExhibit({
   const matchPct = matchPercent(rank, sourceCount);
   const readMinutes = story.reading_time_minutes ?? null;
   const { title, brief } = storyTitleAndBrief(story);
+  const isRead = useReadStories().has(story.id);
 
   // The top three carry larger headlines (visual weight decreases with rank).
   const headlineSize = rank <= 3 ? "text-[19px] md:text-[21px]" : "text-[17px]";
 
+  // Worklist: read rows recede so the unread "still to work through" set
+  // stays prominent. The whole row is still selectable; the check toggles
+  // done independently.
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(story.id)}
-      aria-pressed={isActive}
+    <div
       className={clsx(
-        "group block w-full border-b border-line py-5 text-left transition-colors",
+        "group flex w-full items-start gap-3 border-b border-line py-5 transition-colors",
         isActive
           ? "border-l-[3px] border-l-accent bg-accent/[0.05] pl-3"
           : "hover:bg-surface/60",
+        isRead && "opacity-55",
       )}
     >
-      <Kicker
-        rank={rank}
-        sector={story.sector}
-        readMinutes={readMinutes}
-        sourceCount={sourceCount}
-        sourceLabel={sourceDisplayLabel(story)}
-        matchPct={matchPct}
-      />
-      <h3
+      <button
+        type="button"
+        onClick={() => onSelect(story.id)}
+        aria-pressed={isActive}
+        className="min-w-0 flex-1 text-left"
+      >
+        <Kicker
+          rank={rank}
+          sector={story.sector}
+          readMinutes={readMinutes}
+          sourceCount={sourceCount}
+          sourceLabel={sourceDisplayLabel(story)}
+          matchPct={matchPct}
+        />
+        <h3
+          className={clsx(
+            "mt-2 font-display font-semibold leading-snug transition-colors",
+            headlineSize,
+            isActive ? "text-accent" : "text-ink group-hover:text-accent",
+          )}
+        >
+          {title}
+        </h3>
+        {brief && (
+          <p
+            className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {brief}
+          </p>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => toggleStoryRead(story.id)}
+        aria-pressed={isRead}
+        aria-label={isRead ? "Mark as unread" : "Mark as read"}
+        title={isRead ? "Read — click to undo" : "Mark as read"}
         className={clsx(
-          "mt-2 font-display font-semibold leading-snug transition-colors",
-          headlineSize,
-          isActive ? "text-accent" : "text-ink group-hover:text-accent",
+          "mt-1 flex h-5 w-5 flex-none items-center justify-center rounded-full border transition-colors",
+          isRead
+            ? "border-accent bg-accent text-accent-fg"
+            : "border-line text-transparent hover:border-accent hover:text-accent/40",
         )}
       >
-        {title}
-      </h3>
-      {brief && (
-        <p
-          className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {brief}
-        </p>
-      )}
-    </button>
+        <Check className="h-3 w-3" aria-hidden />
+      </button>
+    </div>
   );
 }
 
