@@ -1,19 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import clsx from "clsx";
 import { Bookmark, LogOut, Search, Settings, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { TeamSwitcher } from "@/components/layout/TeamSwitcher";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { TrialBadge } from "@/components/layout/TrialBadge";
 
-// Phase 12j — top navigation. Fixed top bar, full-width, page-bg
-// shaded one notch darker than the body so it visually separates
-// without a hard line. Wordmark left (serif "SIGNAL", tracked wide),
-// trial badge + search + saved + avatar right. Mobile: same right-
-// rail, no hamburger — at this surface count it's not warranted.
+// Primary top navigation. The left nav sidebar was retired in favour of a
+// horizontal nav here so the feed (and every page) can span full width.
+// Wordmark + section nav on the left; trial badge / team / theme / avatar on
+// the right. Below md the section nav collapses (Search + Saved stay as
+// right-rail icons, as before), matching the prior mobile behaviour.
+
+const PRIMARY_NAV: ReadonlyArray<{ href: string; label: string }> = [
+  { href: "/feed", label: "Feed" },
+  { href: "/saved", label: "Saved" },
+  { href: "/search", label: "Search" },
+  { href: "/settings", label: "Settings" },
+  { href: "/archive", label: "Archive" },
+];
 
 function initials(name: string | null | undefined, email: string): string {
   const source = name?.trim() || email;
@@ -23,6 +32,7 @@ function initials(name: string | null | undefined, email: string): string {
 export function Header(): JSX.Element {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -59,12 +69,32 @@ export function Header(): JSX.Element {
       className="sticky top-0 z-50 border-b border-line bg-bg/80 backdrop-blur-md supports-[backdrop-filter]:bg-bg/65"
     >
       <div className="flex h-14 items-center justify-between px-4 md:px-6">
-        <Link
-          href="/feed"
-          className="font-display text-lg font-semibold tracking-[0.2em] text-ink transition-colors hover:text-accent hover:no-underline"
-        >
-          SIGNAL
-        </Link>
+        {/* No wordmark — the editorial masthead lives on the feed itself, and
+            a header logo that only links to /feed duplicated the Feed nav. */}
+        {user && (
+          <nav className="hidden items-center gap-1 md:flex">
+            {PRIMARY_NAV.map((item) => {
+              const active =
+                pathname === item.href ||
+                pathname?.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors hover:no-underline",
+                    active
+                      ? "font-semibold text-ink"
+                      : "font-medium text-ink-muted hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         <nav className="flex items-center gap-3 text-sm">
           {user && <TrialBadge />}
           {user && <TeamSwitcher />}
@@ -74,7 +104,7 @@ export function Header(): JSX.Element {
             onClick={() => router.push("/search")}
             aria-label="Search (Ctrl+K)"
             title="Search (Ctrl+K)"
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-xs text-ink-muted transition-colors hover:border-ink-muted hover:text-ink"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-2.5 text-xs text-ink-muted transition-colors hover:border-ink-muted hover:text-ink md:hidden"
           >
             <Search className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Search</span>
@@ -87,7 +117,7 @@ export function Header(): JSX.Element {
               href="/saved"
               aria-label="Saved stories"
               title="Saved"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-ink-muted hover:bg-line/60 hover:text-ink"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-ink-muted hover:bg-line/60 hover:text-ink md:hidden"
             >
               <Bookmark className="h-4 w-4" />
             </Link>

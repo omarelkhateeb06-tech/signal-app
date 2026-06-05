@@ -396,3 +396,12 @@ function scrubBannedPhrases(text: string): string {
   // if NEUTRAL_SWAPS gains a "" entry).
   return out.replace(/\s{2,}/g, " ").trim();
 }
+
+/**
+ * Public wrapper around the module-private banned-phrase scrubber.
+ * Used by the Through-Line service (Layer 3 enforcement) so the synonym
+ * table and substitution logic stay single-sourced in this module.
+ */
+export function scrubBannedPhrasesPublic(text: string): string {
+  return scrubBannedPhrases(text);
+}

@@ -274,6 +274,28 @@ export async function getStoryCommentaryRequest(
   return res.data.data;
 }
 
+// "The Through-Line" — a Pro-only daily editorial synthesis of what
+// connects the day's top stories, generated server-side by Haiku and
+// cached per reader per day. Free users get a gate envelope. `source`
+// is "haiku" on success, "unavailable" when generation was skipped or
+// failed (the UI hides the section in that case).
+export interface ThroughLineResponse {
+  through_line: string | null;
+  source?: "haiku" | "unavailable";
+  gated?: boolean;
+  upgrade_cta?: { trial_available: boolean; message: string };
+}
+
+export async function getThroughLineRequest(
+  storyIds: string[],
+): Promise<ThroughLineResponse> {
+  const res = await api.get<{ data: ThroughLineResponse }>(
+    "/api/v1/briefing/through-line",
+    { params: { storyIds: storyIds.join(",") } },
+  );
+  return res.data.data;
+}
+
 // Phase 12r — lean archive fetch: native events only, sorted newest first.
 // No paywall, no sources batch — the archive table only needs id/headline/
 // published_at/sector/generator_type.

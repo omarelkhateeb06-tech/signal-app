@@ -23,7 +23,7 @@ export function SectorFilter({ selected, onChange }: SectorFilterProps): JSX.Ele
         type="button"
         onClick={() => onChange([])}
         className={clsx(
-          "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+          "rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.1em] transition-colors",
           selected.length === 0
             ? "border-accent bg-accent text-accent-fg"
             : "border-line bg-surface text-ink-muted hover:border-ink-muted hover:text-ink",
@@ -39,7 +39,7 @@ export function SectorFilter({ selected, onChange }: SectorFilterProps): JSX.Ele
             type="button"
             onClick={() => toggle(sector.value)}
             className={clsx(
-              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              "rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.1em] transition-colors",
               active
                 ? "border-accent bg-accent text-accent-fg"
                 : "border-line bg-surface text-ink-muted hover:border-ink-muted hover:text-ink",

@@ -166,6 +166,33 @@
     color-scheme: light;
   }
 
+  /*
+   * Dark variant of the Swiss theme. When the app is in dark mode the feed
+   * must blend with the shared dark shell (sidebar + header) instead of
+   * floating a cream sheet inside dark chrome (the "weird corner"). Base
+   * neutrals match the shell's `.dark` tokens exactly so there is no seam;
+   * only the accent keeps the Swiss terracotta identity, brightened for
+   * contrast on the dark surface. Specificity (`.dark .theme-swiss`) wins
+   * over `.theme-swiss`, so the subtree re-skins automatically.
+   */
+  .dark .theme-swiss {
+    --bg: #0e1116;
+    --surface: #171c26;
+    --ink: #f3f1ee;
+    --ink-muted: #99a1ad;
+    --line: #283040;
+    --accent: #cf8a57;
+    --accent-hover: #dd9d6e;
+    --accent-fg: #1a120b;
+    --ai: #8e84ff;
+    --finance: #2fc78a;
+    --semis: #e0954f;
+    --ok: #2fc78a;
+    --warn: #e0a93a;
+    --err: #e26a6a;
+    color-scheme: dark;
+  }
+
   /* Global resets / defaults */
   * {
     border-color: var(--line);
