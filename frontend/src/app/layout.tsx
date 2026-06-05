@@ -71,7 +71,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-bg font-sans text-ink antialiased">
+      <body className="min-h-screen bg-bg font-serif text-ink antialiased">
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

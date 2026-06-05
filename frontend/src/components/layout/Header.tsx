@@ -69,38 +69,32 @@ export function Header(): JSX.Element {
       className="sticky top-0 z-50 border-b border-line bg-bg/80 backdrop-blur-md supports-[backdrop-filter]:bg-bg/65"
     >
       <div className="flex h-14 items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-6">
-          <Link
-            href="/feed"
-            className="font-display text-lg font-semibold tracking-[0.2em] text-ink transition-colors hover:text-accent hover:no-underline"
-          >
-            SIGNAL
-          </Link>
-          {user && (
-            <nav className="hidden items-center gap-1 md:flex">
-              {PRIMARY_NAV.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  pathname?.startsWith(`${item.href}/`);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={clsx(
-                      "rounded-md px-3 py-1.5 text-sm transition-colors hover:no-underline",
-                      active
-                        ? "font-semibold text-ink"
-                        : "font-medium text-ink-muted hover:text-ink",
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          )}
-        </div>
+        {/* No wordmark — the editorial masthead lives on the feed itself, and
+            a header logo that only links to /feed duplicated the Feed nav. */}
+        {user && (
+          <nav className="hidden items-center gap-1 md:flex">
+            {PRIMARY_NAV.map((item) => {
+              const active =
+                pathname === item.href ||
+                pathname?.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors hover:no-underline",
+                    active
+                      ? "font-semibold text-ink"
+                      : "font-medium text-ink-muted hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         <nav className="flex items-center gap-3 text-sm">
           {user && <TrialBadge />}
           {user && <TeamSwitcher />}
