@@ -7,6 +7,7 @@ import { apiLimiter, authLimiter, emailLimiter } from "./middleware/rateLimiter"
 import { installSentryErrorHandler } from "./lib/sentry";
 import { apiKeysRouter } from "./routes/apiKeys";
 import { authRouter } from "./routes/auth";
+import { briefingRouter } from "./routes/briefing";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
 import { emailsRouter } from "./routes/emails";
@@ -86,6 +87,7 @@ export function createApp(): Express {
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
+  app.use("/api/v1/briefing", briefingRouter);
 
   // v2 Intelligence API: API-key authenticated, per-key rate limited.
   // Middleware chain (apiKeyAuth → apiKeyRateLimit) is applied inside

@@ -111,6 +111,12 @@ export function SwissCommandFeed(): JSX.Element {
   );
   const activeId = selectedStory ? selectedStory.id : null;
 
+  // Top of the ranked feed — passed to the Through-Line synthesis.
+  const topStoryIds = useMemo(
+    () => nonGated.slice(0, 8).map((s) => s.id),
+    [nonGated],
+  );
+
   // Right panel: an in-flow column that scrolls within the fixed-height
   // region on ≥lg; a slide-over drawer below lg.
   const detailContainerClass = clsx(
@@ -222,6 +228,7 @@ export function SwissCommandFeed(): JSX.Element {
             selectedStory={selectedStory}
             profile={profile}
             userName={user?.name ?? null}
+            topStoryIds={topStoryIds}
             onBack={() => setSelectedId(null)}
           />
         </div>
