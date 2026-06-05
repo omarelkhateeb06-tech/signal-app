@@ -15,6 +15,7 @@ import { isGatePayload, type Story } from "@/types/story";
 import type { UserProfile } from "@/types/auth";
 import {
   SECTOR_LABEL,
+  SECTOR_SHORT,
   fullStoryView,
   indicatorsNote,
   sectorColor,
@@ -50,6 +51,14 @@ const MARKET_INDICES: ReadonlyArray<{
 const MANIFESTO =
   "Artificial intelligence is not a software vertical. It is the substrate the next decade of finance and silicon will be built on — and the people who see the convergence first will own the room.";
 
+// Live counts off the ranked feed, surfaced in the default panel so it
+// earns its space with data rather than static chrome.
+export interface BriefingSummary {
+  total: number;
+  sectors: Array<{ key: string; count: number }>;
+  topMatch: number;
+}
+
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
     <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
@@ -61,9 +70,11 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
 function ProfileDefault({
   userName,
   profile,
+  summary,
 }: {
   userName: string | null;
   profile: UserProfile | null;
+  summary: BriefingSummary;
 }): JSX.Element {
   const role = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : null;
   const sectors = profile?.sectors ?? [];
@@ -71,6 +82,40 @@ function ProfileDefault({
 
   return (
     <div className="space-y-8">
+      {summary.total > 0 && (
+        <div>
+          <SectionLabel>Today&apos;s Briefing</SectionLabel>
+          <div className="mt-3 grid grid-cols-2 gap-px border border-line bg-line">
+            <div className="bg-bg p-3">
+              <div className="font-display text-[28px] font-bold leading-none text-ink tabular-nums">
+                {summary.total}
+              </div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
+                stories ranked
+              </div>
+            </div>
+            <div className="bg-bg p-3">
+              <div className="font-display text-[28px] font-bold leading-none text-accent tabular-nums">
+                {summary.topMatch}%
+              </div>
+              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
+                top match
+              </div>
+            </div>
+          </div>
+          {summary.sectors.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+              {summary.sectors.map((s) => (
+                <span key={s.key} style={{ color: sectorColor(s.key) }}>
+                  {SECTOR_SHORT[s.key] ?? s.key}{" "}
+                  <span className="text-ink-muted">{s.count}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div>
         <SectionLabel>Intelligence Profile</SectionLabel>
         <dl className="mt-3 divide-y divide-line border-y border-line">
@@ -113,43 +158,6 @@ function ProfileDefault({
 
       <div>
         <div className="flex items-baseline justify-between">
-          <SectionLabel>Market Context</SectionLabel>
-          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
-            indicative
-          </span>
-        </div>
-        <ul className="mt-3 divide-y divide-line border-y border-line">
-          {MARKET_INDICES.map((idx) => (
-            <li
-              key={idx.symbol}
-              className="flex items-center justify-between gap-4 py-2.5"
-            >
-              <div className="min-w-0">
-                <span className="font-mono text-[12px] font-semibold tracking-[0.08em] text-ink">
-                  {idx.symbol}
-                </span>
-                <span className="ml-2 text-[12px] text-ink-muted">{idx.label}</span>
-              </div>
-              <div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
-                <span className="text-ink">{idx.value}</span>
-                <span style={{ color: idx.up ? "var(--finance)" : "var(--err)" }}>
-                  {idx.delta}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <figure className="border-l-[3px] border-accent pl-4">
-        <SectionLabel>The Convergence Manifesto</SectionLabel>
-        <blockquote className="mt-2 font-serif text-[17px] italic leading-relaxed text-ink">
-          “{MANIFESTO}”
-        </blockquote>
-      </figure>
-
-      <div>
-        <div className="flex items-baseline justify-between">
           <SectionLabel>Saved Takeaways</SectionLabel>
           {savedList.length > 0 && (
             <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
@@ -184,6 +192,43 @@ function ProfileDefault({
           </p>
         )}
       </div>
+
+      <div>
+        <div className="flex items-baseline justify-between">
+          <SectionLabel>Market Context</SectionLabel>
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
+            indicative
+          </span>
+        </div>
+        <ul className="mt-3 divide-y divide-line border-y border-line">
+          {MARKET_INDICES.map((idx) => (
+            <li
+              key={idx.symbol}
+              className="flex items-center justify-between gap-4 py-2.5"
+            >
+              <div className="min-w-0">
+                <span className="font-mono text-[12px] font-semibold tracking-[0.08em] text-ink">
+                  {idx.symbol}
+                </span>
+                <span className="ml-2 text-[12px] text-ink-muted">{idx.label}</span>
+              </div>
+              <div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
+                <span className="text-ink">{idx.value}</span>
+                <span style={{ color: idx.up ? "var(--finance)" : "var(--err)" }}>
+                  {idx.delta}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <figure className="border-l-[3px] border-accent pl-4">
+        <SectionLabel>The Convergence Manifesto</SectionLabel>
+        <blockquote className="mt-2 font-serif text-[17px] italic leading-relaxed text-ink">
+          “{MANIFESTO}”
+        </blockquote>
+      </figure>
     </div>
   );
 }
@@ -234,7 +279,7 @@ function StoryDetail({
   const whySupport = commentary?.support ?? null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <button
         type="button"
         onClick={onBack}
@@ -285,18 +330,20 @@ function StoryDetail({
       {view.brief && (
         <div>
           <SectionLabel>The Core Brief</SectionLabel>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink">{view.brief}</p>
+          <p className="mt-2 max-w-[66ch] text-[15px] leading-[1.85] text-ink">
+            {view.brief}
+          </p>
         </div>
       )}
 
       {whyThesis && (
         <div className="border-l-[3px] border-accent bg-accent/[0.06] py-3 pl-4 pr-3">
           <SectionLabel>Why It Matters</SectionLabel>
-          <p className="mt-2 font-serif text-[15px] italic leading-relaxed text-ink">
+          <p className="mt-2 max-w-[66ch] font-serif text-[15px] italic leading-[1.8] text-ink">
             {whyThesis}
           </p>
           {whySupport && (
-            <p className="mt-3 font-serif text-[14px] italic leading-relaxed text-ink-muted">
+            <p className="mt-3 max-w-[66ch] font-serif text-[14px] italic leading-[1.8] text-ink-muted">
               {whySupport}
             </p>
           )}
@@ -342,6 +389,7 @@ interface DetailPanelProps {
   selectedStory: Story | null;
   profile: UserProfile | null;
   userName: string | null;
+  summary: BriefingSummary;
   onBack: () => void;
 }
 
@@ -351,11 +399,12 @@ export function DetailPanel({
   selectedStory,
   profile,
   userName,
+  summary,
   onBack,
 }: DetailPanelProps): JSX.Element {
   return selectedStory ? (
     <StoryDetail story={selectedStory} profile={profile} onBack={onBack} />
   ) : (
-    <ProfileDefault userName={userName} profile={profile} />
+    <ProfileDefault userName={userName} profile={profile} summary={summary} />
   );
 }

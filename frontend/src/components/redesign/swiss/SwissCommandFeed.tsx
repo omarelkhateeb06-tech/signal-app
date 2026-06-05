@@ -11,7 +11,8 @@ import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
-import { DetailPanel } from "./DetailPanel";
+import { DetailPanel, type BriefingSummary } from "./DetailPanel";
+import { matchPercent } from "./swissView";
 
 // Design C — "Swiss Command Center". A two-panel editorial intelligence
 // briefing on warm cream. Self-contained: it owns the feed query, sector
@@ -104,6 +105,25 @@ export function SwissCommandFeed(): JSX.Element {
   );
   const activeId = selectedStory ? selectedStory.id : null;
 
+  // Live "Today's Briefing" summary — real counts off the ranked feed so the
+  // default right panel earns its space with data, not static chrome.
+  const summary = useMemo<BriefingSummary>(() => {
+    const bySector = new Map<string, number>();
+    for (const s of nonGated) {
+      bySector.set(s.sector, (bySector.get(s.sector) ?? 0) + 1);
+    }
+    const topMatch = nonGated.length
+      ? matchPercent(1, Math.max(1, nonGated[0].sources.length))
+      : 0;
+    return {
+      total: nonGated.length,
+      sectors: [...bySector.entries()]
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count),
+      topMatch,
+    };
+  }, [nonGated]);
+
   // Mobile slide-over + desktop sticky column, one DetailPanel instance.
   const detailContainerClass = clsx(
     "min-w-0 bg-bg px-6 py-6 md:px-8",
@@ -193,6 +213,7 @@ export function SwissCommandFeed(): JSX.Element {
             selectedStory={selectedStory}
             profile={profile}
             userName={user?.name ?? null}
+            summary={summary}
             onBack={() => setSelectedId(null)}
           />
         </div>
