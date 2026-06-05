@@ -313,12 +313,21 @@ function eventCommentCountExpr(): ReturnType<typeof sql<number>> {
 // brand native posts (arxiv-synthesis-native → "The Research Read", …).
 // Mirrors the event_sources → ingestion_sources join used by
 // eventQualityScoreExpr; returns null when no primary source row exists.
-function eventGeneratorSlugExpr(): ReturnType<typeof sql<string | null>> {
+//
+// The outer correlation MUST be fully qualified ("events"."id"), not the
+// bare ${events.id} Drizzle would emit. In a join-less query (FROM events
+// with no leftJoin — e.g. getNativeStories) Drizzle compiles ${events.id}
+// to an unqualified "id", which is ambiguous inside this subquery against
+// event_sources.id / ingestion_sources.id and makes Postgres throw
+// `column reference "id" is ambiguous` (the /native 500). Queries that DO
+// join (feed/search/related) already qualified as "events"."id", so this
+// is a no-op for them and a fix for the join-less callers.
+export function eventGeneratorSlugExpr(): ReturnType<typeof sql<string | null>> {
   return sql<string | null>`(
     SELECT isrc.slug
       FROM event_sources es
       JOIN ingestion_sources isrc ON isrc.id = es.ingestion_source_id
-      WHERE es.event_id = ${events.id} AND es.role = 'primary'
+      WHERE es.event_id = ${events}.${sql.raw(`"id"`)} AND es.role = 'primary'
       LIMIT 1
   )`;
 }

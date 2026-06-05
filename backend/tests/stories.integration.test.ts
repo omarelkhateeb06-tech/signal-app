@@ -12,8 +12,10 @@ jest.mock("../src/db", () => ({
   pool: {},
 }));
 
+import { PgDialect } from "drizzle-orm/pg-core";
 import { createApp } from "../src/app";
 import { generateToken } from "../src/services/authService";
+import { eventGeneratorSlugExpr } from "../src/controllers/storyController";
 
 const app = createApp();
 
@@ -546,5 +548,32 @@ describe("stories endpoints", () => {
       expect(res.body.data.limit).toBe(1);
       expect(res.body.data.offset).toBe(0);
     });
+  });
+});
+
+// Regression guard for the /native 500 (`column reference "id" is
+// ambiguous`). getNativeStories is the only events query with NO join, so
+// Drizzle compiled the bare ${events.id} inside eventGeneratorSlugExpr's
+// correlated subquery to an unqualified "id" — ambiguous against
+// event_sources.id / ingestion_sources.id, which Postgres rejected. The fix
+// forces the outer correlation to be fully qualified ("events"."id").
+//
+// The mockDb chain never runs real SQL, so the integration tests above
+// cannot catch this — we assert the compiled SQL fragment directly, the same
+// way ranking.test.ts guards eventHasEnabledSourceExpr (#88).
+describe("eventGeneratorSlugExpr — qualified outer correlation (native 500 guard)", () => {
+  it("references the outer events row as a fully-qualified \"events\".\"id\", never a bare ambiguous \"id\"", () => {
+    const dialect = new PgDialect();
+    const { sql: rendered } = dialect.sqlToQuery(eventGeneratorSlugExpr());
+    const collapsed = rendered.replace(/\s+/g, " ").toLowerCase();
+
+    // The correlated comparison must be against the qualified outer column.
+    expect(collapsed).toContain('es.event_id = "events"."id"');
+    // It must NOT compare against a bare, ambiguous "id" (the bug).
+    expect(collapsed).not.toMatch(/es\.event_id\s*=\s*"id"/);
+    // Sanity: still the right subquery.
+    expect(collapsed).toContain("event_sources es");
+    expect(collapsed).toContain("ingestion_sources isrc");
+    expect(collapsed).toContain("es.role = 'primary'");
   });
 });

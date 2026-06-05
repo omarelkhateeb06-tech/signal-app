@@ -423,9 +423,10 @@ Four BullMQ queues, all backed by the shared Redis connection:
 | `signal-ingestion-poll`   | `scheduleSourcePollRepeatable()` + `enqueueSourcePoll()` (ad-hoc) | `sourcePollWorker`      | per-source `every: fetch_interval_seconds * 1000`, scheduled at boot from `ingestion_sources` rows (12e.5c) |
 | `signal-ingestion-enrich` | `enqueueEnrichment()` from poll-job tail + manual `runIngestionEnrich.ts` CLI | `enrichmentWorker`      | on-demand (one job per surviving candidate) |
 
-Plus one **in-process** scheduler:
+Plus two **in-process** schedulers:
 
 - `emailScheduler` — node-cron, default `0 11 * * *` (daily 11:00 UTC = 07:00 ET), overridable via `DAILY_DIGEST_CRON`; disable with `DISABLE_EMAIL_SCHEDULER=1` for local dev. Fires `sendDailyDigests` — Pro-only (see §11 "Daily digest eligibility").
+- `nativeGenerationScheduler` (Phase 12u) — node-cron, default `0 9 * * *` (daily 09:00 UTC), overridable via `NATIVE_GENERATION_CRON`; disable with `DISABLE_NATIVE_SCHEDULER=1`. Fans out across every registered native generator, sharing the global `NATIVE_DAILY_CAP` (25/day) budget. Skips the run (logs, no DB churn) when `ANTHROPIC_API_KEY` is unset — native posts are Haiku-authored and the path is Redis-free (writes straight to Postgres via `processNativeEnrichment`). Core logic lives in `services/nativeGenerationService.ts` (`runNativeGeneration`), shared with the manual `runNativeGeneration.ts` CLI.
 
 Manual triggers for ops:
 
