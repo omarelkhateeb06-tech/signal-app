@@ -130,8 +130,10 @@ export function SwissCommandFeed(): JSX.Element {
     // mobile: fixed slide-over drawer
     "fixed inset-y-0 right-0 z-50 w-[88%] max-w-[440px] overflow-y-auto border-l border-line shadow-2xl transition-transform duration-300 ease-out",
     drawerOpen ? "translate-x-0" : "translate-x-full",
-    // ≥lg: in-flow sticky column, no transform / shadow / fixed offsets
-    "lg:sticky lg:inset-y-auto lg:right-auto lg:top-0 lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:max-h-screen lg:self-start lg:border-l lg:shadow-none lg:transition-none",
+    // ≥lg: in-flow sticky column below the 56px sticky app header (so it
+    // doesn't tuck under it on scroll and its inner scrollbar fits), no
+    // transform / shadow / fixed offsets.
+    "lg:sticky lg:inset-y-auto lg:right-auto lg:top-14 lg:z-auto lg:w-auto lg:max-w-none lg:translate-x-0 lg:max-h-[calc(100dvh_-_3.5rem)] lg:self-start lg:border-l lg:shadow-none lg:transition-none",
   );
 
   const body = ((): JSX.Element => {
