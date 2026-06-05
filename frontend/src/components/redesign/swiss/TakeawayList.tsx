@@ -9,9 +9,9 @@ import {
 
 // Key-takeaway bullets with a per-bullet save (bookmark) affordance. The
 // bookmark is the briefing's one active-engagement layer — a reader can
-// pull a single takeaway out of a story into their saved set. Shared by
-// the left exhibit and the right detail panel so both reflect the same
-// saved state.
+// pull a single takeaway into their saved set, which gets a home in the
+// profile sidebar. The control is always visible and keyboard-reachable
+// (a real button), not a hover-only reveal.
 
 export function TakeawayList({
   storyId,
@@ -23,14 +23,14 @@ export function TakeawayList({
   const saved = useSavedTakeaways();
 
   return (
-    <ul className="mt-2 space-y-1.5">
+    <ul className="mt-2 space-y-2">
       {takeaways.map((t, i) => {
         const key = takeawayKey(storyId, i);
         const isSaved = saved.has(key);
         return (
           <li
             key={i}
-            className="group/ta flex items-start gap-2 text-[14px] leading-relaxed text-ink"
+            className="flex items-start gap-2 text-[14px] leading-relaxed text-ink"
           >
             <span aria-hidden className="mt-[2px] flex-none text-accent">
               •
@@ -38,14 +38,15 @@ export function TakeawayList({
             <span className="flex-1">{t}</span>
             <button
               type="button"
-              onClick={() => toggleSavedTakeaway(key)}
+              onClick={() => toggleSavedTakeaway({ key, storyId, text: t })}
               aria-pressed={isSaved}
-              aria-label={isSaved ? "Unsave takeaway" : "Save takeaway"}
+              aria-label={isSaved ? "Remove saved takeaway" : "Save takeaway"}
+              title={isSaved ? "Saved — click to remove" : "Save this takeaway"}
               className={[
-                "mt-[1px] flex-none transition-opacity focus-visible:opacity-100",
+                "mt-[1px] flex-none rounded-[2px] p-0.5 transition-colors",
                 isSaved
-                  ? "text-accent opacity-100"
-                  : "text-ink-muted opacity-0 hover:text-accent group-hover/ta:opacity-100",
+                  ? "text-accent"
+                  : "text-ink-muted/50 hover:text-accent focus-visible:text-accent",
               ].join(" ")}
             >
               <Bookmark

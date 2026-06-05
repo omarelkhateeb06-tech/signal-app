@@ -2,42 +2,41 @@
 
 import Link from "next/link";
 import { Lock } from "lucide-react";
+import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
-import {
-  SECTOR_SHORT,
-  fullStoryView,
-  indicatorsNote,
-  matchPercent,
-  storyTitleAndBrief,
-} from "./swissView";
-import { TakeawayList } from "./TakeawayList";
+import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 
-// One entry in the ranked stream (left panel). Collapsed by default;
-// the currently-selected story renders its full structured briefing
-// inline (Core Brief → Why It Matters → Key Takeaways → Indicators).
-
-function SectionLabel({ children }: { children: string }): JSX.Element {
-  return (
-    <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
-      {children} <span className="text-line">{"//"}</span>
-    </h4>
-  );
-}
+// One entry in the ranked stream (left panel). The left is a pure
+// scannable index — every row is collapsed; reading the full structured
+// briefing happens in the right detail panel (scan left / read right). The
+// active row (the one being read on the right) gets a terracotta marker.
 
 function Kicker({
   rank,
   sector,
   readMinutes,
   sourceCount,
+  sourceLabel,
   matchPct,
 }: {
   rank: number;
   sector: string;
   readMinutes: number | null;
   sourceCount: number;
+  sourceLabel: string | null;
   matchPct: number;
 }): JSX.Element {
+  // Source metadata is only worth a slot when it carries information: show a
+  // count when a story is genuinely multi-source, otherwise the source name
+  // (or nothing). Avoids the "1 SOURCES" noise repeating on every row.
+  const sourceNote =
+    sourceCount > 1
+      ? `${sourceCount} sources`
+      : sourceLabel
+        ? `via ${sourceLabel}`
+        : null;
+
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
       <span className="font-semibold text-accent">
@@ -46,7 +45,7 @@ function Kicker({
       <span className="text-line">{"//"}</span>
       <span className="text-ink-muted">{SECTOR_SHORT[sector] ?? sector}</span>
       {readMinutes != null && <span>· {readMinutes} min read</span>}
-      <span className="text-ink-muted">· {sourceCount} sources</span>
+      {sourceNote && <span>· {sourceNote}</span>}
       {rank > 1 && (
         <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
           {matchPct}% match
@@ -59,125 +58,68 @@ function Kicker({
 interface StoryExhibitProps {
   story: Story;
   rank: number;
-  expanded: boolean;
+  /** True when this row is the story currently open in the detail panel. */
+  isActive: boolean;
   onSelect: (storyId: string) => void;
 }
 
 export function StoryExhibit({
   story,
   rank,
-  expanded,
+  isActive,
   onSelect,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
   const matchPct = matchPercent(rank, sourceCount);
   const readMinutes = story.reading_time_minutes ?? null;
+  const { title, brief } = storyTitleAndBrief(story);
 
-  // Visual weight by rank: the top three carry larger headlines.
-  const headlineSize = expanded
-    ? "text-[26px] md:text-[30px]"
-    : rank <= 3
-      ? "text-[19px] md:text-[21px]"
-      : "text-[17px]";
-
-  if (!expanded) {
-    const { title, brief } = storyTitleAndBrief(story);
-    return (
-      <button
-        type="button"
-        onClick={() => onSelect(story.id)}
-        className="group block w-full border-b border-line py-5 text-left transition-colors hover:bg-surface/60"
-      >
-        <Kicker
-          rank={rank}
-          sector={story.sector}
-          readMinutes={readMinutes}
-          sourceCount={sourceCount}
-          matchPct={matchPct}
-        />
-        <h3
-          className={`mt-2 font-display ${headlineSize} font-semibold leading-snug text-ink transition-colors group-hover:text-accent`}
-        >
-          {title}
-        </h3>
-        {brief && (
-          <p
-            className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
-            style={{
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            {brief}
-          </p>
-        )}
-      </button>
-    );
-  }
-
-  const view = fullStoryView(story);
-  const indicators = indicatorsNote(story);
-  const source = sourceDisplayLabel(story);
+  // The top three carry larger headlines (visual weight decreases with rank).
+  const headlineSize = rank <= 3 ? "text-[19px] md:text-[21px]" : "text-[17px]";
 
   return (
-    <article className="border-b border-line py-6">
+    <button
+      type="button"
+      onClick={() => onSelect(story.id)}
+      aria-pressed={isActive}
+      className={clsx(
+        "group block w-full border-b border-line py-5 text-left transition-colors",
+        isActive
+          ? "border-l-[3px] border-l-accent bg-accent/[0.05] pl-3"
+          : "hover:bg-surface/60",
+      )}
+    >
       <Kicker
         rank={rank}
         sector={story.sector}
         readMinutes={readMinutes}
         sourceCount={sourceCount}
+        sourceLabel={sourceDisplayLabel(story)}
         matchPct={matchPct}
       />
-      <h2
-        className={`mt-3 font-display ${headlineSize} font-bold leading-[1.08] tracking-tight text-ink`}
+      <h3
+        className={clsx(
+          "mt-2 font-display font-semibold leading-snug transition-colors",
+          headlineSize,
+          isActive ? "text-accent" : "text-ink group-hover:text-accent",
+        )}
       >
-        {view.title}
-      </h2>
-
-      {view.brief && (
-        <div className="mt-5">
-          <SectionLabel>The Core Brief</SectionLabel>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink">{view.brief}</p>
-        </div>
-      )}
-
-      {view.whyItMatters && (
-        <div className="mt-5 border-l-[3px] border-accent bg-accent/[0.06] py-3 pl-4 pr-3">
-          <SectionLabel>Why It Matters</SectionLabel>
-          <p className="mt-2 font-serif text-[15px] italic leading-relaxed text-ink">
-            {view.whyItMatters}
-          </p>
-        </div>
-      )}
-
-      {view.takeaways.length > 0 && (
-        <div className="mt-5">
-          <SectionLabel>Key Takeaways</SectionLabel>
-          <TakeawayList storyId={story.id} takeaways={view.takeaways} />
-        </div>
-      )}
-
-      {indicators && (
-        <div className="mt-5">
-          <SectionLabel>Indicators to Monitor</SectionLabel>
-          <p className="mt-2 font-serif text-[14px] italic leading-relaxed text-ink-muted">
-            {indicators}
-          </p>
-        </div>
-      )}
-
-      <div className="mt-5 flex items-center gap-4 border-t border-line pt-3 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
-        {source && <span className="text-ink">{source}</span>}
-        <Link
-          href={`/stories/${story.id}`}
-          className="text-accent hover:text-accent-hover hover:no-underline"
+        {title}
+      </h3>
+      {brief && (
+        <p
+          className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
         >
-          Read in full →
-        </Link>
-      </div>
-    </article>
+          {brief}
+        </p>
+      )}
+    </button>
   );
 }
 

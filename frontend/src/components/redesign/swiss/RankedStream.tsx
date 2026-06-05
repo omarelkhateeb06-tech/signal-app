@@ -5,14 +5,15 @@ import { SectorFilter } from "@/components/feed/SectorFilter";
 import { isGatedFeedItem, type FeedItem } from "@/types/story";
 import { GatedExhibit, StoryExhibit } from "./StoryExhibit";
 
-// Left panel: the ranked stream. The selected story renders expanded with
-// its full structured briefing; every other entry is a collapsed,
-// clickable row. Rank is 1-based position in the feed (gated rows
-// included), so MATCH % stays aligned with feed order.
+// Left panel: the ranked stream — a pure scannable index. Every entry is a
+// collapsed, clickable row; the active row (open in the detail panel) is
+// highlighted. Reading happens on the right. Rank is 1-based position in
+// the feed (gated rows included), so MATCH % stays aligned with feed order.
 
 interface RankedStreamProps {
   items: FeedItem[];
-  selectedId: string | null;
+  /** Id of the story currently open in the detail panel (highlighted). */
+  activeId: string | null;
   onSelect: (storyId: string) => void;
   sectors: string[];
   onSectorsChange: (next: string[]) => void;
@@ -23,7 +24,7 @@ interface RankedStreamProps {
 
 export function RankedStream({
   items,
-  selectedId,
+  activeId,
   onSelect,
   sectors,
   onSectorsChange,
@@ -51,7 +52,7 @@ export function RankedStream({
               key={item.id}
               story={item}
               rank={rank}
-              expanded={item.id === selectedId}
+              isActive={item.id === activeId}
               onSelect={onSelect}
             />
           );

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Bookmark } from "lucide-react";
 import { useStoryCommentary, type DepthOverride } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
 import { DepthToggle } from "@/components/stories/DepthToggle";
@@ -19,6 +20,7 @@ import {
   sectorColor,
 } from "./swissView";
 import { TakeawayList } from "./TakeawayList";
+import { toggleSavedTakeaway, useSavedTakeaways } from "./savedTakeaways";
 
 // Right panel. Default state = the reader's intelligence profile, market
 // context, and the editorial manifesto. Active state (a story selected on
@@ -65,6 +67,7 @@ function ProfileDefault({
 }): JSX.Element {
   const role = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : null;
   const sectors = profile?.sectors ?? [];
+  const savedList = [...useSavedTakeaways().values()];
 
   return (
     <div className="space-y-8">
@@ -144,6 +147,43 @@ function ProfileDefault({
           “{MANIFESTO}”
         </blockquote>
       </figure>
+
+      <div>
+        <div className="flex items-baseline justify-between">
+          <SectionLabel>Saved Takeaways</SectionLabel>
+          {savedList.length > 0 && (
+            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
+              {savedList.length} pinned
+            </span>
+          )}
+        </div>
+        {savedList.length > 0 ? (
+          <ul className="mt-3 divide-y divide-line border-y border-line">
+            {savedList.map((entry) => (
+              <li key={entry.key} className="flex items-start gap-2 py-2.5">
+                <Link
+                  href={`/stories/${entry.storyId}`}
+                  className="flex-1 text-[13px] leading-relaxed text-ink hover:text-accent hover:no-underline"
+                >
+                  {entry.text}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => toggleSavedTakeaway(entry)}
+                  aria-label="Remove saved takeaway"
+                  className="mt-[2px] flex-none text-accent"
+                >
+                  <Bookmark className="h-3.5 w-3.5 fill-current" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 font-sans text-[13px] leading-relaxed text-ink-muted">
+            Bookmark a key takeaway in any story and it gets pinned here.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -160,6 +200,7 @@ function StoryDetail({
   const router = useRouter();
   const tierQuery = useTier();
   const isFree = tierQuery.data?.tier === "free";
+  const roleLabel = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : null;
 
   const [depth, setDepth] = useState<DepthOverride>(
     profile?.depthPreference ?? "accessible",
@@ -214,6 +255,20 @@ function StoryDetail({
           onLockedClick={() => router.push("/upgrade")}
         />
       </div>
+
+      {isFree && (
+        <Link
+          href="/upgrade"
+          className="flex items-center justify-between gap-3 border border-accent/30 bg-accent/[0.04] px-3 py-2.5 transition-colors hover:bg-accent/[0.08] hover:no-underline"
+        >
+          <span className="font-serif text-[13px] italic leading-snug text-ink">
+            Read this through your role&apos;s lens — the Briefed &amp; Technical takes are written for {roleLabel ?? "your work"}.
+          </span>
+          <span className="flex-none font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
+            Unlock Pro →
+          </span>
+        </Link>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em]">
         {(story.sector ? [story.sector] : []).map((s) => (
@@ -273,7 +328,9 @@ function StoryDetail({
         <div className="flex flex-wrap items-center gap-3">
           {source && <span className="text-ink">{source}</span>}
           {stamp && <span>{stamp}</span>}
-          <span>{Math.max(1, story.sources.length)} sources</span>
+          {story.sources.length > 1 && (
+            <span>{story.sources.length} sources</span>
+          )}
         </div>
         <StorySaveButton story={story} />
       </div>

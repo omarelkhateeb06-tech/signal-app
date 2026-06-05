@@ -95,16 +95,14 @@ export function SwissCommandFeed(): JSX.Element {
     [items],
   );
 
-  // Single source of truth: `selectedId`. The left panel expands the
-  // selected story, or rank 1 when nothing is selected; the right panel
-  // shows the selected story's detail, or the default profile sidebar.
+  // Single source of truth: `selectedId`. The left panel is a pure index;
+  // it highlights the active row. The right panel reads the selected
+  // story's detail, or the default profile sidebar when nothing is open.
   const selectedStory = useMemo<Story | null>(
     () => (selectedId ? nonGated.find((s) => s.id === selectedId) ?? null : null),
     [selectedId, nonGated],
   );
-
-  const firstId = nonGated[0]?.id ?? null;
-  const expandedId = selectedStory ? selectedStory.id : firstId;
+  const activeId = selectedStory ? selectedStory.id : null;
 
   // Mobile slide-over + desktop sticky column, one DetailPanel instance.
   const detailContainerClass = clsx(
@@ -155,7 +153,7 @@ export function SwissCommandFeed(): JSX.Element {
           <div className="mt-6">
             <RankedStream
               items={items}
-              selectedId={expandedId}
+              activeId={activeId}
               onSelect={handleSelect}
               sectors={sectors}
               onSectorsChange={setSectors}
@@ -173,7 +171,7 @@ export function SwissCommandFeed(): JSX.Element {
         <div className="lg:border-r lg:border-line">
           <RankedStream
             items={items}
-            selectedId={expandedId}
+            activeId={activeId}
             onSelect={handleSelect}
             sectors={sectors}
             onSectorsChange={setSectors}

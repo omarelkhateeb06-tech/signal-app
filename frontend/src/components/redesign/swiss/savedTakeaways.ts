@@ -4,28 +4,45 @@ import { useSyncExternalStore } from "react";
 
 // Client-only "saved takeaways" store. Lets a reader bookmark individual
 // key-takeaway bullets so the briefing is a working tool, not just a
-// reading surface (advisory-board active-engagement item). Persisted to
-// localStorage and shared across components via useSyncExternalStore, so
-// the same takeaway shows saved in both the left exhibit and the right
-// detail panel. There is no backend endpoint for this (and the backend is
-// out of scope), so localStorage is the correct home.
+// reading surface (advisory-board active-engagement item). Each saved
+// entry keeps its text and source story so the right panel can give the
+// saved set a home (a count + list in the profile sidebar). Persisted to
+// localStorage and shared across components via useSyncExternalStore.
+// There is no backend endpoint for this (and the backend is out of scope),
+// so localStorage is the correct home.
+
+export interface SavedTakeaway {
+  key: string;
+  storyId: string;
+  text: string;
+}
 
 const STORAGE_KEY = "signal:saved-takeaways";
 const listeners = new Set<() => void>();
-let store: Set<string> = new Set();
+let store: Map<string, SavedTakeaway> = new Map();
 
-if (typeof window !== "undefined") {
+function hydrate(): Map<string, SavedTakeaway> {
+  const map = new Map<string, SavedTakeaway>();
+  if (typeof window === "undefined") return map;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) store = new Set<string>(JSON.parse(raw) as string[]);
+    if (raw) {
+      const parsed = JSON.parse(raw) as SavedTakeaway[];
+      for (const entry of parsed) {
+        if (entry && typeof entry.key === "string") map.set(entry.key, entry);
+      }
+    }
   } catch {
-    store = new Set();
+    /* ignore malformed / disabled storage */
   }
+  return map;
 }
 
-// Stable empty snapshot for SSR — server has no localStorage, so it always
+store = hydrate();
+
+// Stable empty snapshot for SSR — the server has no localStorage, so it
 // renders the unsaved state and the client reconciles on hydration.
-const EMPTY_SNAPSHOT: Set<string> = new Set();
+const EMPTY_SNAPSHOT: Map<string, SavedTakeaway> = new Map();
 
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
@@ -34,11 +51,11 @@ function subscribe(cb: () => void): () => void {
   };
 }
 
-function getSnapshot(): Set<string> {
+function getSnapshot(): Map<string, SavedTakeaway> {
   return store;
 }
 
-function getServerSnapshot(): Set<string> {
+function getServerSnapshot(): Map<string, SavedTakeaway> {
   return EMPTY_SNAPSHOT;
 }
 
@@ -47,14 +64,17 @@ export function takeawayKey(storyId: string, index: number): string {
   return `${storyId}::${index}`;
 }
 
-export function toggleSavedTakeaway(key: string): void {
-  const next = new Set(store);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
+export function toggleSavedTakeaway(entry: SavedTakeaway): void {
+  const next = new Map(store);
+  if (next.has(entry.key)) next.delete(entry.key);
+  else next.set(entry.key, entry);
   store = next;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...store]));
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify([...store.values()]),
+      );
     } catch {
       /* ignore quota / disabled storage */
     }
@@ -62,6 +82,6 @@ export function toggleSavedTakeaway(key: string): void {
   listeners.forEach((l) => l());
 }
 
-export function useSavedTakeaways(): Set<string> {
+export function useSavedTakeaways(): Map<string, SavedTakeaway> {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
