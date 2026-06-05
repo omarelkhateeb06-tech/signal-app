@@ -45,11 +45,10 @@
 // set process.exitCode = 1 and let the event loop drain naturally.
 
 import "dotenv/config";
-import crypto from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db, pool } from "../db";
-import { ingestionCandidates, ingestionSources } from "../db/schema";
+import { ingestionSources } from "../db/schema";
 import { getGenerator } from "../jobs/ingestion/generators";
 import {
   applyDailyCap,
@@ -61,6 +60,7 @@ import type {
   NativeCandidate,
 } from "../jobs/ingestion/generators/types";
 import { processNativeEnrichment } from "../jobs/ingestion/nativeEnrichmentJob";
+import { upsertCandidate } from "../services/nativeGenerationService";
 
 const DEFAULT_SLUG = "github-trending-native";
 
@@ -161,10 +161,6 @@ function makeDiagnosticPrinter(): {
   return { onDiagnostic, tally };
 }
 
-function sha256Truncated(input: string): string {
-  return crypto.createHash("sha256").update(input, "utf8").digest("hex").slice(0, 32);
-}
-
 function printCandidate(index: number, c: NativeCandidate): void {
   /* eslint-disable no-console */
   console.log(`\n──────── native post #${index + 1} ────────`);
@@ -174,55 +170,6 @@ function printCandidate(index: number, c: NativeCandidate): void {
   console.log(`headline:    ${c.headline}`);
   console.log(`body:\n${c.body}`);
   /* eslint-enable no-console */
-}
-
-// Insert one native candidate. Returns the row id (the freshly-inserted
-// id, or the existing row's id on conflict — re-running the generator
-// over the same trending repo is a no-op insert that still resolves to
-// the prior candidate so enrichment can short-circuit on its status).
-async function upsertCandidate(
-  sourceId: string,
-  c: NativeCandidate,
-  now: Date,
-): Promise<string> {
-  const inserted = await db
-    .insert(ingestionCandidates)
-    .values({
-      ingestionSourceId: sourceId,
-      externalId: c.externalId,
-      url: c.url,
-      rawTitle: c.headline,
-      rawSummary: c.summary ?? null,
-      rawPublishedAt: now,
-      rawPayload: c.rawPayload,
-      contentHash: sha256Truncated(`${c.url}\n${c.headline}`),
-      bodyText: c.body,
-      sector: c.sector,
-    })
-    .onConflictDoNothing({
-      target: [
-        ingestionCandidates.ingestionSourceId,
-        ingestionCandidates.externalId,
-      ],
-    })
-    .returning({ id: ingestionCandidates.id });
-
-  if (inserted[0]) return inserted[0].id;
-
-  const existing = await db
-    .select({ id: ingestionCandidates.id })
-    .from(ingestionCandidates)
-    .where(
-      and(
-        eq(ingestionCandidates.ingestionSourceId, sourceId),
-        eq(ingestionCandidates.externalId, c.externalId),
-      ),
-    )
-    .limit(1);
-  if (!existing[0]) {
-    throw new Error(`candidate vanished after conflict: ${c.externalId}`);
-  }
-  return existing[0].id;
 }
 
 async function main(): Promise<void> {

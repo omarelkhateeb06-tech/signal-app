@@ -4,6 +4,7 @@ import { initSentry } from "./lib/sentry";
 import { runStartupEnvCheck } from "./lib/envCheck";
 import { startEmailWorker } from "./jobs/emailWorker";
 import { startEmailScheduler } from "./jobs/emailScheduler";
+import { startNativeGenerationScheduler } from "./jobs/nativeGenerationScheduler";
 import { startAggregationWorker } from "./jobs/aggregationWorker";
 import { scheduleAggregationRepeatable } from "./jobs/aggregationQueue";
 import { startSourcePollWorker } from "./jobs/ingestion/sourcePollWorker";
@@ -24,6 +25,11 @@ app.listen(port, () => {
 
 startEmailWorker();
 startEmailScheduler();
+// Phase 12u — recurring native-post generation. Replaces the manual-only
+// runNativeGeneration.ts CLI as the production cadence so native posts stop
+// aging out of the feed. Degrades gracefully (logs + skips) when
+// ANTHROPIC_API_KEY is unset; disable with DISABLE_NATIVE_SCHEDULER=1.
+startNativeGenerationScheduler();
 startAggregationWorker();
 void scheduleAggregationRepeatable().catch((err: unknown) => {
   // eslint-disable-next-line no-console

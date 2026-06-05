@@ -47,7 +47,7 @@ import { VALID_SECTORS } from "./relevanceSeam";
 
 export interface NativeEnrichmentInput {
   candidateId: string;
-  triggeredBy?: "cli" | "test";
+  triggeredBy?: "cli" | "test" | "cron";
 }
 
 export interface NativeEnrichmentResult {
