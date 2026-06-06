@@ -250,7 +250,7 @@ function OriginalsBand(): JSX.Element {
               rank={i + 1}
               isActive={false}
               onSelect={() => undefined}
-              nowMs={Date.parse(now)}
+              freshSinceMs={Date.parse("2026-06-06T00:00:00Z")}
             />
           ),
         )}

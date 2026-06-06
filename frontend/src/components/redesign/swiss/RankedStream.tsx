@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import { SectorFilter } from "@/components/feed/SectorFilter";
+import { useLastVisit } from "@/hooks/useLastVisit";
 import { isConnectionStory, deriveCardType } from "@/lib/feedCardType";
-import { freshnessTimestamp, isRecent } from "@/lib/feedFreshness";
+import { freshBoundaryMs, freshnessTimestamp, isAfter } from "@/lib/feedFreshness";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { ConnectionHero } from "./ConnectionHero";
 import { FeatureExhibit, GatedExhibit, StoryExhibit } from "./StoryExhibit";
@@ -56,6 +57,13 @@ export function RankedStream({
     setNowMs(Date.now());
   }, []);
 
+  // The return-tomorrow loop: badge what's new SINCE THE READER LAST LOOKED
+  // (falling back to a rolling window on a first visit). isReturning drives
+  // the "since last visit" wording on the count cue.
+  const { previousVisitMs } = useLastVisit();
+  const freshSinceMs = freshBoundaryMs(previousVisitMs, nowMs);
+  const isReturning = previousVisitMs != null;
+
   // The highest-ranked cross-sector chain becomes the full-width hero.
   const heroIndex = items.findIndex(
     (item) => !isGatedFeedItem(item) && isConnectionStory(item),
@@ -73,24 +81,25 @@ export function RankedStream({
       deriveCardType(item).type !== "connection",
   );
 
-  // Habit cue (stickiness item 4): how many stories are fresh since the
-  // reader last looked. Null clock (SSR / first paint) shows no count, then
-  // it appears on mount — a reason to come back daily, not just a NEW badge.
+  // Habit cue: how many stories are new since the reader last looked. Null
+  // boundary (SSR / first paint) shows no count, then it appears on mount —
+  // a reason to come back daily, not just a NEW badge.
   const newCount =
-    nowMs == null
+    freshSinceMs == null
       ? 0
       : items.filter(
-          (item) => !isGatedFeedItem(item) && isRecent(freshnessTimestamp(item), nowMs),
+          (item) =>
+            !isGatedFeedItem(item) && isAfter(freshnessTimestamp(item), freshSinceMs),
         ).length;
 
   return (
     <section className="min-w-0 px-6 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        <h2 className="flex flex-wrap items-center gap-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
           Ranked Stream
           {newCount > 0 && (
             <span className="bg-accent px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-bg">
-              {newCount} new
+              {newCount} new{isReturning ? " since last visit" : ""}
             </span>
           )}
         </h2>
@@ -122,7 +131,7 @@ export function RankedStream({
                 isActive={item.id === activeId}
                 onSelect={onSelect}
                 roleLabel={roleLabel}
-                nowMs={nowMs}
+                freshSinceMs={freshSinceMs}
                 showTeaser={showTeaser}
               />
             );
@@ -135,7 +144,7 @@ export function RankedStream({
               isActive={item.id === activeId}
               onSelect={onSelect}
               roleLabel={roleLabel}
-              nowMs={nowMs}
+              freshSinceMs={freshSinceMs}
               showTeaser={showTeaser}
             />
           );

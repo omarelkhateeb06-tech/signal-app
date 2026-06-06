@@ -34,3 +34,35 @@ export function freshnessTimestamp(story: {
 }): string {
   return story.published_at ?? story.created_at;
 }
+
+/**
+ * True when `iso` falls strictly after `boundaryMs`. The boundary is the
+ * "since you last looked" cutoff — a story published after it is new to this
+ * reader. Null / invalid timestamps are never fresh.
+ */
+export function isAfter(
+  iso: string | null | undefined,
+  boundaryMs: number,
+): boolean {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return false;
+  return t > boundaryMs;
+}
+
+/**
+ * Resolve the freshness cutoff for the feed. A returning reader's previous
+ * visit wins — "new since you were last here". With no recorded visit (first
+ * session) we fall back to a rolling window so the first experience still
+ * surfaces a sensible NEW set. Null `nowMs` (SSR / pre-mount) yields null —
+ * no badges until the client clock is known.
+ */
+export function freshBoundaryMs(
+  previousVisitMs: number | null,
+  nowMs: number | null,
+  windowHours: number = FRESH_WINDOW_HOURS,
+): number | null {
+  if (previousVisitMs != null) return previousVisitMs;
+  if (nowMs == null) return null;
+  return nowMs - windowHours * 60 * 60 * 1000;
+}

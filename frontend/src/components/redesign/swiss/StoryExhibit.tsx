@@ -19,7 +19,7 @@ import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
 import { deriveCardType, type FeedCardType } from "@/lib/feedCardType";
-import { freshnessTimestamp, isRecent } from "@/lib/feedFreshness";
+import { freshnessTimestamp, isAfter } from "@/lib/feedFreshness";
 import { leadStat } from "@/lib/leadStat";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 import { LockedTeaser } from "./LockedTeaser";
@@ -220,8 +220,12 @@ interface StoryExhibitProps {
   onSelect: (storyId: string) => void;
   /** Reader role for the personalized teaser CTA. */
   roleLabel?: string | null;
-  /** Client clock for freshness; null during SSR / first paint (no badge). */
-  nowMs?: number | null;
+  /**
+   * Freshness cutoff — a story published after this is badged NEW. Resolves
+   * to the reader's last visit ("since you were here") or a rolling window on
+   * a first visit. Null during SSR / first paint (no badge).
+   */
+  freshSinceMs?: number | null;
   /**
    * Whether to surface the blurred personalized-read teaser. True only for
    * free-tier readers (the conversion hook); Pro / pro_trial get the real
@@ -236,7 +240,7 @@ export function StoryExhibit({
   isActive,
   onSelect,
   roleLabel,
-  nowMs,
+  freshSinceMs,
   showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
@@ -244,7 +248,8 @@ export function StoryExhibit({
   const readMinutes = story.reading_time_minutes ?? null;
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
-  const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
+  const isNew =
+    freshSinceMs != null && isAfter(freshnessTimestamp(story), freshSinceMs);
   // og:image first; for native posts (no og:image) fall back to the editorial
   // illustration so Signal Originals rows carry their art as a thumbnail.
   const thumb = story.image_url ?? story.illustration_url ?? null;
@@ -337,14 +342,15 @@ export function FeatureExhibit({
   isActive,
   onSelect,
   roleLabel,
-  nowMs,
+  freshSinceMs,
   showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
   const matchPct = matchPercent(rank, sourceCount);
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
-  const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
+  const isNew =
+    freshSinceMs != null && isAfter(freshnessTimestamp(story), freshSinceMs);
   const art = story.illustration_url ?? story.image_url ?? null;
   const teaser =
     showTeaser && story.kind === "ingested"

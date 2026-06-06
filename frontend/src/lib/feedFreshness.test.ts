@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { FRESH_WINDOW_HOURS, freshnessTimestamp, isRecent } from "./feedFreshness";
+import {
+  FRESH_WINDOW_HOURS,
+  freshBoundaryMs,
+  freshnessTimestamp,
+  isAfter,
+  isRecent,
+} from "./feedFreshness";
 
 const NOW = Date.parse("2026-06-06T12:00:00Z");
 const hoursAgo = (h: number): string =>
@@ -33,6 +39,36 @@ describe("isRecent", () => {
     expect(isRecent(new Date(NOW + 60 * 60 * 1000).toISOString(), NOW)).toBe(
       false,
     );
+  });
+});
+
+describe("isAfter", () => {
+  const boundary = Date.parse("2026-06-06T08:00:00Z");
+  it("is true for a timestamp after the boundary", () => {
+    expect(isAfter("2026-06-06T09:00:00Z", boundary)).toBe(true);
+  });
+  it("is false at or before the boundary", () => {
+    expect(isAfter("2026-06-06T08:00:00Z", boundary)).toBe(false);
+    expect(isAfter("2026-06-06T07:00:00Z", boundary)).toBe(false);
+  });
+  it("is false for null / invalid", () => {
+    expect(isAfter(null, boundary)).toBe(false);
+    expect(isAfter("nope", boundary)).toBe(false);
+  });
+});
+
+describe("freshBoundaryMs", () => {
+  it("uses the previous visit when present (since you last looked)", () => {
+    const prev = Date.parse("2026-06-05T12:00:00Z");
+    expect(freshBoundaryMs(prev, NOW)).toBe(prev);
+  });
+  it("falls back to the rolling window on a first visit", () => {
+    expect(freshBoundaryMs(null, NOW)).toBe(NOW - FRESH_WINDOW_HOURS * 3600 * 1000);
+  });
+  it("returns null before the client clock is known", () => {
+    expect(freshBoundaryMs(null, null)).toBeNull();
+    // a known previous visit still resolves even without nowMs
+    expect(freshBoundaryMs(123, null)).toBe(123);
   });
 });
 

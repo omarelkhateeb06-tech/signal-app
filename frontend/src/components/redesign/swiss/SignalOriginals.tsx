@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { getNativeStoriesRequest } from "@/lib/api";
+import { useLastVisit } from "@/hooks/useLastVisit";
 import { isConnectionStory } from "@/lib/feedCardType";
+import { freshBoundaryMs } from "@/lib/feedFreshness";
 import type { NativeArchiveItem, Story } from "@/types/story";
 import { ConnectionHero } from "./ConnectionHero";
 import { StoryExhibit } from "./StoryExhibit";
@@ -68,11 +70,15 @@ export function SignalOriginals(): JSX.Element | null {
     retry: 1,
   });
 
-  // Client clock for freshness badges — null until mounted (SSR-safe).
+  // Freshness boundary — shared with the ranked stream via useLastVisit so
+  // NEW badges mean the same thing ("since you last looked") across the band
+  // and the stream. Null clock until mounted (SSR-safe).
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
     setNowMs(Date.now());
   }, []);
+  const { previousVisitMs } = useLastVisit();
+  const freshSinceMs = freshBoundaryMs(previousVisitMs, nowMs);
 
   const items = data?.items ?? [];
   if (items.length === 0) return null;
@@ -111,7 +117,7 @@ export function SignalOriginals(): JSX.Element | null {
               rank={i + 1}
               isActive={false}
               onSelect={open}
-              nowMs={nowMs}
+              freshSinceMs={freshSinceMs}
             />
           );
         })}
