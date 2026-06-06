@@ -304,6 +304,21 @@ function StoryDetail({
         Back to profile
       </button>
 
+      {/* Image-first hero (Bloomberg/WSJ pattern): the article opens with its
+          image, full-bleed to the panel edges. og:image first, then the native
+          editorial illustration; nothing rendered when neither exists (honest,
+          no placeholder). */}
+      {(story.image_url ?? story.illustration_url) && (
+        <div className="-mx-6 h-[210px] overflow-hidden bg-ink md:-mx-8 md:h-[280px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={(story.image_url ?? story.illustration_url) as string}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-3 border-b border-line pb-3">
         <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink">
           Intel Depth:

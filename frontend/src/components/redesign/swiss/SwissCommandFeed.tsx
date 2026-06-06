@@ -13,7 +13,6 @@ import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
-import { SignalOriginals } from "./SignalOriginals";
 
 // Onboarding role slug → human label for the personalized-read teaser CTA.
 const ROLE_LABELS: Record<string, string> = {
@@ -231,7 +230,6 @@ export function SwissCommandFeed(): JSX.Element {
           ref={leftScrollRef}
           className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:flex-[1.5] lg:border-r lg:border-line"
         >
-          <SignalOriginals />
           <RankedStream
             items={items}
             activeId={activeId}
