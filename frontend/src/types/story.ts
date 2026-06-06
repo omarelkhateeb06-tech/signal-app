@@ -123,6 +123,10 @@ export interface Story {
   // posts. Null for ingested stories and legacy rows. The UI surfaces it
   // only for native posts; `image_url` takes priority when both are set.
   illustration_url: string | null;
+  // Phase 12u — content-type classification. 'filing' for SEC / earnings
+  // events (server-derived from the EDGAR adapter); null for general news
+  // and native posts. Drives the data-led "Earnings / SEC" feed card.
+  content_type: "filing" | "general" | null;
   published_at: string | null;
   created_at: string;
   author: StoryAuthor | null;

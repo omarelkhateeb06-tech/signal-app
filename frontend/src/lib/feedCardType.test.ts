@@ -27,6 +27,7 @@ function story(overrides: Partial<Story> = {}): Story {
     sources: [{ url: "https://example.com/a", name: "OutletA", role: "primary" }],
     image_url: null,
     illustration_url: null,
+    content_type: null,
     published_at: null,
     created_at: "2026-05-10T00:00:00Z",
     author: null,
@@ -126,6 +127,39 @@ describe("deriveCardType — ingested stories", () => {
   });
 });
 
+describe("deriveCardType — earnings / SEC filings", () => {
+  it("maps an ingested filing to the earnings card", () => {
+    const d = deriveCardType(
+      story({ kind: "ingested", content_type: "filing", sector: "finance" }),
+    );
+    expect(d.type).toBe("earnings");
+    expect(d.label).toBe("EARNINGS / SEC");
+    expect(d.isHero).toBe(false);
+  });
+
+  it("prioritizes a filing over multi-source clustering", () => {
+    // A SEC filing covered by several outlets is still a filing, not a
+    // generic cluster — content_type wins over source breadth.
+    expect(
+      deriveCardType(
+        story({
+          kind: "ingested",
+          content_type: "filing",
+          sources: withSources(4),
+        }),
+      ).type,
+    ).toBe("earnings");
+  });
+
+  it("maps the native earnings-reaction generator to the earnings card", () => {
+    expect(
+      deriveCardType(
+        story({ kind: "native", generator_type: "earnings-reaction-native" }),
+      ).type,
+    ).toBe("earnings");
+  });
+});
+
 describe("isConnectionStory", () => {
   it("is true only for the cross-sector chain", () => {
     expect(
@@ -149,6 +183,7 @@ describe("CARD_TYPE_LABEL", () => {
       "research",
       "practitioner",
       "tool",
+      "earnings",
       "native",
       "cluster",
       "dispatch",

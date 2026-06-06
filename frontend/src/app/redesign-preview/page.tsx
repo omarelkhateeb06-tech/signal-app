@@ -70,6 +70,7 @@ function mock(overrides: Partial<Story>): Story {
     sources: [{ url: "https://example.com", name: "Reuters", role: "primary" }],
     image_url: null,
     illustration_url: null,
+    content_type: null,
     published_at: old,
     created_at: old,
     author: null,
@@ -123,17 +124,18 @@ const STORIES: Story[] = [
   mock({
     sector: "semiconductors",
     kind: "ingested",
-    headline: "Nvidia Q2 margins compress as Blackwell packaging yields lag",
+    content_type: "filing",
+    published_at: now,
+    created_at: now,
+    headline: "Nvidia Q2 10-Q: gross margin compresses as Blackwell packaging yields lag",
     generic_commentary:
-      "Nvidia's gross margin contraction confirms advanced packaging (TSMC's CoWoS-L) is the primary physical bottleneck of the AI boom.",
+      "Nvidia's gross margin contracted 8% to a still-elite 67% as advanced packaging (TSMC's CoWoS-L) became the AI boom's primary physical bottleneck.",
     why_it_matters_to_you:
       "As a semiconductor VC, this is your signal to re-underwrite every CoWoS-adjacent packaging startup in your pipeline — the bottleneck just became investable.",
     sources: [
-      { url: "a", name: "Bloomberg", role: "primary" },
-      { url: "b", name: "CNBC", role: "alternate" },
-      { url: "c", name: "Reuters", role: "alternate" },
-      { url: "d", name: "WSJ", role: "alternate" },
-      { url: "e", name: "FT", role: "alternate" },
+      { url: "a", name: "SEC EDGAR", role: "primary" },
+      { url: "b", name: "Bloomberg", role: "alternate" },
+      { url: "c", name: "CNBC", role: "alternate" },
     ],
     reading_time_minutes: 3,
   }),

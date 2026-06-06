@@ -23,6 +23,7 @@ export type FeedCardType =
   | "research" //  arxiv-synthesis-native     → THE RESEARCH READ
   | "practitioner" // hn-synthesis-native      → PRACTITIONER BRIEF
   | "tool" //       tool-spotlight-native      → WORTH AN AFTERNOON
+  | "earnings" //   earnings-reaction-native / content_type 'filing' → EARNINGS / SEC
   | "native" //     other SIGNAL-authored      → SIGNAL ORIGINAL
   | "cluster" //    ingested, multi-source     → MULTI-SOURCE
   | "dispatch"; //  ingested, single-source    → DISPATCH
@@ -41,6 +42,7 @@ const GENERATOR_TYPE: Record<string, FeedCardType> = {
   "arxiv-synthesis-native": "research",
   "hn-synthesis-native": "practitioner",
   "tool-spotlight-native": "tool",
+  "earnings-reaction-native": "earnings",
 };
 
 /** Content type → uppercase brand label. */
@@ -49,6 +51,7 @@ export const CARD_TYPE_LABEL: Record<FeedCardType, string> = {
   research: "THE RESEARCH READ",
   practitioner: "PRACTITIONER BRIEF",
   tool: "WORTH AN AFTERNOON",
+  earnings: "EARNINGS / SEC",
   native: "SIGNAL ORIGINAL",
   cluster: "MULTI-SOURCE",
   dispatch: "DISPATCH",
@@ -56,13 +59,15 @@ export const CARD_TYPE_LABEL: Record<FeedCardType, string> = {
 
 type CardTypeFields = Pick<
   Story,
-  "kind" | "generator_type" | "sources"
+  "kind" | "generator_type" | "sources" | "content_type"
 >;
 
 /**
  * Derive the content type for a story from its wire fields. Native posts map
  * by `generator_type` (falling back to the generic "SIGNAL ORIGINAL" when the
- * generator has no branded type); ingested stories split on source breadth.
+ * generator has no branded type); ingested SEC/earnings filings
+ * (`content_type === 'filing'`) get the data-led earnings card ahead of the
+ * source-breadth split; remaining ingested stories split on source breadth.
  */
 export function deriveCardType(story: CardTypeFields): CardTypeDescriptor {
   let type: FeedCardType;
@@ -70,6 +75,8 @@ export function deriveCardType(story: CardTypeFields): CardTypeDescriptor {
   if (story.kind === "native") {
     type =
       (story.generator_type && GENERATOR_TYPE[story.generator_type]) || "native";
+  } else if (story.content_type === "filing") {
+    type = "earnings";
   } else if (story.sources.length > 1) {
     type = "cluster";
   } else {

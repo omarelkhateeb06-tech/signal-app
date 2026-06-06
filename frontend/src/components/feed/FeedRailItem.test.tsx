@@ -23,6 +23,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     sources: [{ url: "https://example.com/a", name: "OutletA", role: "primary" }],
     image_url: null,
     illustration_url: null,
+    content_type: null,
     published_at: "2026-05-10T00:00:00Z",
     created_at: "2026-05-10T00:00:00Z",
     author: null,

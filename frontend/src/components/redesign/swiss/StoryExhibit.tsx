@@ -12,6 +12,7 @@ import {
   Wrench,
   Newspaper,
   Sparkles,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
@@ -19,6 +20,7 @@ import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
 import { deriveCardType, type FeedCardType } from "@/lib/feedCardType";
 import { freshnessTimestamp, isRecent } from "@/lib/feedFreshness";
+import { leadStat } from "@/lib/leadStat";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 import { LockedTeaser } from "./LockedTeaser";
 
@@ -40,6 +42,7 @@ const ACCENTED_TYPES: ReadonlySet<FeedCardType> = new Set([
   "research",
   "practitioner",
   "tool",
+  "earnings",
   "native",
 ]);
 
@@ -161,10 +164,27 @@ const TYPE_ICON: Record<FeedCardType, LucideIcon> = {
   research: GraduationCap,
   practitioner: MessagesSquare,
   tool: Wrench,
+  earnings: TrendingUp,
   native: Sparkles,
   cluster: Layers,
   dispatch: Newspaper,
 };
+
+// Data-led "one number that mattered" block for the earnings / SEC card. The
+// figure is extracted from the commentary text (never fabricated); when the
+// copy carries no figure the card just omits this and reads as terse text.
+function StatBlock({ stat }: { stat: string }): JSX.Element {
+  return (
+    <div className="mt-2 inline-flex items-baseline gap-2 border border-accent/40 bg-accent/[0.04] px-3 py-1.5">
+      <span className="font-mono text-[22px] font-bold leading-none text-accent">
+        {stat}
+      </span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-muted">
+        the number that mattered
+      </span>
+    </div>
+  );
+}
 
 function TypeTile({
   type,
@@ -230,6 +250,10 @@ export function StoryExhibit({
     showTeaser && story.kind === "ingested"
       ? story.why_it_matters_to_you?.trim() || null
       : null;
+  const stat =
+    type === "earnings"
+      ? leadStat(story.generic_commentary ?? story.why_it_matters)
+      : null;
 
   const typeNote =
     type === "practitioner" && story.comment_count > 0 ? (
@@ -291,6 +315,7 @@ export function StoryExhibit({
               {brief}
             </p>
           )}
+          {stat && <StatBlock stat={stat} />}
           {type === "cluster" && <SourceWall story={story} />}
           {teaser && <LockedTeaser text={teaser} roleLabel={roleLabel} />}
         </div>
