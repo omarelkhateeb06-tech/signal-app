@@ -1,16 +1,56 @@
 "use client";
 
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock, MessageSquare, Layers } from "lucide-react";
 import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
+import { deriveCardType, type FeedCardType } from "@/lib/feedCardType";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 
 // One entry in the ranked stream (left panel). The left is a pure
 // scannable index — every row is collapsed; reading the full structured
 // briefing happens in the right detail panel (scan left / read right). The
 // active row (the one being read on the right) gets a terracotta marker.
+//
+// Redesign v2: each row announces its content type with a branded label
+// (THE RESEARCH READ, PRACTITIONER BRIEF, MULTI-SOURCE, …) so the stream
+// reads as a varied briefing rather than an undifferentiated list. The
+// flagship THE CONNECTION type is pulled out of this row entirely and
+// rendered as a full-width hero by the parent stream.
+
+// Native branded types carry the terracotta accent; ingested types stay
+// quiet so the editorial signal pops against the news flow.
+const ACCENTED_TYPES: ReadonlySet<FeedCardType> = new Set([
+  "connection",
+  "research",
+  "practitioner",
+  "tool",
+  "native",
+]);
+
+function TypeLabel({ type, label }: { type: FeedCardType; label: string }): JSX.Element {
+  const accented = ACCENTED_TYPES.has(type);
+  return (
+    <div className="mb-1.5 flex items-center gap-2">
+      <span
+        aria-hidden
+        className={clsx(
+          "h-2.5 w-2.5 flex-none",
+          accented ? "bg-accent" : "border border-ink-muted",
+        )}
+      />
+      <span
+        className={clsx(
+          "font-mono text-[10px] font-semibold uppercase tracking-[0.2em]",
+          accented ? "text-accent" : "text-ink-muted",
+        )}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
 
 function Kicker({
   rank,
@@ -19,6 +59,7 @@ function Kicker({
   sourceCount,
   sourceLabel,
   matchPct,
+  typeNote,
 }: {
   rank: number;
   sector: string;
@@ -26,16 +67,15 @@ function Kicker({
   sourceCount: number;
   sourceLabel: string | null;
   matchPct: number;
+  /** Per-type meta (e.g. discussion count, source breadth). */
+  typeNote?: JSX.Element | null;
 }): JSX.Element {
-  // Source metadata is only worth a slot when it carries information: show a
-  // count when a story is genuinely multi-source, otherwise the source name
-  // (or nothing). Avoids the "1 SOURCES" noise repeating on every row.
+  // The branded TypeLabel above already names the source family, so the
+  // kicker only carries the plain source attribution for single-source
+  // ingested rows where the outlet name adds information. `typeNote` handles
+  // multi-source / discussion breadth, so we don't double up here.
   const sourceNote =
-    sourceCount > 1
-      ? `${sourceCount} sources`
-      : sourceLabel
-        ? `via ${sourceLabel}`
-        : null;
+    !typeNote && sourceCount === 1 && sourceLabel ? `via ${sourceLabel}` : null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
@@ -46,6 +86,7 @@ function Kicker({
       <span className="text-ink-muted">{SECTOR_SHORT[sector] ?? sector}</span>
       {readMinutes != null && <span>· {readMinutes} min read</span>}
       {sourceNote && <span>· {sourceNote}</span>}
+      {typeNote && <span>· {typeNote}</span>}
       {rank > 1 && (
         <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
           {matchPct}% match
@@ -73,6 +114,21 @@ export function StoryExhibit({
   const matchPct = matchPercent(rank, sourceCount);
   const readMinutes = story.reading_time_minutes ?? null;
   const { title, brief } = storyTitleAndBrief(story);
+  const { type, label } = deriveCardType(story);
+
+  // Per-type enrichment in the meta line: practitioner briefs surface the
+  // discussion volume they synthesize; clusters surface their source breadth.
+  const typeNote =
+    type === "practitioner" && story.comment_count > 0 ? (
+      <span className="inline-flex items-center gap-1">
+        <MessageSquare className="h-3 w-3" aria-hidden />
+        {story.comment_count} discussed
+      </span>
+    ) : type === "cluster" ? (
+      <span className="inline-flex items-center gap-1 text-accent">
+        <Layers className="h-3 w-3" aria-hidden />+{sourceCount - 1} more sources
+      </span>
+    ) : null;
 
   // The top three carry larger headlines (visual weight decreases with rank).
   const headlineSize = rank <= 3 ? "text-[19px] md:text-[21px]" : "text-[17px]";
@@ -89,6 +145,7 @@ export function StoryExhibit({
           : "hover:bg-surface/60",
       )}
     >
+      <TypeLabel type={type} label={label} />
       <Kicker
         rank={rank}
         sector={story.sector}
@@ -96,6 +153,7 @@ export function StoryExhibit({
         sourceCount={sourceCount}
         sourceLabel={sourceDisplayLabel(story)}
         matchPct={matchPct}
+        typeNote={typeNote}
       />
       <h3
         className={clsx(

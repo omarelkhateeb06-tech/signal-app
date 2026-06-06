@@ -2,7 +2,9 @@
 
 import { type RefObject } from "react";
 import { SectorFilter } from "@/components/feed/SectorFilter";
+import { isConnectionStory } from "@/lib/feedCardType";
 import { isGatedFeedItem, type FeedItem } from "@/types/story";
+import { ConnectionHero } from "./ConnectionHero";
 import { GatedExhibit, StoryExhibit } from "./StoryExhibit";
 
 // Left panel: the ranked stream — a pure scannable index. Every entry is a
@@ -32,6 +34,17 @@ export function RankedStream({
   isFetchingNextPage,
   hasNextPage,
 }: RankedStreamProps): JSX.Element {
+  // Redesign v2: the highest-ranked cross-sector chain is promoted out of the
+  // uniform row list into a full-width illustrated hero at the top of the
+  // stream — the flagship type breaks the grid. Its original rank is
+  // preserved (match % stays aligned with feed order); the rest render in
+  // order, with the hoisted story skipped so it isn't shown twice.
+  const heroIndex = items.findIndex(
+    (item) => !isGatedFeedItem(item) && isConnectionStory(item),
+  );
+  const heroItem =
+    heroIndex >= 0 ? items[heroIndex] : null;
+
   return (
     <section className="min-w-0 px-6 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -41,8 +54,18 @@ export function RankedStream({
         <SectorFilter selected={sectors} onChange={onSectorsChange} />
       </div>
 
+      {heroItem && !isGatedFeedItem(heroItem) && (
+        <ConnectionHero
+          story={heroItem}
+          rank={heroIndex + 1}
+          isActive={heroItem.id === activeId}
+          onSelect={onSelect}
+        />
+      )}
+
       <div>
         {items.map((item, i) => {
+          if (i === heroIndex) return null;
           const rank = i + 1;
           if (isGatedFeedItem(item)) {
             return <GatedExhibit key={item.id} item={item} rank={rank} />;
