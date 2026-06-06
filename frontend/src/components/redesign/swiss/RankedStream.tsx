@@ -3,6 +3,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { SectorFilter } from "@/components/feed/SectorFilter";
 import { isConnectionStory, deriveCardType } from "@/lib/feedCardType";
+import { freshnessTimestamp, isRecent } from "@/lib/feedFreshness";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { ConnectionHero } from "./ConnectionHero";
 import { FeatureExhibit, GatedExhibit, StoryExhibit } from "./StoryExhibit";
@@ -72,11 +73,26 @@ export function RankedStream({
       deriveCardType(item).type !== "connection",
   );
 
+  // Habit cue (stickiness item 4): how many stories are fresh since the
+  // reader last looked. Null clock (SSR / first paint) shows no count, then
+  // it appears on mount — a reason to come back daily, not just a NEW badge.
+  const newCount =
+    nowMs == null
+      ? 0
+      : items.filter(
+          (item) => !isGatedFeedItem(item) && isRecent(freshnessTimestamp(item), nowMs),
+        ).length;
+
   return (
     <section className="min-w-0 px-6 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        <h2 className="flex items-center gap-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
           Ranked Stream
+          {newCount > 0 && (
+            <span className="bg-accent px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-bg">
+              {newCount} new
+            </span>
+          )}
         </h2>
         <SectorFilter selected={sectors} onChange={onSectorsChange} />
       </div>
