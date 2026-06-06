@@ -7,12 +7,28 @@ import { PanelRight, X } from "lucide-react";
 import { useStories } from "@/hooks/useStories";
 import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
+import { useTier } from "@/hooks/useTier";
 import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
 import { SignalOriginals } from "./SignalOriginals";
+
+// Onboarding role slug → human label for the personalized-read teaser CTA.
+const ROLE_LABELS: Record<string, string> = {
+  founder: "Founder",
+  engineer: "Engineer",
+  investor: "Investor",
+  vc: "Venture investor",
+  analyst: "Analyst",
+  researcher: "Researcher",
+  operator: "Operator",
+  product_manager: "Product manager",
+  executive: "Executive",
+  manager: "Manager",
+  student: "Student",
+};
 
 // Design C — "Swiss Command Center". A two-panel editorial intelligence
 // briefing on warm cream. Self-contained: it owns the feed query, sector
@@ -38,6 +54,19 @@ export function SwissCommandFeed(): JSX.Element {
   const profileQuery = useProfile();
   const profile = profileQuery.data?.profile ?? null;
   const { user } = useAuth();
+
+  // Humanized role for the locked personalized-read teaser CTA ("Your read as
+  // a Venture investor"). Derived from the stored onboarding role slug.
+  const roleLabel = profile?.role
+    ? ROLE_LABELS[profile.role] ?? profile.role
+    : null;
+
+  // The blurred personalized-read teaser is a free-tier conversion hook. Pro /
+  // pro_trial readers get the real read via the lazy commentary path, so the
+  // upsell is suppressed for them (and while the tier is still loading, to
+  // avoid flashing it to a paying reader).
+  const tierQuery = useTier();
+  const showTeaser = tierQuery.data?.tier === "free";
 
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -188,6 +217,8 @@ export function SwissCommandFeed(): JSX.Element {
             sentinelRef={sentinelRef}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
+            roleLabel={roleLabel}
+            showTeaser={showTeaser}
           />
         </div>
       );
@@ -210,6 +241,8 @@ export function SwissCommandFeed(): JSX.Element {
             sentinelRef={sentinelRef}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
+            roleLabel={roleLabel}
+            showTeaser={showTeaser}
           />
           {footer}
         </div>

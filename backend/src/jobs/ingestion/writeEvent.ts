@@ -350,6 +350,11 @@ async function writeEventOnce(
           candidate.sourceAdapterType === "native_generator"
             ? "native"
             : "ingested",
+        // Phase 12u — flag SEC / earnings filings off the source adapter so
+        // the feed can render a data-led card. Only the EDGAR JSON adapter
+        // produces filings today; everything else stays null (general).
+        contentType:
+          candidate.sourceAdapterType === "sec_edgar_json" ? "filing" : null,
         headline,
         context,
         whyItMatters,

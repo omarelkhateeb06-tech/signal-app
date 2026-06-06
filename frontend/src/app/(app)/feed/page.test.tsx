@@ -23,6 +23,7 @@ vi.mock("@/lib/api", () => ({
   getFeedRequest: vi.fn(),
   listTeamsRequest: vi.fn(),
   getMyProfileRequest: vi.fn(),
+  getMyTierRequest: vi.fn(),
   extractApiError: (_err: unknown, fallback: string) => fallback,
 }));
 
@@ -60,6 +61,11 @@ describe("FeedPage refresh button", () => {
     vi.mocked(api.getFeedRequest).mockResolvedValue(emptyFeed);
     vi.mocked(api.listTeamsRequest).mockResolvedValue([]);
     vi.mocked(api.getMyProfileRequest).mockResolvedValue(emptyProfile);
+    vi.mocked(api.getMyTierRequest).mockResolvedValue({
+      tier: "free",
+      trial_days_remaining: null,
+      trial_available: true,
+    });
   });
 
   it("renders an accessible refresh affordance", async () => {

@@ -53,6 +53,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     ],
     image_url: null,
     illustration_url: null,
+    content_type: null,
     published_at: "2026-05-10T00:00:00Z",
     created_at: "2026-05-10T00:00:00Z",
     author: null,
