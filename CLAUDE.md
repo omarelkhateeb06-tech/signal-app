@@ -10,11 +10,10 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 
 This project has **persistent cross-session memory**. A fresh session that ignores it will go in circles and re-discover things already known. **Query these before searching raw files or claiming you can't find/remember something:**
 
-1. **graphify second-brain (your memory across sessions).** A knowledge graph of this project's code *and* prior Claude conversations lives in `graphify-out/` (daily snapshots) and is exposed via the `graphify-second-brain` MCP tools (`query_graph`, `god_nodes`, `graph_stats`, `shortest_path`, `get_node`). **When you "can't remember" or "can't find" something, query this first.** The PreToolUse hook reminds you it exists — heed it.
-2. **`code-graph/`** — an AST knowledge graph of `backend/src` + `frontend/src` (god nodes, communities). Rebuild with the graphify skill when structure changes materially. Use it to understand architecture before refactoring.
-3. **`docs/ROADMAP.md`** — the authoritative product+engineering roadmap (kept current; ~100k chars). Strategy, version plan, phase status, unit economics. **More current than the phase tables in §15 below** — when they disagree, ROADMAP wins for 12r+ state.
-4. **`docs/REALTIME_SIGNAL_LAYER.md`** — the Real-Time Layer (Phase 12R) spec: X/GitHub/Product Hunt/Reddit sources, card types, ToS + cost findings.
-5. **Auto-memory** at `~/.claude/projects/.../memory/MEMORY.md` — short cross-session notes (rebrand-to-Valo, worktree workflow, environment quirks).
+1. **graphify second-brain — the ONE persistent graph (your memory across sessions).** A single, continuously-auto-updating knowledge graph indexes this project's **code** *and* prior Claude conversations. It lives in `graphify-out/` (daily snapshots) and is exposed via the `graphify-second-brain` MCP tools (`query_graph`, `god_nodes`, `graph_stats`, `shortest_path`, `get_node`). **When you "can't remember" or "can't find" something, query this first.** The PreToolUse hook reminds you it exists — heed it. **Do NOT build a second/parallel code graph** — there is one graph by design; it already covers the codebase and keeps itself current. If structure changed and you need it refreshed, run `/graphify --update` against the existing graph, never a fresh separate one.
+2. **`docs/ROADMAP.md`** — the authoritative product+engineering roadmap (kept current; ~100k chars). Strategy, version plan, phase status, unit economics. **More current than the phase tables in §15 below** — when they disagree, ROADMAP wins for 12r+ state.
+3. **`docs/REALTIME_SIGNAL_LAYER.md`** — the Real-Time Layer (Phase 12R) spec: X/GitHub/Product Hunt/Reddit sources, card types, ToS + cost findings.
+4. **Auto-memory** at `~/.claude/projects/.../memory/MEMORY.md` — short cross-session notes (rebrand-to-Valo, worktree workflow, environment quirks).
 
 **Current HEAD reality (June 2026), since the detail below drifted:**
 - **Migrations run through `0046`** (the §3 list stops at 0031 — it is historical; the live count is in `backend/src/db/migrations/`).
