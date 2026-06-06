@@ -161,6 +161,10 @@ export interface CandidateRowForWrite {
   // Phase 12n.2 — the source's adapter_type. Drives events.source_type:
   // 'native_generator' → 'native', everything else → 'ingested'.
   sourceAdapterType: string;
+  // Phase 12R — the source's config JSONB. `contentType` (e.g. 'launch' for
+  // Product Hunt, 'take' for a future X source) lets a source declare its
+  // feed-card classification without a writeEvent change.
+  sourceConfig: Record<string, unknown> | null;
 }
 
 async function loadCandidateForWrite(
@@ -184,6 +188,7 @@ async function loadCandidateForWrite(
       sourceDisplayName: ingestionSources.displayName,
       sourcePairedWriterId: ingestionSources.pairedWriterId,
       sourceAdapterType: ingestionSources.adapterType,
+      sourceConfig: ingestionSources.config,
     })
     .from(ingestionCandidates)
     .innerJoin(
@@ -193,6 +198,20 @@ async function loadCandidateForWrite(
     .where(eq(ingestionCandidates.id, candidateId))
     .limit(1);
   return (rows[0] as CandidateRowForWrite | undefined) ?? null;
+}
+
+// Phase 12R — content-type classification, validated against the events
+// content_type CHECK so a bad config value can never break the insert.
+const ALLOWED_CONTENT_TYPES = new Set(["filing", "general", "launch"]);
+
+function classifyContentType(candidate: CandidateRowForWrite): string | null {
+  const declared = candidate.sourceConfig?.contentType;
+  if (typeof declared === "string" && ALLOWED_CONTENT_TYPES.has(declared)) {
+    return declared;
+  }
+  // Legacy rule: the EDGAR JSON adapter produces SEC/earnings filings.
+  if (candidate.sourceAdapterType === "sec_edgar_json") return "filing";
+  return null;
 }
 
 // Locked fallback chain for events.why_it_matters (NOT NULL):
@@ -350,11 +369,11 @@ async function writeEventOnce(
           candidate.sourceAdapterType === "native_generator"
             ? "native"
             : "ingested",
-        // Phase 12u — flag SEC / earnings filings off the source adapter so
-        // the feed can render a data-led card. Only the EDGAR JSON adapter
-        // produces filings today; everything else stays null (general).
-        contentType:
-          candidate.sourceAdapterType === "sec_edgar_json" ? "filing" : null,
+        // Phase 12u/12R — content-type classification for the feed card.
+        // Source-declared `config.contentType` wins (e.g. Product Hunt →
+        // 'launch'); otherwise the EDGAR JSON adapter → 'filing'; else null
+        // (general). Validated against the events_content_type_check CHECK.
+        contentType: classifyContentType(candidate),
         headline,
         context,
         whyItMatters,

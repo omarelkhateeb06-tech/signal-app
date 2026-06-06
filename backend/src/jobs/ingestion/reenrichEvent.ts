@@ -196,6 +196,8 @@ export async function reenrichEvent(
     // patches facts/why_it_matters), so this value is inert here — but
     // CandidateRowForWrite requires it. 'ingested' is the safe default.
     sourceAdapterType: "ingested",
+    // Inert here too — re-enrichment never re-writes content_type.
+    sourceConfig: null,
   };
 
   let whyItMatters: string;

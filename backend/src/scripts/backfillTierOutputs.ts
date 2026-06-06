@@ -291,6 +291,7 @@ async function processEvent(row: ScopeRow): Promise<EventOutcome> {
     sourceDisplayName: "",
     sourcePairedWriterId: null,
     sourceAdapterType: "rss",
+    sourceConfig: null,
   };
 
   let whyItMatters: string;
