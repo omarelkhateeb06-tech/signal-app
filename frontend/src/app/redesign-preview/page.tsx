@@ -206,6 +206,7 @@ export default function RedesignPreviewPage(): JSX.Element {
               isFetchingNextPage={false}
               hasNextPage={false}
               roleLabel="Semiconductor VC"
+              showTeaser
             />
           </div>
           <aside className="hidden w-[360px] flex-none p-8 lg:block">

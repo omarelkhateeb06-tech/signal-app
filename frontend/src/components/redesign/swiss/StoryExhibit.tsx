@@ -1,7 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Lock, MessageSquare, Layers, ArrowRight } from "lucide-react";
+import {
+  Lock,
+  MessageSquare,
+  Layers,
+  ArrowRight,
+  Network,
+  GraduationCap,
+  MessagesSquare,
+  Wrench,
+  Newspaper,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
@@ -140,6 +152,47 @@ function Thumb({ src }: { src: string }): JSX.Element {
   );
 }
 
+// Per-type index tile — the imagery fallback for rows with no og:image. A
+// typographic/iconographic tile (not fabricated photography) keyed to content
+// type, so every row gets a right-side anchor AND the tiles themselves vary by
+// type — density without monotony (stickiness item 3, imagery density).
+const TYPE_ICON: Record<FeedCardType, LucideIcon> = {
+  connection: Network,
+  research: GraduationCap,
+  practitioner: MessagesSquare,
+  tool: Wrench,
+  native: Sparkles,
+  cluster: Layers,
+  dispatch: Newspaper,
+};
+
+function TypeTile({
+  type,
+  sector,
+}: {
+  type: FeedCardType;
+  sector: string;
+}): JSX.Element {
+  const Icon = TYPE_ICON[type];
+  const accented = ACCENTED_TYPES.has(type);
+  return (
+    <div
+      className={clsx(
+        "hidden h-[88px] w-[88px] flex-none flex-col items-center justify-center gap-1.5 border md:h-[104px] md:w-[104px] sm:flex",
+        accented ? "border-accent/30 bg-accent/[0.04]" : "border-line bg-surface/50",
+      )}
+    >
+      <Icon
+        className={clsx("h-6 w-6", accented ? "text-accent" : "text-ink-muted")}
+        aria-hidden
+      />
+      <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-muted">
+        {SECTOR_SHORT[sector] ?? sector}
+      </span>
+    </div>
+  );
+}
+
 interface StoryExhibitProps {
   story: Story;
   rank: number;
@@ -149,6 +202,12 @@ interface StoryExhibitProps {
   roleLabel?: string | null;
   /** Client clock for freshness; null during SSR / first paint (no badge). */
   nowMs?: number | null;
+  /**
+   * Whether to surface the blurred personalized-read teaser. True only for
+   * free-tier readers (the conversion hook); Pro / pro_trial get the real
+   * read via the lazy commentary path, so the blurred upsell is suppressed.
+   */
+  showTeaser?: boolean;
 }
 
 export function StoryExhibit({
@@ -158,6 +217,7 @@ export function StoryExhibit({
   onSelect,
   roleLabel,
   nowMs,
+  showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
   const matchPct = matchPercent(rank, sourceCount);
@@ -167,7 +227,9 @@ export function StoryExhibit({
   const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
   const thumb = story.image_url ?? null;
   const teaser =
-    story.kind === "ingested" ? story.why_it_matters_to_you?.trim() || null : null;
+    showTeaser && story.kind === "ingested"
+      ? story.why_it_matters_to_you?.trim() || null
+      : null;
 
   const typeNote =
     type === "practitioner" && story.comment_count > 0 ? (
@@ -232,7 +294,7 @@ export function StoryExhibit({
           {type === "cluster" && <SourceWall story={story} />}
           {teaser && <LockedTeaser text={teaser} roleLabel={roleLabel} />}
         </div>
-        {thumb && <Thumb src={thumb} />}
+        {thumb ? <Thumb src={thumb} /> : <TypeTile type={type} sector={story.sector} />}
       </div>
     </button>
   );
@@ -249,6 +311,7 @@ export function FeatureExhibit({
   onSelect,
   roleLabel,
   nowMs,
+  showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
   const matchPct = matchPercent(rank, sourceCount);
@@ -257,7 +320,9 @@ export function FeatureExhibit({
   const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
   const art = story.illustration_url ?? story.image_url ?? null;
   const teaser =
-    story.kind === "ingested" ? story.why_it_matters_to_you?.trim() || null : null;
+    showTeaser && story.kind === "ingested"
+      ? story.why_it_matters_to_you?.trim() || null
+      : null;
 
   return (
     <button

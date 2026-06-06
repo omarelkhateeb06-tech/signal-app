@@ -24,6 +24,8 @@ interface RankedStreamProps {
   hasNextPage: boolean;
   /** Reader role, woven into the locked personalized-read teaser. */
   roleLabel?: string | null;
+  /** Surface the blurred personalized teaser (free tier only). */
+  showTeaser?: boolean;
 }
 
 /** A story qualifies for the second-peak feature when it carries real art. */
@@ -44,6 +46,7 @@ export function RankedStream({
   isFetchingNextPage,
   hasNextPage,
   roleLabel,
+  showTeaser = false,
 }: RankedStreamProps): JSX.Element {
   // Client clock for freshness badges — null on the server / first paint so
   // SSR and hydration agree, then set once mounted (no hydration mismatch).
@@ -104,6 +107,7 @@ export function RankedStream({
                 onSelect={onSelect}
                 roleLabel={roleLabel}
                 nowMs={nowMs}
+                showTeaser={showTeaser}
               />
             );
           }
@@ -116,6 +120,7 @@ export function RankedStream({
               onSelect={onSelect}
               roleLabel={roleLabel}
               nowMs={nowMs}
+              showTeaser={showTeaser}
             />
           );
         })}

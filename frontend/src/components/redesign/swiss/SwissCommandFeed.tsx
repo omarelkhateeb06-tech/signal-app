@@ -7,6 +7,7 @@ import { PanelRight, X } from "lucide-react";
 import { useStories } from "@/hooks/useStories";
 import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
+import { useTier } from "@/hooks/useTier";
 import { extractApiError } from "@/lib/api";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
@@ -59,6 +60,13 @@ export function SwissCommandFeed(): JSX.Element {
   const roleLabel = profile?.role
     ? ROLE_LABELS[profile.role] ?? profile.role
     : null;
+
+  // The blurred personalized-read teaser is a free-tier conversion hook. Pro /
+  // pro_trial readers get the real read via the lazy commentary path, so the
+  // upsell is suppressed for them (and while the tier is still loading, to
+  // avoid flashing it to a paying reader).
+  const tierQuery = useTier();
+  const showTeaser = tierQuery.data?.tier === "free";
 
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -210,6 +218,7 @@ export function SwissCommandFeed(): JSX.Element {
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
             roleLabel={roleLabel}
+            showTeaser={showTeaser}
           />
         </div>
       );
@@ -233,6 +242,7 @@ export function SwissCommandFeed(): JSX.Element {
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
             roleLabel={roleLabel}
+            showTeaser={showTeaser}
           />
           {footer}
         </div>
