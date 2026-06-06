@@ -1,26 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { Lock, MessageSquare, Layers } from "lucide-react";
+import { Lock, MessageSquare, Layers, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
 import { deriveCardType, type FeedCardType } from "@/lib/feedCardType";
+import { freshnessTimestamp, isRecent } from "@/lib/feedFreshness";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
+import { LockedTeaser } from "./LockedTeaser";
 
-// One entry in the ranked stream (left panel). The left is a pure
-// scannable index — every row is collapsed; reading the full structured
-// briefing happens in the right detail panel (scan left / read right). The
-// active row (the one being read on the right) gets a terracotta marker.
+// One entry in the ranked stream (left panel). The left is a scannable index;
+// reading the full structured briefing happens in the right detail panel
+// (scan left / read right). The active row gets a terracotta marker.
 //
-// Redesign v2: each row announces its content type with a branded label
-// (THE RESEARCH READ, PRACTITIONER BRIEF, MULTI-SOURCE, …) so the stream
-// reads as a varied briefing rather than an undifferentiated list. The
-// flagship THE CONNECTION type is pulled out of this row entirely and
-// rendered as a full-width hero by the parent stream.
+// Redesign v2: format follows content type. Each row announces its type with
+// a branded label, and the *shape* varies by type — image-led rows carry a
+// thumbnail, multi-source clusters show a source wall, practitioner briefs
+// show discussion volume. The flagship THE CONNECTION is rendered separately
+// as a full-width hero; a second image-led story is promoted mid-stream as a
+// FeatureExhibit to give the scroll a second peak.
 
-// Native branded types carry the terracotta accent; ingested types stay
-// quiet so the editorial signal pops against the news flow.
+// Native branded types carry the terracotta accent; ingested types stay quiet
+// so the editorial signal pops against the news flow.
 const ACCENTED_TYPES: ReadonlySet<FeedCardType> = new Set([
   "connection",
   "research",
@@ -29,7 +31,15 @@ const ACCENTED_TYPES: ReadonlySet<FeedCardType> = new Set([
   "native",
 ]);
 
-function TypeLabel({ type, label }: { type: FeedCardType; label: string }): JSX.Element {
+function TypeLabel({
+  type,
+  label,
+  isNew,
+}: {
+  type: FeedCardType;
+  label: string;
+  isNew: boolean;
+}): JSX.Element {
   const accented = ACCENTED_TYPES.has(type);
   return (
     <div className="mb-1.5 flex items-center gap-2">
@@ -48,6 +58,11 @@ function TypeLabel({ type, label }: { type: FeedCardType; label: string }): JSX.
       >
         {label}
       </span>
+      {isNew && (
+        <span className="bg-accent px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.16em] text-bg">
+          New
+        </span>
+      )}
     </div>
   );
 }
@@ -67,13 +82,8 @@ function Kicker({
   sourceCount: number;
   sourceLabel: string | null;
   matchPct: number;
-  /** Per-type meta (e.g. discussion count, source breadth). */
   typeNote?: JSX.Element | null;
 }): JSX.Element {
-  // The branded TypeLabel above already names the source family, so the
-  // kicker only carries the plain source attribution for single-source
-  // ingested rows where the outlet name adds information. `typeNote` handles
-  // multi-source / discussion breadth, so we don't double up here.
   const sourceNote =
     !typeNote && sourceCount === 1 && sourceLabel ? `via ${sourceLabel}` : null;
 
@@ -96,12 +106,49 @@ function Kicker({
   );
 }
 
+// Multi-source cluster: a wall of the outlets that covered the event — the
+// "+5 outlets" social proof made concrete (stickiness item 1).
+function SourceWall({ story }: { story: Story }): JSX.Element | null {
+  const names = story.sources
+    .map((s) => s.name)
+    .filter((n): n is string => Boolean(n))
+    .slice(0, 6);
+  if (names.length < 2) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-muted">
+      <span className="text-accent">Covered by</span>
+      {names.map((n, i) => (
+        <span key={n} className="text-ink">
+          {n}
+          {i < names.length - 1 && <span className="ml-2 text-line">·</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Thumb({ src }: { src: string }): JSX.Element {
+  return (
+    <div className="hidden h-[88px] w-[88px] flex-none overflow-hidden border border-line bg-ink sm:block md:h-[104px] md:w-[104px]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-[1.04]"
+      />
+    </div>
+  );
+}
+
 interface StoryExhibitProps {
   story: Story;
   rank: number;
-  /** True when this row is the story currently open in the detail panel. */
   isActive: boolean;
   onSelect: (storyId: string) => void;
+  /** Reader role for the personalized teaser CTA. */
+  roleLabel?: string | null;
+  /** Client clock for freshness; null during SSR / first paint (no badge). */
+  nowMs?: number | null;
 }
 
 export function StoryExhibit({
@@ -109,15 +156,19 @@ export function StoryExhibit({
   rank,
   isActive,
   onSelect,
+  roleLabel,
+  nowMs,
 }: StoryExhibitProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
   const matchPct = matchPercent(rank, sourceCount);
   const readMinutes = story.reading_time_minutes ?? null;
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
+  const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
+  const thumb = story.image_url ?? null;
+  const teaser =
+    story.kind === "ingested" ? story.why_it_matters_to_you?.trim() || null : null;
 
-  // Per-type enrichment in the meta line: practitioner briefs surface the
-  // discussion volume they synthesize; clusters surface their source breadth.
   const typeNote =
     type === "practitioner" && story.comment_count > 0 ? (
       <span className="inline-flex items-center gap-1">
@@ -130,7 +181,6 @@ export function StoryExhibit({
       </span>
     ) : null;
 
-  // The top three carry larger headlines (visual weight decreases with rank).
   const headlineSize = rank <= 3 ? "text-[19px] md:text-[21px]" : "text-[17px]";
 
   return (
@@ -145,38 +195,135 @@ export function StoryExhibit({
           : "hover:bg-surface/60",
       )}
     >
-      <TypeLabel type={type} label={label} />
-      <Kicker
-        rank={rank}
-        sector={story.sector}
-        readMinutes={readMinutes}
-        sourceCount={sourceCount}
-        sourceLabel={sourceDisplayLabel(story)}
-        matchPct={matchPct}
-        typeNote={typeNote}
-      />
-      <h3
-        className={clsx(
-          "mt-2 font-display font-semibold leading-snug transition-colors",
-          headlineSize,
-          isActive ? "text-accent" : "text-ink group-hover:text-accent",
-        )}
-      >
-        {title}
-      </h3>
-      {brief && (
-        <p
-          className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {brief}
-        </p>
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <TypeLabel type={type} label={label} isNew={isNew} />
+          <Kicker
+            rank={rank}
+            sector={story.sector}
+            readMinutes={readMinutes}
+            sourceCount={sourceCount}
+            sourceLabel={sourceDisplayLabel(story)}
+            matchPct={matchPct}
+            typeNote={typeNote}
+          />
+          <h3
+            className={clsx(
+              "mt-2 font-display font-semibold leading-snug transition-colors",
+              headlineSize,
+              isActive ? "text-accent" : "text-ink group-hover:text-accent",
+            )}
+          >
+            {title}
+          </h3>
+          {brief && (
+            <p
+              className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {brief}
+            </p>
+          )}
+          {type === "cluster" && <SourceWall story={story} />}
+          {teaser && <LockedTeaser text={teaser} roleLabel={roleLabel} />}
+        </div>
+        {thumb && <Thumb src={thumb} />}
+      </div>
+    </button>
+  );
+}
+
+// Second-peak feature (stickiness item 5): an image-led story promoted to a
+// wider card mid-stream so the scroll crests again instead of flat-lining into
+// a list. Distinct from the THE CONNECTION hero — no chain motif, uses the
+// real og:image / illustration, anchored by its branded type label.
+export function FeatureExhibit({
+  story,
+  rank,
+  isActive,
+  onSelect,
+  roleLabel,
+  nowMs,
+}: StoryExhibitProps): JSX.Element {
+  const sourceCount = Math.max(1, story.sources.length);
+  const matchPct = matchPercent(rank, sourceCount);
+  const { title, brief } = storyTitleAndBrief(story);
+  const { type, label } = deriveCardType(story);
+  const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
+  const art = story.illustration_url ?? story.image_url ?? null;
+  const teaser =
+    story.kind === "ingested" ? story.why_it_matters_to_you?.trim() || null : null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(story.id)}
+      aria-pressed={isActive}
+      className={clsx(
+        "group my-2 block w-full border text-left transition-colors",
+        isActive ? "border-accent bg-accent/[0.06]" : "border-line hover:border-accent",
       )}
+    >
+      {art && (
+        <div className="relative h-[160px] w-full overflow-hidden bg-ink md:h-[190px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={art}
+            alt=""
+            className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+          <span className="absolute left-3 top-3 inline-flex items-center gap-2 border border-accent bg-bg/95 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+            {label}
+            {isNew && <span className="text-ink-muted">· New</span>}
+          </span>
+        </div>
+      )}
+      <div className="px-5 py-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
+          <span className="font-semibold text-accent">
+            {String(rank).padStart(2, "0")}
+          </span>
+          <span className="text-line">{"//"}</span>
+          <span>{SECTOR_SHORT[story.sector] ?? story.sector}</span>
+          <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
+            {matchPct}% match
+          </span>
+        </div>
+        <h3
+          className={clsx(
+            "mt-2 font-display text-[20px] font-semibold leading-tight transition-colors md:text-[22px]",
+            isActive ? "text-accent" : "text-ink group-hover:text-accent",
+          )}
+        >
+          {title}
+        </h3>
+        {brief && (
+          <p
+            className="mt-1.5 font-serif text-[14px] italic leading-relaxed text-ink-muted"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {brief}
+          </p>
+        )}
+        {teaser && <LockedTeaser text={teaser} roleLabel={roleLabel} />}
+        <span className="mt-3 inline-flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+          Open the read
+          <ArrowRight
+            className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+            aria-hidden
+          />
+        </span>
+      </div>
     </button>
   );
 }

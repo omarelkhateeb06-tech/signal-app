@@ -4,15 +4,55 @@ import { useRef, useState } from "react";
 import { RankedStream } from "@/components/redesign/swiss/RankedStream";
 import type { FeedItem, Story } from "@/types/story";
 
-// DEV-ONLY visual preview for redesign-v2 build #1 (content-type-aware feed
-// cards + THE CONNECTION hero). Self-contained mock data so the card-type
-// system can be rendered and screenshotted WITHOUT the backend / auth stack
-// (campus Wi-Fi blocks Postgres 5432). Not linked from nav; not a product
-// surface. Delete or keep behind a dev flag before any launch cut.
+// DEV-ONLY visual preview for redesign-v2 (content-type-aware feed cards, THE
+// CONNECTION hero, row thumbnails, second-peak feature, freshness badges, and
+// the locked personalized-read teaser). Self-contained mock data so the card
+// system renders WITHOUT the backend / auth stack (campus Wi-Fi blocks
+// Postgres 5432). Not linked from nav; not a product surface.
+
+// Inline SVG art so images render in the sandbox (external hosts are blocked).
+const svg = (raw: string): string =>
+  `data:image/svg+xml;utf8,${encodeURIComponent(raw)}`;
+
+// Deterministic node positions (no Math.random — keeps SSR/CSR markup equal).
+const NODES = [
+  [40, 60],
+  [120, 40],
+  [200, 90],
+  [280, 50],
+  [340, 120],
+  [80, 160],
+  [160, 200],
+  [240, 150],
+  [320, 190],
+  [60, 110],
+];
+const SCHOLARLY = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='240'><rect width='400' height='240' fill='#1a1714'/><g stroke='#8B4513' stroke-width='1' opacity='0.5'>${Array.from(
+    { length: 9 },
+    (_, i) => `<line x1='${i * 50}' y1='0' x2='${i * 50}' y2='240'/>`,
+  ).join("")}${Array.from(
+    { length: 6 },
+    (_, i) => `<line x1='0' y1='${i * 48}' x2='400' y2='${i * 48}'/>`,
+  ).join(
+    "",
+  )}</g><g fill='#d9c4a9'>${NODES.map(([x, y]) => `<circle cx='${x}' cy='${y}' r='2.5'/>`).join("")}</g></svg>`,
+);
+
+const DATA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='240'><rect width='400' height='240' fill='#17140f'/><g fill='#8B4513'>${[
+    120, 80, 160, 60, 180, 100, 140,
+  ]
+    .map((h, i) => `<rect x='${20 + i * 52}' y='${220 - h}' width='34' height='${h}'/>`)
+    .join("")}</g><line x1='0' y1='220' x2='400' y2='220' stroke='#d9c4a9' stroke-width='1.5'/></svg>`,
+);
+
+const now = "2026-06-06T11:30:00Z"; // recent → NEW badges
+const old = "2026-06-03T09:00:00Z";
 
 function mock(overrides: Partial<Story>): Story {
   return {
-    id: Math.random().toString(36).slice(2),
+    id: "mock",
     sector: "ai",
     headline: "Source headline",
     context: "",
@@ -30,8 +70,8 @@ function mock(overrides: Partial<Story>): Story {
     sources: [{ url: "https://example.com", name: "Reuters", role: "primary" }],
     image_url: null,
     illustration_url: null,
-    published_at: "2026-06-06T09:00:00Z",
-    created_at: "2026-06-06T09:00:00Z",
+    published_at: old,
+    created_at: old,
     author: null,
     is_saved: false,
     save_count: 0,
@@ -46,6 +86,8 @@ const STORIES: Story[] = [
     sector: "finance",
     kind: "native",
     generator_type: "cross-sector-chain-native",
+    published_at: now,
+    created_at: now,
     headline: "The Sovereign AI Capex Loop: How State-Backed Capital is Re-shoring 2nm Silicon",
     generic_commentary:
       "Sovereign wealth funds are shifting from passive equity investors to active infrastructure co-developers. This fragments global chip capacity but guarantees the capital to lock in ASML High-NA EUV backlogs through the 2027 hyperscaler refresh cycle.",
@@ -60,11 +102,12 @@ const STORIES: Story[] = [
     sector: "ai",
     kind: "native",
     generator_type: "arxiv-synthesis-native",
+    published_at: now,
+    created_at: now,
+    image_url: SCHOLARLY,
     headline: "Decentralized Mixture of Experts (MoE) Routing Over Commodity Fiber Networks",
     generic_commentary:
       "By eliminating the InfiniBand/NVLink dependency for multi-node MoE inference, this protocol shifts the competitive advantage away from hyper-centralized cloud clusters toward distributed compute providers. The latency masking is the whole game.",
-    image_url:
-      "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80",
     reading_time_minutes: 6,
   }),
   mock({
@@ -82,7 +125,9 @@ const STORIES: Story[] = [
     kind: "ingested",
     headline: "Nvidia Q2 margins compress as Blackwell packaging yields lag",
     generic_commentary:
-      "Nvidia's gross margin contraction confirms advanced packaging (TSMC's CoWoS-L) is the primary physical bottleneck of the AI boom. The one number that mattered was the 8-point sequential GM drop.",
+      "Nvidia's gross margin contraction confirms advanced packaging (TSMC's CoWoS-L) is the primary physical bottleneck of the AI boom.",
+    why_it_matters_to_you:
+      "As a semiconductor VC, this is your signal to re-underwrite every CoWoS-adjacent packaging startup in your pipeline — the bottleneck just became investable.",
     sources: [
       { url: "a", name: "Bloomberg", role: "primary" },
       { url: "b", name: "CNBC", role: "alternate" },
@@ -104,18 +149,41 @@ const STORIES: Story[] = [
   mock({
     sector: "finance",
     kind: "ingested",
-    headline: "Fed holds rates, signals one cut before year-end",
+    image_url: DATA,
+    published_at: now,
+    created_at: now,
+    headline: "Fed holds rates, signals one cut before year-end as inflation cools",
     generic_commentary:
       "The hold keeps the cost of capital elevated for another quarter, which directly pressures the leveraged buildout math for every sub-scale AI infrastructure player.",
-    source_name: "Reuters",
-    reading_time_minutes: 2,
+    why_it_matters_to_you:
+      "Your portfolio's bridge-round timing math just shifted — a Q4 cut means the cheap-capital window you've been waiting on slips into 2027.",
+    sources: [
+      { url: "a", name: "Reuters", role: "primary" },
+      { url: "b", name: "Bloomberg", role: "alternate" },
+      { url: "c", name: "WSJ", role: "alternate" },
+    ],
+    reading_time_minutes: 4,
+  }),
+  mock({
+    sector: "semiconductors",
+    kind: "ingested",
+    headline: "TSMC Arizona fab hits volume production on N4 node",
+    generic_commentary:
+      "The first high-volume US leading-edge output de-risks the supply chain that every American AI hyperscaler depends on.",
+    why_it_matters_to_you:
+      "For a semiconductor VC, domestic N4 volume resets the geographic-risk discount you apply to every fabless cap-table in the US.",
+    reading_time_minutes: 3,
   }),
 ];
 
 export default function RedesignPreviewPage(): JSX.Element {
-  const [activeId, setActiveId] = useState<string | null>(STORIES[1]?.id ?? null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const items: FeedItem[] = STORIES.map((s) => ({ ...s, gated: false }));
+  const items: FeedItem[] = STORIES.map((s, i) => ({
+    ...s,
+    id: `mock-${i}`,
+    gated: false,
+  }));
+  const [activeId, setActiveId] = useState<string | null>("mock-1");
 
   return (
     <div className="theme-swiss min-h-dvh bg-bg text-ink">
@@ -137,6 +205,7 @@ export default function RedesignPreviewPage(): JSX.Element {
               sentinelRef={sentinelRef}
               isFetchingNextPage={false}
               hasNextPage={false}
+              roleLabel="Semiconductor VC"
             />
           </div>
           <aside className="hidden w-[360px] flex-none p-8 lg:block">

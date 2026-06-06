@@ -14,6 +14,21 @@ import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
 import { SignalOriginals } from "./SignalOriginals";
 
+// Onboarding role slug → human label for the personalized-read teaser CTA.
+const ROLE_LABELS: Record<string, string> = {
+  founder: "Founder",
+  engineer: "Engineer",
+  investor: "Investor",
+  vc: "Venture investor",
+  analyst: "Analyst",
+  researcher: "Researcher",
+  operator: "Operator",
+  product_manager: "Product manager",
+  executive: "Executive",
+  manager: "Manager",
+  student: "Student",
+};
+
 // Design C — "Swiss Command Center". A two-panel editorial intelligence
 // briefing on warm cream. Self-contained: it owns the feed query, sector
 // filter, selected-story state, and infinite scroll, and re-skins its
@@ -38,6 +53,12 @@ export function SwissCommandFeed(): JSX.Element {
   const profileQuery = useProfile();
   const profile = profileQuery.data?.profile ?? null;
   const { user } = useAuth();
+
+  // Humanized role for the locked personalized-read teaser CTA ("Your read as
+  // a Venture investor"). Derived from the stored onboarding role slug.
+  const roleLabel = profile?.role
+    ? ROLE_LABELS[profile.role] ?? profile.role
+    : null;
 
   const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -188,6 +209,7 @@ export function SwissCommandFeed(): JSX.Element {
             sentinelRef={sentinelRef}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
+            roleLabel={roleLabel}
           />
         </div>
       );
@@ -210,6 +232,7 @@ export function SwissCommandFeed(): JSX.Element {
             sentinelRef={sentinelRef}
             isFetchingNextPage={isFetchingNextPage}
             hasNextPage={Boolean(hasNextPage)}
+            roleLabel={roleLabel}
           />
           {footer}
         </div>
