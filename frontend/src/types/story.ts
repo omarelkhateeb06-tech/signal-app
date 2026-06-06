@@ -208,6 +208,10 @@ export interface NativeArchiveItem {
   // Phase 12s — editorial illustration URL (native posts only). Null
   // until the post has been illustrated.
   illustration_url: string | null;
+  // Phase 12u — role-neutral commentary + og:image, so the Signal Originals
+  // band can lead with the explanation and render the flagship as a hero.
+  generic_commentary: string | null;
+  image_url: string | null;
 }
 
 export interface NativeArchiveParams {

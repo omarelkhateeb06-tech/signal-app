@@ -2,6 +2,9 @@
 
 import { useRef, useState } from "react";
 import { RankedStream } from "@/components/redesign/swiss/RankedStream";
+import { ConnectionHero } from "@/components/redesign/swiss/ConnectionHero";
+import { StoryExhibit } from "@/components/redesign/swiss/StoryExhibit";
+import { isConnectionStory } from "@/lib/feedCardType";
 import type { FeedItem, Story } from "@/types/story";
 
 // DEV-ONLY visual preview for redesign-v2 (content-type-aware feed cards, THE
@@ -178,6 +181,84 @@ const STORIES: Story[] = [
   }),
 ];
 
+// Native editorial mocks for the upgraded SIGNAL ORIGINALS band preview.
+const ORIGINALS: Story[] = [
+  mock({
+    sector: "finance",
+    kind: "native",
+    generator_type: "cross-sector-chain-native",
+    published_at: now,
+    created_at: now,
+    illustration_url: DATA,
+    headline: "Memory Shortage Premium Meets Rate Expectations — SK Hynix Bet Now Hinges on Central Bank Action",
+    generic_commentary:
+      "The HBM supply squeeze and the Fed's rate path have quietly fused into one trade. If cuts slip, the leveraged memory-capex bets that the AI buildout depends on get repriced — and SK Hynix sits at the exact intersection.",
+    reading_time_minutes: 6,
+  }),
+  mock({
+    sector: "ai",
+    kind: "native",
+    generator_type: "arxiv-synthesis-native",
+    published_at: now,
+    created_at: now,
+    illustration_url: SCHOLARLY,
+    headline: "Efficient adaptation is becoming the path to scaling constrained systems",
+    generic_commentary:
+      "Three papers this month converge on the same finding: parameter-efficient adaptation now matches full fine-tuning on narrow tasks at a fraction of the compute, shifting the moat from raw scale to data curation.",
+    reading_time_minutes: 5,
+  }),
+  mock({
+    sector: "semiconductors",
+    kind: "native",
+    generator_type: "hn-synthesis-native",
+    headline: "The AI chip shortage is forcing a choice between local inference and upgradeable hardware",
+    generic_commentary:
+      "Practitioners are splitting into two camps — those buying fixed-function inference boxes now, and those betting on modular upgrade paths. The thread consensus: the upgrade path wins unless your latency budget is brutal.",
+    comment_count: 92,
+    reading_time_minutes: 4,
+  }),
+];
+
+function OriginalsBand(): JSX.Element {
+  const heroIdx = ORIGINALS.findIndex((s) => isConnectionStory(s));
+  const hero = heroIdx >= 0 ? ORIGINALS[heroIdx] : null;
+  return (
+    <section className="border-b border-line bg-accent/[0.03] px-6 py-6 md:px-8">
+      <div className="mb-4 flex items-center gap-2">
+        <span aria-hidden className="h-1.5 w-1.5 flex-none bg-accent" />
+        <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+          Signal Originals
+        </h2>
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
+          written by SIGNAL
+        </span>
+      </div>
+      {hero && (
+        <ConnectionHero
+          story={hero}
+          rank={1}
+          isActive={false}
+          onSelect={() => undefined}
+        />
+      )}
+      <div>
+        {ORIGINALS.map((s, i) =>
+          i === heroIdx ? null : (
+            <StoryExhibit
+              key={s.id}
+              story={{ ...s, id: `orig-${i}` }}
+              rank={i + 1}
+              isActive={false}
+              onSelect={() => undefined}
+              nowMs={Date.parse(now)}
+            />
+          ),
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function RedesignPreviewPage(): JSX.Element {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const items: FeedItem[] = STORIES.map((s, i) => ({
@@ -198,6 +279,7 @@ export default function RedesignPreviewPage(): JSX.Element {
         </header>
         <div className="flex flex-col lg:flex-row">
           <div className="min-w-0 flex-1 lg:flex-[1.5] lg:border-r lg:border-line">
+            <OriginalsBand />
             <RankedStream
               items={items}
               activeId={activeId}

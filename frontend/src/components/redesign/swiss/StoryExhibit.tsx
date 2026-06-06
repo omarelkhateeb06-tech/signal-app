@@ -245,7 +245,9 @@ export function StoryExhibit({
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
   const isNew = nowMs != null && isRecent(freshnessTimestamp(story), nowMs);
-  const thumb = story.image_url ?? null;
+  // og:image first; for native posts (no og:image) fall back to the editorial
+  // illustration so Signal Originals rows carry their art as a thumbnail.
+  const thumb = story.image_url ?? story.illustration_url ?? null;
   const teaser =
     showTeaser && story.kind === "ingested"
       ? story.why_it_matters_to_you?.trim() || null
