@@ -154,6 +154,9 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     // carry an editorial illustration. Always null to keep the wire shape
     // uniform with shapeEvent.
     illustration_url: null,
+    // Phase 12u — legacy hand-curated stories are never filings. Emitted as
+    // null (not omitted) to keep the wire shape uniform with shapeEvent.
+    content_type: null,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -196,6 +199,9 @@ interface EventRow {
   // Null for ingested events; surfaced on the wire for native posts so
   // the feed lead / card and detail hero can render it.
   illustrationUrl: string | null;
+  // Phase 12u — content-type classification ('filing' for SEC/earnings,
+  // else null). Drives the data-led "Earnings / SEC" card on the wire.
+  contentType: string | null;
   publishedAt: Date | null;
   createdAt: Date;
   authorId: string | null;
@@ -266,6 +272,10 @@ function shapeEvent(
     // ingested events (they never carry one); the frontend prefers
     // image_url and falls back to this only for native posts.
     illustration_url: row.illustrationUrl ?? null,
+    // Phase 12u — content-type classification for the feed card. 'filing'
+    // for SEC/earnings events; null otherwise (general). Always emitted so
+    // the frontend can branch on it without an undefined check.
+    content_type: row.contentType ?? null,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -589,6 +599,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
         illustrationUrl: events.illustrationUrl,
+        contentType: events.contentType,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,
@@ -1121,6 +1132,7 @@ export async function searchStories(
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
         illustrationUrl: events.illustrationUrl,
+        contentType: events.contentType,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,
@@ -1320,6 +1332,7 @@ export async function getRelatedStories(
         generatorSlug: eventGeneratorSlugExpr(),
         imageUrl: events.imageUrl,
         illustrationUrl: events.illustrationUrl,
+        contentType: events.contentType,
         publishedAt: events.publishedAt,
         createdAt: events.createdAt,
         authorId: writers.id,

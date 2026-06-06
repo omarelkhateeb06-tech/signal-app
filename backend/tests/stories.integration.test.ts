@@ -68,6 +68,7 @@ function makeEventRow(overrides: Record<string, unknown> = {}): Record<string, u
     primarySourceName: "Example",
     imageUrl: null,
     illustrationUrl: null,
+    contentType: null,
     publishedAt: new Date("2026-04-01T00:00:00Z"),
     createdAt: new Date("2026-04-01T00:00:00Z"),
     authorId: "author-1",
@@ -149,8 +150,28 @@ describe("stories endpoints", () => {
       );
       // Phase 12s — ingested events carry illustration_url: null on the wire.
       expect(res.body.data.stories[0].illustration_url).toBeNull();
+      // Phase 12u — content_type is always emitted; null for general events.
+      expect(res.body.data.stories[0].content_type).toBeNull();
       expect(res.body.data.total).toBe(1);
       expect(res.body.data.has_more).toBe(false);
+    });
+
+    it("surfaces content_type 'filing' for SEC/earnings events", async () => {
+      queueOnboarded();
+      queueTierPro();
+      mock.queueSelect([{ sectors: ["finance"], role: "investor" }]);
+      mock.queueSelect([
+        makeEventRow({ sector: "finance", contentType: "filing" }),
+      ]);
+      mock.queueSelect([]); // event_sources batch — none
+      mock.queueSelect([{ count: 1 }]); // events count
+
+      const res = await request(app)
+        .get("/api/v1/stories/feed")
+        .set(...auth(token));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.stories[0].content_type).toBe("filing");
     });
 
     it("filters by query sectors when provided", async () => {

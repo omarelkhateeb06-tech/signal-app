@@ -661,6 +661,11 @@ export const events = pgTable(
     // (Higgsfield). Null for ingested events. The read side renders it
     // only for native posts; image_url takes priority when both exist.
     illustrationUrl: text("illustration_url"),
+    // Phase 12u — content-type classification. NULL = general; 'filing' =
+    // SEC / earnings filing (set by writeEvent from a sec_edgar_json source),
+    // which the feed renders as a distinct data-led card. CHECK constraint
+    // lives in migration 0045.
+    contentType: text("content_type"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
