@@ -1232,6 +1232,11 @@ export async function getNativeStories(
         sector: events.sector,
         generatorSlug: eventGeneratorSlugExpr(),
         illustrationUrl: events.illustrationUrl,
+        // Phase 12u — carry the role-neutral commentary + og:image so the
+        // Signal Originals band can lead with the explanation and render the
+        // flagship THE CONNECTION as an illustrated hero (not a bare row).
+        genericCommentary: events.genericCommentary,
+        imageUrl: events.imageUrl,
       })
       .from(events)
       .where(eq(events.sourceType, "native"))
@@ -1254,6 +1259,8 @@ export async function getNativeStories(
       sector: row.sector,
       generator_type: row.generatorSlug ?? null,
       illustration_url: row.illustrationUrl ?? null,
+      generic_commentary: row.genericCommentary ?? null,
+      image_url: row.imageUrl ?? null,
     }));
 
     res.json({
