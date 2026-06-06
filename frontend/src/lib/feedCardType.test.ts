@@ -160,6 +160,29 @@ describe("deriveCardType — earnings / SEC filings", () => {
   });
 });
 
+describe("deriveCardType — launches (Product Hunt etc.)", () => {
+  it("maps an ingested 'launch' content_type to THE LAUNCH", () => {
+    const d = deriveCardType(
+      story({ kind: "ingested", content_type: "launch" }),
+    );
+    expect(d.type).toBe("launch");
+    expect(d.label).toBe("THE LAUNCH");
+    expect(d.isHero).toBe(false);
+  });
+
+  it("prioritizes a launch over multi-source clustering", () => {
+    expect(
+      deriveCardType(
+        story({
+          kind: "ingested",
+          content_type: "launch",
+          sources: withSources(3),
+        }),
+      ).type,
+    ).toBe("launch");
+  });
+});
+
 describe("isConnectionStory", () => {
   it("is true only for the cross-sector chain", () => {
     expect(
@@ -184,6 +207,7 @@ describe("CARD_TYPE_LABEL", () => {
       "practitioner",
       "tool",
       "earnings",
+      "launch",
       "native",
       "cluster",
       "dispatch",

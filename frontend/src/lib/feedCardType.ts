@@ -24,6 +24,7 @@ export type FeedCardType =
   | "practitioner" // hn-synthesis-native      → PRACTITIONER BRIEF
   | "tool" //       tool-spotlight-native      → WORTH AN AFTERNOON
   | "earnings" //   earnings-reaction-native / content_type 'filing' → EARNINGS / SEC
+  | "launch" //     content_type 'launch' (Product Hunt etc.) → THE LAUNCH
   | "native" //     other SIGNAL-authored      → SIGNAL ORIGINAL
   | "cluster" //    ingested, multi-source     → MULTI-SOURCE
   | "dispatch"; //  ingested, single-source    → DISPATCH
@@ -52,6 +53,7 @@ export const CARD_TYPE_LABEL: Record<FeedCardType, string> = {
   practitioner: "PRACTITIONER BRIEF",
   tool: "WORTH AN AFTERNOON",
   earnings: "EARNINGS / SEC",
+  launch: "THE LAUNCH",
   native: "SIGNAL ORIGINAL",
   cluster: "MULTI-SOURCE",
   dispatch: "DISPATCH",
@@ -77,6 +79,8 @@ export function deriveCardType(story: CardTypeFields): CardTypeDescriptor {
       (story.generator_type && GENERATOR_TYPE[story.generator_type]) || "native";
   } else if (story.content_type === "filing") {
     type = "earnings";
+  } else if (story.content_type === "launch") {
+    type = "launch";
   } else if (story.sources.length > 1) {
     type = "cluster";
   } else {

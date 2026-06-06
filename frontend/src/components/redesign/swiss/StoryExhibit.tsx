@@ -13,6 +13,7 @@ import {
   Newspaper,
   Sparkles,
   TrendingUp,
+  Rocket,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
@@ -43,6 +44,7 @@ const ACCENTED_TYPES: ReadonlySet<FeedCardType> = new Set([
   "practitioner",
   "tool",
   "earnings",
+  "launch",
   "native",
 ]);
 
@@ -165,6 +167,7 @@ const TYPE_ICON: Record<FeedCardType, LucideIcon> = {
   practitioner: MessagesSquare,
   tool: Wrench,
   earnings: TrendingUp,
+  launch: Rocket,
   native: Sparkles,
   cluster: Layers,
   dispatch: Newspaper,
