@@ -81,6 +81,10 @@ export function deriveCardType(story: CardTypeFields): CardTypeDescriptor {
     type = "earnings";
   } else if (story.content_type === "launch") {
     type = "launch";
+  } else if (story.content_type === "tool") {
+    // Ingested GitHub repos (Phase 12R) share the WORTH AN AFTERNOON card with
+    // the native tool-spotlight generator.
+    type = "tool";
   } else if (story.sources.length > 1) {
     type = "cluster";
   } else {

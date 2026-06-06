@@ -127,7 +127,7 @@ export interface Story {
   // events (EDGAR adapter); 'launch' for tool/startup launches (Product Hunt
   // etc., source-declared via config.contentType); null for general news and
   // native posts. Drives the data-led "Earnings / SEC" and "THE LAUNCH" cards.
-  content_type: "filing" | "general" | "launch" | null;
+  content_type: "filing" | "general" | "launch" | "tool" | null;
   published_at: string | null;
   created_at: string;
   author: StoryAuthor | null;

@@ -181,6 +181,14 @@ describe("deriveCardType — launches (Product Hunt etc.)", () => {
       ).type,
     ).toBe("launch");
   });
+
+  it("maps an ingested 'tool' content_type (GitHub) to WORTH AN AFTERNOON", () => {
+    const d = deriveCardType(
+      story({ kind: "ingested", content_type: "tool" }),
+    );
+    expect(d.type).toBe("tool");
+    expect(d.label).toBe("WORTH AN AFTERNOON");
+  });
 });
 
 describe("isConnectionStory", () => {
