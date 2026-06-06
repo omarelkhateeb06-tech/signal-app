@@ -12,6 +12,7 @@ import { arxivAtomAdapter } from "./arxivAtom";
 import { secEdgarJsonAdapter } from "./secEdgarJson";
 import { hackerNewsAdapter } from "./hackerNews";
 import { redditAdapter } from "./reddit";
+import { githubAdapter } from "./github";
 
 const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   rss: rssAdapter,
@@ -19,6 +20,8 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   sec_edgar_json: secEdgarJsonAdapter,
   hackernews_api: hackerNewsAdapter,
   reddit_api: null,
+  // Phase 12R.A — direct GitHub repo polling (WORTH AN AFTERNOON card).
+  github_api: githubAdapter,
   // Phase 12n.2 — native posts are AUTHORED, not pulled off a feed.
   // They never run through the poll/adapter path; the native generator
   // registry (generators/index.ts) owns them. Null here keeps the

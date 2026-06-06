@@ -6,6 +6,28 @@ Source of truth for schema, endpoints, and jobs lives in code — when this doc 
 
 ---
 
+## 0. KNOWLEDGE & MEMORY (read this first, every session)
+
+This project has **persistent cross-session memory**. A fresh session that ignores it will go in circles and re-discover things already known. **Query these before searching raw files or claiming you can't find/remember something:**
+
+1. **graphify second-brain — the ONE persistent graph (your memory across sessions).** A single, continuously-auto-updating knowledge graph indexes this project's **code** *and* prior Claude conversations. It lives in `graphify-out/` (daily snapshots) and is exposed via the `graphify-second-brain` MCP tools (`query_graph`, `god_nodes`, `graph_stats`, `shortest_path`, `get_node`). **When you "can't remember" or "can't find" something, query this first.** The PreToolUse hook reminds you it exists — heed it. **Do NOT build a second/parallel code graph** — there is one graph by design; it already covers the codebase and keeps itself current. If structure changed and you need it refreshed, run `/graphify --update` against the existing graph, never a fresh separate one.
+2. **`docs/ROADMAP.md`** — the authoritative product+engineering roadmap (kept current; ~100k chars). Strategy, version plan, phase status, unit economics. **More current than the phase tables in §15 below** — when they disagree, ROADMAP wins for 12r+ state.
+3. **`docs/REALTIME_SIGNAL_LAYER.md`** — the Real-Time Layer (Phase 12R) spec: X/GitHub/Product Hunt/Reddit sources, card types, ToS + cost findings.
+4. **Auto-memory** at `~/.claude/projects/.../memory/MEMORY.md` — short cross-session notes (rebrand-to-Valo, worktree workflow, environment quirks).
+
+**Current HEAD reality (June 2026), since the detail below drifted:**
+- **Migrations run through `0046`** (the §3 list stops at 0031 — it is historical; the live count is in `backend/src/db/migrations/`).
+- **The feed is the Editorial Redesign v2** (content-type-aware cards). Card classification is canonical in `frontend/src/lib/feedCardType.ts` (`deriveCardType` maps `kind`/`generator_type`/`events.content_type`/`sources` → branded card). Card types: THE CONNECTION (hero), THE RESEARCH READ, PRACTITIONER BRIEF, WORTH AN AFTERNOON, EARNINGS/SEC, THE LAUNCH, MULTI-SOURCE, DISPATCH, SIGNAL ORIGINAL. Components live under `frontend/src/components/redesign/swiss/` (the *primary* feed despite the "redesign" path name — rename pending).
+- **`events.content_type`** (migration 0045/0046): `'filing'` (EDGAR), `'launch'` (Product Hunt / source-declared via `ingestion_sources.config.contentType`), else null. Set in `writeEvent.classifyContentType`.
+- **Real-Time Layer (Phase 12R)** is in progress on branch `claude/realtime-phase-a` (Product Hunt → THE LAUNCH shipped).
+- **Search/related are on `events`** (Phase 12p/12q) — *not* on legacy `stories`, despite older notes claiming otherwise. The only remaining `stories` reads in `storyController` are intentional dual-read **anchor lookups** so legacy hand-curated story-detail pages still resolve; results come from `events`. (Verified June 2026.)
+- **Archival feed designs were retired** June 2026 (`MagazineFeed`/`SwissFeed`/`TerminalFeed` + `/feed-swiss`, `/feed-b`). Only the production `SwissCommandFeed` and the dev-only `/redesign-preview` remain.
+- **Remaining cosmetic item:** `components/redesign/swiss/` is the *production* feed despite the "redesign" path name — a rename to `components/feed/` is deferred (high-churn, low-risk; this note removes the confusion in the meantime).
+
+When you finish a material change, update ROADMAP.md and rebuild the graphify graph so the next session inherits the truth.
+
+---
+
 ## 1. PRODUCT
 
 **SIGNAL** is a ranked-feed intelligence product for professionals following **AI**, **Finance**, and **Semiconductors**. Three sectors, full stop — not a generic news aggregator and not a CMS. The pitch is "the 10 stories per day that matter, with role-aware commentary on why each one matters to you."

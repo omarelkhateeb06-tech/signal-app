@@ -179,6 +179,21 @@ const STORIES: Story[] = [
       "For a semiconductor VC, domestic N4 volume resets the geographic-risk discount you apply to every fabless cap-table in the US.",
     reading_time_minutes: 3,
   }),
+  mock({
+    sector: "ai",
+    kind: "ingested",
+    content_type: "launch",
+    source_name: "Product Hunt",
+    sources: [{ url: "https://producthunt.com", name: "Product Hunt", role: "primary" }],
+    published_at: now,
+    created_at: now,
+    headline: "Cascade — drop-in KV-cache offload that halves inference memory",
+    generic_commentary:
+      "A new open-source library streams attention KV-cache to NVMe so you can run longer-context models on the GPU you already have. The 'why now': context windows outgrew VRAM faster than VRAM got cheap.",
+    why_it_matters_to_you:
+      "As a semiconductor VC, this is a software end-run around the HBM shortage — worth a look before you re-underwrite a memory-bound thesis.",
+    reading_time_minutes: 2,
+  }),
 ];
 
 // Native editorial mocks for the upgraded SIGNAL ORIGINALS band preview.

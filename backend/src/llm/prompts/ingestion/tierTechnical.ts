@@ -9,11 +9,17 @@
 // specific numbers". Word budgets match 12c/12d technical: thesis
 // ~40 words / 1–2 sentences, support ~130 words / 4–6 sentences.
 
+// Phase 12R — the "what to do with it" directive is shared from tierAccessible.
+import { ACTIONABLE_DIRECTIVE } from "./tierAccessible";
+
 export interface TierTechnicalInputs {
   title: string;
   bodyText: string;
   sector: "ai" | "finance" | "semiconductors";
   facts: Array<{ text: string; category: string }>;
+  // Phase 12R — see tierAccessible: shifts the takeaway to "what to do with it"
+  // for tool/repo/launch content.
+  actionable?: boolean;
 }
 
 export const TIER_TECHNICAL_BODY_CAP_CHARS = 8000;
@@ -68,6 +74,7 @@ export function buildTierTechnicalPrompt(inputs: TierTechnicalInputs): string {
   const facts = formatFacts(inputs.facts);
   return [
     SYSTEM_INSTRUCTION,
+    ...(inputs.actionable ? ['', ACTIONABLE_DIRECTIVE] : []),
     '',
     ONE_SHOT_EXAMPLE,
     '',

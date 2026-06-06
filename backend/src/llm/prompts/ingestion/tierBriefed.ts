@@ -16,11 +16,17 @@
 // distinguishes sector-general vocabulary (kept) from specialist
 // research jargon (glossed inline).
 
+// Phase 12R — the "what to do with it" directive is shared from tierAccessible.
+import { ACTIONABLE_DIRECTIVE } from "./tierAccessible";
+
 export interface TierBriefedInputs {
   title: string;
   bodyText: string;
   sector: "ai" | "finance" | "semiconductors";
   facts: Array<{ text: string; category: string }>;
+  // Phase 12R — see tierAccessible: shifts the takeaway to "what to do with it"
+  // for tool/repo/launch content.
+  actionable?: boolean;
 }
 
 export const TIER_BRIEFED_BODY_CAP_CHARS = 8000;
@@ -75,6 +81,7 @@ export function buildTierBriefedPrompt(inputs: TierBriefedInputs): string {
   const facts = formatFacts(inputs.facts);
   return [
     SYSTEM_INSTRUCTION,
+    ...(inputs.actionable ? ['', ACTIONABLE_DIRECTIVE] : []),
     '',
     ONE_SHOT_EXAMPLE,
     '',

@@ -45,6 +45,8 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
   // native generation CLI). A source with this adapter_type produces
   // AI-authored editorial events flagged source_type='native'.
   "native_generator",
+  // Phase 12R.A — direct GitHub Search API polling (real-time repo signal).
+  "github_api",
 ]);
 export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
   "discovered",
@@ -67,6 +69,7 @@ export const INGESTION_ADAPTER_TYPES = [
   "hackernews_api",
   "reddit_api",
   "native_generator",
+  "github_api",
 ] as const;
 export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
 

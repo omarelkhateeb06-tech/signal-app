@@ -52,6 +52,7 @@ function fullCandidate(
     sourceDisplayName: "Example Source",
     sourcePairedWriterId: WRITER_ID,
     sourceAdapterType: "rss",
+    sourceConfig: null,
     ...overrides,
   };
 }
@@ -331,6 +332,62 @@ describe("writeEvent integration", () => {
     mock.queueInsert([{ id: EVENT_ID }]);
     await writeEvent(CANDIDATE_ID, { db: mock.db });
     expect(mock.state.insertedValues[0].headline.length).toBe(255);
+  });
+
+  describe("content_type classification (Phase 12u/12R)", () => {
+    it("defaults content_type to null for a plain RSS source", async () => {
+      queueLoadCandidate({ sourceAdapterType: "rss", sourceConfig: null });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBeNull();
+    });
+
+    it("classifies the EDGAR JSON adapter as 'filing'", async () => {
+      queueLoadCandidate({ sourceAdapterType: "sec_edgar_json" });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBe("filing");
+    });
+
+    it("honors source-declared config.contentType (Product Hunt → 'launch')", async () => {
+      queueLoadCandidate({
+        sourceAdapterType: "rss",
+        sourceConfig: { contentType: "launch" },
+      });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBe("launch");
+    });
+
+    it("config.contentType wins over the EDGAR rule", async () => {
+      queueLoadCandidate({
+        sourceAdapterType: "sec_edgar_json",
+        sourceConfig: { contentType: "launch" },
+      });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBe("launch");
+    });
+
+    it("classifies a GitHub source as 'tool' via config", async () => {
+      queueLoadCandidate({
+        sourceAdapterType: "github_api",
+        sourceConfig: { contentType: "tool" },
+      });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBe("tool");
+    });
+
+    it("ignores an invalid config.contentType (falls back, never breaks the CHECK)", async () => {
+      queueLoadCandidate({
+        sourceAdapterType: "rss",
+        sourceConfig: { contentType: "bogus" },
+      });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBeNull();
+    });
   });
 
   it("throws (does NOT write null) when tier_outputs fails assertTierTemplate", async () => {

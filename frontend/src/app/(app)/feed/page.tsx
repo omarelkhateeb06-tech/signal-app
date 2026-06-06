@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useTeams } from "@/hooks/useTeams";
 import { useTeamsStore } from "@/store/teamsStore";
 import { SwissCommandFeed } from "@/components/redesign/swiss/SwissCommandFeed";
-// The prior #141 image-rich "magazine" feed is preserved at
-// @/components/feed/MagazineFeed — render <MagazineFeed /> below instead of
-// <SwissCommandFeed /> to switch back. Kept intact, not deleted.
+// SwissCommandFeed is the production feed (Editorial Redesign v2). The earlier
+// parallel designs (MagazineFeed / SwissFeed / TerminalFeed + the /feed-swiss,
+// /feed-b routes) were retired June 2026 — see git history if ever needed.
 
 export default function FeedPage(): JSX.Element {
   const router = useRouter();

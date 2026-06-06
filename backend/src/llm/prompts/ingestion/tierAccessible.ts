@@ -30,7 +30,19 @@ export interface TierAccessibleInputs {
   bodyText: string;
   sector: "ai" | "finance" | "semiconductors";
   facts: Array<{ text: string; category: string }>;
+  // Phase 12R — true for tool/repo/launch content (content_type 'tool'/'launch').
+  // Shifts the thesis from "why it matters" to "what you can do with it".
+  actionable?: boolean;
 }
+
+// Phase 12R — the "what to do with it" hook. Injected for action-oriented
+// content (a new repo, tool, or product launch) so the takeaway is an
+// adoption call, not just an analysis.
+export const ACTIONABLE_DIRECTIVE = [
+  "ACTION-ORIENTED CONTENT: this story is a new tool, code repository, or product launch.",
+  "The reader's concrete takeaway must be about USE, not just significance — what they can DO with it, what they can APPLY it toward, or whether it is worth spending an afternoon on right NOW (the \"why now\").",
+  "Frame the thesis around the action the reader can take, not merely why the thing matters. End on something they could act on this week.",
+].join("\n");
 
 export const TIER_ACCESSIBLE_BODY_CAP_CHARS = 8000;
 export const TIER_ACCESSIBLE_DEFAULT_MAX_TOKENS = 300;
@@ -83,6 +95,7 @@ export function buildTierAccessiblePrompt(inputs: TierAccessibleInputs): string 
   const facts = formatFacts(inputs.facts);
   return [
     SYSTEM_INSTRUCTION,
+    ...(inputs.actionable ? ['', ACTIONABLE_DIRECTIVE] : []),
     '',
     ONE_SHOT_EXAMPLE,
     '',

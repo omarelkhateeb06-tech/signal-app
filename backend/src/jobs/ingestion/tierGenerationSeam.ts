@@ -36,7 +36,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db as defaultDb } from "../../db";
-import { ingestionCandidates } from "../../db/schema";
+import { ingestionCandidates, ingestionSources } from "../../db/schema";
 import {
   buildTierAccessiblePrompt,
   TIER_ACCESSIBLE_ASSISTANT_PREFILL,
@@ -140,6 +140,17 @@ interface CandidateRow {
   sector: string | null;
   facts: Record<string, unknown> | null;
   status: string;
+  // Phase 12R — the source's config; `contentType` ('tool'/'launch') flags
+  // action-oriented content so the tier prompt leads with "what to do with it".
+  sourceConfig: Record<string, unknown> | null;
+}
+
+// Action-oriented content types — their commentary should be adoption-led.
+const ACTIONABLE_CONTENT_TYPES = new Set(["tool", "launch"]);
+
+function isActionable(sourceConfig: Record<string, unknown> | null): boolean {
+  const ct = sourceConfig?.contentType;
+  return typeof ct === "string" && ACTIONABLE_CONTENT_TYPES.has(ct);
 }
 
 const FactInputShape = z.object({
@@ -162,8 +173,13 @@ async function loadCandidate(
       sector: ingestionCandidates.sector,
       facts: ingestionCandidates.facts,
       status: ingestionCandidates.status,
+      sourceConfig: ingestionSources.config,
     })
     .from(ingestionCandidates)
+    .leftJoin(
+      ingestionSources,
+      eq(ingestionSources.id, ingestionCandidates.ingestionSourceId),
+    )
     .where(eq(ingestionCandidates.id, candidateId))
     .limit(1);
   return (rows[0] as CandidateRow | undefined) ?? null;
@@ -230,6 +246,7 @@ function buildPromptForTier(
     bodyText: string;
     sector: Sector;
     facts: Array<{ text: string; category: string }>;
+    actionable: boolean;
   },
 ): string {
   switch (tier) {
@@ -369,6 +386,7 @@ export async function runTierGenerationSeam(
     bodyText: candidate.bodyText,
     sector: candidate.sector,
     facts,
+    actionable: isActionable(candidate.sourceConfig),
   });
 
   const prefills = prefillsForTier(tier);
