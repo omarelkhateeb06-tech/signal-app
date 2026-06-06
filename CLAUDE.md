@@ -20,7 +20,9 @@ This project has **persistent cross-session memory**. A fresh session that ignor
 - **The feed is the Editorial Redesign v2** (content-type-aware cards). Card classification is canonical in `frontend/src/lib/feedCardType.ts` (`deriveCardType` maps `kind`/`generator_type`/`events.content_type`/`sources` → branded card). Card types: THE CONNECTION (hero), THE RESEARCH READ, PRACTITIONER BRIEF, WORTH AN AFTERNOON, EARNINGS/SEC, THE LAUNCH, MULTI-SOURCE, DISPATCH, SIGNAL ORIGINAL. Components live under `frontend/src/components/redesign/swiss/` (the *primary* feed despite the "redesign" path name — rename pending).
 - **`events.content_type`** (migration 0045/0046): `'filing'` (EDGAR), `'launch'` (Product Hunt / source-declared via `ingestion_sources.config.contentType`), else null. Set in `writeEvent.classifyContentType`.
 - **Real-Time Layer (Phase 12R)** is in progress on branch `claude/realtime-phase-a` (Product Hunt → THE LAUNCH shipped).
-- **Known drift to fix:** `searchStories`/`getRelatedStories` still query the legacy `stories` table; several archival feed designs coexist (`MagazineFeed`, `SwissFeed`, `TerminalFeed`, routes `/feed-swiss`, `/feed-b`, `/redesign-preview`).
+- **Search/related are on `events`** (Phase 12p/12q) — *not* on legacy `stories`, despite older notes claiming otherwise. The only remaining `stories` reads in `storyController` are intentional dual-read **anchor lookups** so legacy hand-curated story-detail pages still resolve; results come from `events`. (Verified June 2026.)
+- **Archival feed designs were retired** June 2026 (`MagazineFeed`/`SwissFeed`/`TerminalFeed` + `/feed-swiss`, `/feed-b`). Only the production `SwissCommandFeed` and the dev-only `/redesign-preview` remain.
+- **Remaining cosmetic item:** `components/redesign/swiss/` is the *production* feed despite the "redesign" path name — a rename to `components/feed/` is deferred (high-churn, low-risk; this note removes the confusion in the meantime).
 
 When you finish a material change, update ROADMAP.md and rebuild the graphify graph so the next session inherits the truth.
 
