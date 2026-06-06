@@ -202,7 +202,7 @@ async function loadCandidateForWrite(
 
 // Phase 12R — content-type classification, validated against the events
 // content_type CHECK so a bad config value can never break the insert.
-const ALLOWED_CONTENT_TYPES = new Set(["filing", "general", "launch"]);
+const ALLOWED_CONTENT_TYPES = new Set(["filing", "general", "launch", "tool"]);
 
 function classifyContentType(candidate: CandidateRowForWrite): string | null {
   const declared = candidate.sourceConfig?.contentType;

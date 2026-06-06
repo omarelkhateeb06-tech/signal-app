@@ -369,6 +369,16 @@ describe("writeEvent integration", () => {
       expect(mock.state.insertedValues[0].contentType).toBe("launch");
     });
 
+    it("classifies a GitHub source as 'tool' via config", async () => {
+      queueLoadCandidate({
+        sourceAdapterType: "github_api",
+        sourceConfig: { contentType: "tool" },
+      });
+      mock.queueInsert([{ id: EVENT_ID }]);
+      await writeEvent(CANDIDATE_ID, { db: mock.db });
+      expect(mock.state.insertedValues[0].contentType).toBe("tool");
+    });
+
     it("ignores an invalid config.contentType (falls back, never breaks the CHECK)", async () => {
       queueLoadCandidate({
         sourceAdapterType: "rss",
