@@ -46,6 +46,28 @@ export const W2 = 0.15;
 export const W3 = 1.5;
 
 /**
+ * W4 — engagement-signal weight (Phase 12o.5 / 3D). Multiplied by
+ * `ln(1 + engagement_count)`, where engagement_count is the number of *intent*
+ * engagement events (click_through + share) recorded against the event. Same
+ * log shape as the save signal and sized below W3, so a handful of early
+ * interactions barely move the score. `LN(1+0)=0` means the term vanishes with
+ * no data — it ships safely pre-beta and auto-activates as engagement accrues.
+ * Tune during the soak once real distributions exist.
+ */
+export const W4 = 1.0;
+
+/**
+ * Per-content-type freshness-decay multipliers (Phase 12R / 4B). The recency
+ * penalty is `W2 * multiplier * age_hours`. Evergreen SIGNAL-native synthesis
+ * decays half as fast as breaking news; SEC filings stay relevant for a few
+ * days; everything else (ingested news) keeps the tuned default of 1.0. This
+ * only *slows* evergreen/filing content — the news ranking W2 was tuned for is
+ * unchanged.
+ */
+export const FRESHNESS_DECAY_NATIVE = 0.5;
+export const FRESHNESS_DECAY_FILING = 0.75;
+
+/**
  * Freshness bonus applied to events whose primary source has
  * quality_score ≥ FRESHNESS_QUALITY_THRESHOLD and that were published
  * within the last FRESHNESS_WINDOW_HOURS. Intended to surface first-

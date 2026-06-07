@@ -29,11 +29,14 @@ import {
   EDGAR_SOURCE_SLUGS,
   FEED_MAX_STORIES,
   FRESHNESS_BONUS,
+  FRESHNESS_DECAY_FILING,
+  FRESHNESS_DECAY_NATIVE,
   FRESHNESS_QUALITY_THRESHOLD,
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
   W3,
+  W4,
 } from "../feed/rankingConstants";
 import { applyDiversityCap } from "../feed/diversityCap";
 
@@ -438,6 +441,29 @@ export function eventHasEnabledSourceExpr(): ReturnType<typeof sql<boolean>> {
 }
 
 /**
+ * Intent-engagement count for the event: click_through + share events from
+ * engagement_events (Phase 12o.5 / 3D). COUNT(*) returns 0 with no telemetry,
+ * and LN(1+0)=0, so the term vanishes pre-data and auto-activates as
+ * engagement accrues — same shape as the save-count term.
+ */
+function eventEngagementCountExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`(SELECT COUNT(*)::int FROM engagement_events ee WHERE ee.event_id = ${events.id} AND ee.event_type IN ('click_through', 'share'))`;
+}
+
+/**
+ * Per-content-type recency-decay multiplier (4B). Mirror of the TS
+ * `freshnessDecayMultiplier`: native synthesis decays slowest, filings slower
+ * than news, everything else at the tuned default of 1.
+ */
+function eventFreshnessDecayMultiplierExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`CASE
+    WHEN ${events.sourceType} = 'native' THEN ${FRESHNESS_DECAY_NATIVE}::numeric
+    WHEN ${events.contentType} = 'filing' THEN ${FRESHNESS_DECAY_FILING}::numeric
+    ELSE 1::numeric
+  END`;
+}
+
+/**
  * Composite effective_score expression. Used both as a SELECT column
  * (so the row carries its score for downstream sort/inspection) and in
  * the ORDER BY clause.
@@ -453,12 +479,17 @@ export function eventEffectiveScoreExpr(): ReturnType<typeof sql<number>> {
   // 0 for an event with no saves, and LN(1+0)=0, so the term vanishes
   // gracefully when there's no save data.
   const saveCount = eventSaveCountExpr();
+  // Engagement signal (3D) + per-type freshness decay (4B). Both keep the
+  // SQL in lockstep with calculateEffectiveScore.
+  const engagementCount = eventEngagementCountExpr();
+  const decayMultiplier = eventFreshnessDecayMultiplierExpr();
 
   return sql<number>`(
     ${quality}::numeric
     + ${W1}::numeric * LN(1 + ${alternates}::numeric)
     + ${W3}::numeric * LN(1 + ${saveCount}::numeric)
-    - ${W2}::numeric * ${ageHours}::numeric
+    + ${W4}::numeric * LN(1 + ${engagementCount}::numeric)
+    - ${W2}::numeric * ${decayMultiplier} * ${ageHours}::numeric
     + CASE
         WHEN ${quality}::numeric >= ${FRESHNESS_QUALITY_THRESHOLD}::numeric
           AND ${ageHours}::numeric <= ${FRESHNESS_WINDOW_HOURS}::numeric

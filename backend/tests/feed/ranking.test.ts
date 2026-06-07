@@ -36,11 +36,13 @@ import { eventHasEnabledSourceExpr } from "../../src/controllers/storyController
 import {
   EDGAR_PENALTY,
   FRESHNESS_BONUS,
+  FRESHNESS_DECAY_NATIVE,
   FRESHNESS_QUALITY_THRESHOLD,
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
   W3,
+  W4,
 } from "../../src/feed/rankingConstants";
 
 const app = createApp();
@@ -213,6 +215,73 @@ describe("calculateEffectiveScore — Phase 12f ranking formula", () => {
       const thousand = calculateEffectiveScore({ ...base, saveCount: 1000 });
       const deltaThousand = thousand - zero;
       expect(deltaThousand).toBeLessThan(delta * 2);
+    });
+  });
+
+  describe("(f) per-content-type freshness decay (4B)", () => {
+    // quality 7 (< freshness threshold) so the freshness bonus doesn't
+    // confound; aged 48h so the decay difference is visible.
+    const base = {
+      qualityScore: 7,
+      sourcesAttachedCount: 0,
+      ageHours: 48,
+      isEdgarSoleSource: false,
+      bodyTextPresent: true,
+    };
+
+    it("native (evergreen) content decays slower than ingested news", () => {
+      const news = calculateEffectiveScore({ ...base }); // no type → 1.0x decay
+      const native = calculateEffectiveScore({ ...base, sourceType: "native" });
+      expect(native).toBeGreaterThan(news);
+    });
+
+    it("ranks decay native-slowest < filing < news at equal age", () => {
+      const news = calculateEffectiveScore({ ...base });
+      const filing = calculateEffectiveScore({ ...base, contentType: "filing" });
+      const native = calculateEffectiveScore({ ...base, sourceType: "native" });
+      expect(filing).toBeGreaterThan(news);
+      expect(native).toBeGreaterThan(filing);
+    });
+
+    it("native decay reduction matches (1 - multiplier) * W2 * age", () => {
+      const news = calculateEffectiveScore({ ...base });
+      const native = calculateEffectiveScore({ ...base, sourceType: "native" });
+      const expected = (1 - FRESHNESS_DECAY_NATIVE) * W2 * base.ageHours;
+      expect(native - news).toBeCloseTo(expected, 5);
+    });
+
+    it("omitting type leaves the tuned default decay unchanged", () => {
+      const withDecay = calculateEffectiveScore({ ...base });
+      const expected = base.qualityScore - W2 * base.ageHours;
+      expect(withDecay).toBeCloseTo(expected, 5);
+    });
+  });
+
+  describe("(g) engagement signal (3D)", () => {
+    const base = {
+      qualityScore: 7,
+      sourcesAttachedCount: 0,
+      ageHours: 1,
+      isEdgarSoleSource: false,
+      bodyTextPresent: true,
+    };
+
+    it("ranks an engaged event above an identical one with none", () => {
+      const none = calculateEffectiveScore({ ...base, engagementCount: 0 });
+      const engaged = calculateEffectiveScore({ ...base, engagementCount: 40 });
+      expect(engaged).toBeGreaterThan(none);
+    });
+
+    it("treats a missing engagementCount as zero (vanishes pre-data)", () => {
+      const omitted = calculateEffectiveScore({ ...base });
+      const explicitZero = calculateEffectiveScore({ ...base, engagementCount: 0 });
+      expect(omitted).toBeCloseTo(explicitZero, 5);
+    });
+
+    it("engagement magnitude matches W4 * ln(1 + count), log-normalized", () => {
+      const zero = calculateEffectiveScore({ ...base, engagementCount: 0 });
+      const forty = calculateEffectiveScore({ ...base, engagementCount: 40 });
+      expect(forty - zero).toBeCloseTo(W4 * Math.log(1 + 40), 5);
     });
   });
 });

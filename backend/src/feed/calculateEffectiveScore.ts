@@ -9,11 +9,14 @@
 import {
   EDGAR_PENALTY,
   FRESHNESS_BONUS,
+  FRESHNESS_DECAY_FILING,
+  FRESHNESS_DECAY_NATIVE,
   FRESHNESS_QUALITY_THRESHOLD,
   FRESHNESS_WINDOW_HOURS,
   W1,
   W2,
   W3,
+  W4,
 } from "./rankingConstants";
 
 export interface EffectiveScoreInputs {
@@ -45,12 +48,47 @@ export interface EffectiveScoreInputs {
    * decision). Log-scaled by W3 so an outlier count doesn't dominate.
    */
   saveCount?: number;
+  /**
+   * events.source_type — 'native' (SIGNAL-authored synthesis) decays slower
+   * (per-content-type freshness, 4B). Omitted → treated as a normal source.
+   */
+  sourceType?: string | null;
+  /**
+   * events.content_type — 'filing' decays slower (per-content-type freshness,
+   * 4B). Omitted → no per-type adjustment.
+   */
+  contentType?: string | null;
+  /**
+   * Count of *intent* engagement events (click_through + share) on the event
+   * (3D). Optional — omitted / undefined treated as 0 (the graceful default:
+   * the log-scaled term vanishes with no data). Log-scaled by W4.
+   */
+  engagementCount?: number;
+}
+
+/**
+ * Per-content-type recency-decay multiplier (4B). Native synthesis decays
+ * slowest, filings slower than news, everything else at the tuned default.
+ * Mirror of the SQL CASE in `eventFreshnessDecayMultiplierExpr`.
+ */
+export function freshnessDecayMultiplier(
+  sourceType?: string | null,
+  contentType?: string | null,
+): number {
+  if (sourceType === "native") return FRESHNESS_DECAY_NATIVE;
+  if (contentType === "filing") return FRESHNESS_DECAY_FILING;
+  return 1;
 }
 
 export function calculateEffectiveScore(input: EffectiveScoreInputs): number {
   const clusterAmplification = W1 * Math.log(1 + input.sourcesAttachedCount);
   const saveSignal = W3 * Math.log(1 + (input.saveCount ?? 0));
-  const recencyDecay = W2 * input.ageHours;
+  const engagementSignal = W4 * Math.log(1 + (input.engagementCount ?? 0));
+  const decayMultiplier = freshnessDecayMultiplier(
+    input.sourceType,
+    input.contentType,
+  );
+  const recencyDecay = W2 * decayMultiplier * input.ageHours;
   const freshnessBonus =
     input.qualityScore >= FRESHNESS_QUALITY_THRESHOLD &&
     input.ageHours <= FRESHNESS_WINDOW_HOURS
@@ -62,7 +100,8 @@ export function calculateEffectiveScore(input: EffectiveScoreInputs): number {
   return (
     input.qualityScore +
     clusterAmplification +
-    saveSignal -
+    saveSignal +
+    engagementSignal -
     recencyDecay +
     freshnessBonus -
     edgarPenalty
