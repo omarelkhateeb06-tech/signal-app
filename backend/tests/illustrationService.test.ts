@@ -54,7 +54,7 @@ const mockDb = { update: mockUpdate } as any;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  delete process.env.RECRAFT_API_KEY;
+  delete process.env.HIGGSFIELD_API_KEY;
 });
 
 describe("generateAndStoreIllustration — key unset", () => {
@@ -75,13 +75,13 @@ describe("generateAndStoreIllustration — key unset", () => {
 
 describe("generateAndStoreIllustration — key set", () => {
   beforeEach(() => {
-    process.env.RECRAFT_API_KEY = "test-key";
+    process.env.HIGGSFIELD_API_KEY = "test-key";
   });
 
   it("returns result + writes URL on success", async () => {
     const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [{ url: FAKE_URL }] }),
+      json: async () => ({ images: [{ url: FAKE_URL }] }),
     } as Response);
 
     const result = await generateAndStoreIllustration(
@@ -92,7 +92,7 @@ describe("generateAndStoreIllustration — key set", () => {
 
     expect(result).toEqual({ url: FAKE_URL, archetype: "convergence" });
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("recraft.ai"),
+      expect.stringContaining("higgsfield.ai"),
       expect.objectContaining({ method: "POST" }),
     );
     fetchSpy.mockRestore();

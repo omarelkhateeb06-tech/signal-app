@@ -23,8 +23,8 @@ const limitArg = process.argv.find((a) => a.startsWith("--limit="));
 const limit = limitArg ? parseInt(limitArg.split("=")[1] ?? "50", 10) : 50;
 
 async function main(): Promise<void> {
-  if (!process.env.RECRAFT_API_KEY) {
-    console.error("RECRAFT_API_KEY is not set. Aborting.");
+  if (!process.env.HIGGSFIELD_API_KEY) {
+    console.error("HIGGSFIELD_API_KEY is not set. Aborting.");
     process.exit(1);
   }
 
