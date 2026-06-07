@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 import type { Story } from "@/types/story";
 import { matchPercent, storyTitleAndBrief, SECTOR_SHORT } from "./swissView";
+import { AiArtBadge } from "./AiArtBadge";
 
 // Redesign v2 — THE CONNECTION hero.
 //
@@ -58,6 +59,7 @@ export function ConnectionHero({
   const matchPct = matchPercent(rank, sourceCount);
   const { title, brief } = storyTitleAndBrief(story);
   const art = story.illustration_url ?? story.image_url ?? null;
+  const aiArt = art != null && art === story.illustration_url;
 
   return (
     <button
@@ -88,6 +90,7 @@ export function ConnectionHero({
         <span className="absolute left-4 top-4 inline-flex items-center gap-2 border border-accent bg-bg/95 px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent">
           The Connection
         </span>
+        {aiArt && <AiArtBadge />}
       </div>
 
       <div className="px-5 py-5 md:px-6">

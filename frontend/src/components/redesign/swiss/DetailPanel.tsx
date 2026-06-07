@@ -22,6 +22,7 @@ import {
 } from "./swissView";
 import { TakeawayList } from "./TakeawayList";
 import { toggleSavedTakeaway, useSavedTakeaways } from "./savedTakeaways";
+import { AiArtBadge } from "./AiArtBadge";
 
 // Right panel. Default state = the reader's intelligence profile, market
 // context, and the editorial manifesto. Active state (a story selected on
@@ -293,6 +294,11 @@ function StoryDetail({
   const whyThesis = commentary?.thesis ?? view.whyItMatters;
   const whySupport = commentary?.support ?? null;
 
+  // Detail hero image. og:image first, then the AI editorial illustration;
+  // the AI badge shows only when the rendered art is the illustration.
+  const heroArt = story.image_url ?? story.illustration_url ?? null;
+  const heroAiArt = !story.image_url && !!story.illustration_url;
+
   return (
     <div className="space-y-7">
       <button
@@ -308,14 +314,11 @@ function StoryDetail({
           image, full-bleed to the panel edges. og:image first, then the native
           editorial illustration; nothing rendered when neither exists (honest,
           no placeholder). */}
-      {(story.image_url ?? story.illustration_url) && (
-        <div className="-mx-6 h-[210px] overflow-hidden bg-ink md:-mx-8 md:h-[280px]">
+      {heroArt && (
+        <div className="relative -mx-6 h-[210px] overflow-hidden bg-ink md:-mx-8 md:h-[280px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={(story.image_url ?? story.illustration_url) as string}
-            alt=""
-            className="h-full w-full object-cover"
-          />
+          <img src={heroArt} alt="" className="h-full w-full object-cover" />
+          {heroAiArt && <AiArtBadge />}
         </div>
       )}
 

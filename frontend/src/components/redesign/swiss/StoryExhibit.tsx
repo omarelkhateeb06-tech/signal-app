@@ -24,6 +24,7 @@ import { freshnessTimestamp, isAfter } from "@/lib/feedFreshness";
 import { leadStat } from "@/lib/leadStat";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 import { LockedTeaser } from "./LockedTeaser";
+import { AiArtBadge } from "./AiArtBadge";
 
 // One entry in the ranked stream (left panel). The left is a scannable index;
 // reading the full structured briefing happens in the right detail panel
@@ -92,6 +93,7 @@ function Kicker({
   sourceLabel,
   matchPct,
   typeNote,
+  commentCount = 0,
 }: {
   rank: number;
   sector: string;
@@ -100,6 +102,7 @@ function Kicker({
   sourceLabel: string | null;
   matchPct: number;
   typeNote?: JSX.Element | null;
+  commentCount?: number;
 }): JSX.Element {
   const sourceNote =
     !typeNote && sourceCount === 1 && sourceLabel ? `via ${sourceLabel}` : null;
@@ -114,6 +117,12 @@ function Kicker({
       {readMinutes != null && <span>· {readMinutes} min read</span>}
       {sourceNote && <span>· {sourceNote}</span>}
       {typeNote && <span>· {typeNote}</span>}
+      {commentCount > 0 && (
+        <span className="inline-flex items-center gap-1">
+          <MessageSquare className="h-3 w-3" aria-hidden />
+          {commentCount}
+        </span>
+      )}
       {rank > 1 && (
         <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
           {matchPct}% match
@@ -144,15 +153,16 @@ function SourceWall({ story }: { story: Story }): JSX.Element | null {
   );
 }
 
-function Thumb({ src }: { src: string }): JSX.Element {
+function Thumb({ src, ai }: { src: string; ai?: boolean }): JSX.Element {
   return (
-    <div className="hidden h-[88px] w-[88px] flex-none overflow-hidden border border-line bg-ink sm:block md:h-[104px] md:w-[104px]">
+    <div className="relative hidden h-[88px] w-[88px] flex-none overflow-hidden border border-line bg-ink sm:block md:h-[104px] md:w-[104px]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt=""
         className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-[1.04]"
       />
+      {ai && <AiArtBadge size="sm" />}
     </div>
   );
 }
@@ -256,6 +266,7 @@ export function StoryExhibit({
   // og:image first; for native posts (no og:image) fall back to the editorial
   // illustration so Signal Originals rows carry their art as a thumbnail.
   const thumb = story.image_url ?? story.illustration_url ?? null;
+  const aiThumb = !story.image_url && !!story.illustration_url;
   const teaser =
     showTeaser && story.kind === "ingested"
       ? story.why_it_matters_to_you?.trim() || null
@@ -302,6 +313,7 @@ export function StoryExhibit({
             sourceLabel={sourceDisplayLabel(story)}
             matchPct={matchPct}
             typeNote={typeNote}
+            commentCount={type === "practitioner" ? 0 : story.comment_count}
           />
           <h3
             className={clsx(
@@ -329,7 +341,7 @@ export function StoryExhibit({
           {type === "cluster" && <SourceWall story={story} />}
           {teaser && <LockedTeaser text={teaser} roleLabel={roleLabel} />}
         </div>
-        {thumb ? <Thumb src={thumb} /> : <TypeTile type={type} sector={story.sector} />}
+        {thumb ? <Thumb src={thumb} ai={aiThumb} /> : <TypeTile type={type} sector={story.sector} />}
       </div>
     </button>
   );
@@ -355,6 +367,7 @@ export function FeatureExhibit({
   const isNew =
     freshSinceMs != null && isAfter(freshnessTimestamp(story), freshSinceMs);
   const art = story.illustration_url ?? story.image_url ?? null;
+  const aiArt = art != null && art === story.illustration_url;
   const teaser =
     showTeaser && story.kind === "ingested"
       ? story.why_it_matters_to_you?.trim() || null
@@ -382,6 +395,7 @@ export function FeatureExhibit({
             {label}
             {isNew && <span className="text-ink-muted">· New</span>}
           </span>
+          {aiArt && <AiArtBadge />}
         </div>
       )}
       <div className="px-5 py-4">
