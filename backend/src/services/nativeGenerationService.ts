@@ -177,6 +177,7 @@ export async function runNativeGeneration(
       const result = await processNativeEnrichment({
         candidateId,
         triggeredBy: "cron",
+        generatorSlug: generator.slug,
       });
       candidatesAuthored += 1;
       remaining -= 1;

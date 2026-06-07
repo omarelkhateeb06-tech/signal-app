@@ -26,6 +26,7 @@
     "backfill-generic-commentary": "ts-node src/scripts/backfillGenericCommentary.ts",
     "backfill-tier-outputs": "ts-node src/scripts/backfillTierOutputs.ts",
     "backfill-og-images": "ts-node src/scripts/backfillOgImages.ts",
+    "backfill-illustrations": "ts-node src/scripts/backfillIllustrations.ts",
     "apply-illustrations": "ts-node src/scripts/applyIllustrations.ts",
     "fix-broken-sources": "ts-node src/scripts/fixBrokenSources.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"

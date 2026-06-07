@@ -43,11 +43,16 @@ import { runFactsSeam, type FactsSeamResult } from "./factsSeam";
 import { processTierGeneration } from "./tierOrchestration";
 import { writeEvent as defaultWriteEvent } from "./writeEvent";
 import { captureIngestionStageFailure } from "../../lib/sentryHelpers";
+import { generateAndStoreIllustration } from "../../services/illustrationService";
 import { VALID_SECTORS } from "./relevanceSeam";
 
 export interface NativeEnrichmentInput {
   candidateId: string;
   triggeredBy?: "cli" | "test" | "cron";
+  // The ingestion_sources.slug of the generator that produced this candidate.
+  // When provided, the illustration service uses it to pick the right visual
+  // archetype. Omitting it is safe — the service falls back to "signal".
+  generatorSlug?: string;
 }
 
 export interface NativeEnrichmentResult {
@@ -113,7 +118,7 @@ export async function processNativeEnrichment(
   const runTier = deps.processTier ?? processTierGeneration;
   const runWriteEvent = deps.writeEvent ?? defaultWriteEvent;
   const captureFailure = deps.captureFailure ?? captureIngestionStageFailure;
-  const { candidateId } = input;
+  const { candidateId, generatorSlug } = input;
 
   const snapshot = await loadSnapshot(db, candidateId);
   if (!snapshot) {
@@ -249,6 +254,14 @@ export async function processNativeEnrichment(
   // ---- Write event (new event, never attach as alternate) ----
   try {
     const { eventId } = await runWriteEvent(candidateId, { db });
+
+    // Phase C — illustration generation. Soft-fail: a missing API key or
+    // Recraft error never blocks the publish. The URL is stored directly on
+    // the events row when generation succeeds.
+    if (generatorSlug) {
+      void generateAndStoreIllustration(eventId, generatorSlug, { db });
+    }
+
     return {
       candidateId,
       resolvedEventId: eventId,
