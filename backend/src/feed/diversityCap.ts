@@ -34,10 +34,27 @@ export const DIVERSITY_WINDOW = 20;
 /** events.source_type value flagging a SIGNAL-authored native post. */
 export const NATIVE_SOURCE_TYPE = "native";
 
+/**
+ * Per-content-type spread (Batch 4, roadmap §20.5). Layered on top of the
+ * per-source cap: within any CLASS_WINDOW-position window, a content CLASS may
+ * not exceed its MAX_PER_CLASS quota. Only the dominant "news" class (plain
+ * single-source ingested news → DISPATCH cards) is capped; scarce high-value
+ * classes (native, filing, launch) stay uncapped so they surface freely. This
+ * breaks up "DISPATCH-heavy" runs once non-news sources (GitHub, Product Hunt,
+ * the real-time layer) supply enough items to interleave; until then the
+ * best-effort fallback places news anyway, so the feed never starves. The
+ * window is tighter than the source window so the spread is felt near the top.
+ * Tune during the soak.
+ */
+export const CLASS_WINDOW = 8;
+export const MAX_PER_CLASS: Readonly<Record<string, number>> = { news: 5 };
+
 /** Minimal row shape the cap reasons over. */
 export interface DiversityItem {
   primarySourceName: string | null;
   sourceType: string;
+  /** events.content_type — drives the per-class spread. Absent → "news". */
+  contentType?: string | null;
 }
 
 /**
@@ -63,12 +80,18 @@ export function applyDiversityCap<T extends DiversityItem>(
 
   const isNative = (item: T): boolean => item.sourceType === NATIVE_SOURCE_TYPE;
   const sourceKey = (item: T): string => item.primarySourceName ?? "(unknown)";
+  // Coarse content class for the per-type spread. Natives + the scarce
+  // content_type families are uncapped; everything else is plain "news".
+  const classOf = (item: T): string => {
+    if (isNative(item)) return "native";
+    if (item.contentType === "filing") return "filing";
+    if (item.contentType === "launch") return "launch";
+    return "news";
+  };
 
-  // Can `item` be placed at the next position without breaching the
-  // window cap? Natives always can. For others, count same-source
-  // (non-native) items already placed in the trailing window-1 slots;
-  // placing is allowed while that count is below the cap.
-  const fitsWindow = (item: T): boolean => {
+  // Source cap: no source > maxPerSource in the trailing source window.
+  // Natives carry no external source identity, so they always fit.
+  const fitsSource = (item: T): boolean => {
     if (isNative(item)) return true;
     const key = sourceKey(item);
     const windowStart = Math.max(0, result.length - (windowSize - 1));
@@ -80,10 +103,33 @@ export function applyDiversityCap<T extends DiversityItem>(
     return count < maxPerSource;
   };
 
+  // Class cap: a capped class (only "news" today) may not exceed its quota
+  // in the trailing CLASS_WINDOW. Uncapped classes always fit.
+  const fitsClass = (item: T): boolean => {
+    const cls = classOf(item);
+    const cap = MAX_PER_CLASS[cls];
+    if (cap === undefined) return true;
+    const windowStart = Math.max(0, result.length - (CLASS_WINDOW - 1));
+    let count = 0;
+    for (let i = windowStart; i < result.length; i++) {
+      if (classOf(result[i]!) === cls) count++;
+    }
+    return count < cap;
+  };
+
+  // Placeable when it breaches neither the source nor the class window.
+  const fitsWindow = (item: T): boolean => fitsSource(item) && fitsClass(item);
+
   while (remaining.length > 0) {
+    // Prefer an item that fits BOTH the source and class windows.
     let pickIndex = remaining.findIndex((item) => fitsWindow(item));
-    // Degenerate fallback: nothing fits the window. Place the
-    // highest-ranked remaining item rather than drop it or loop forever.
+    // Fall back to one that fits the SOURCE window — the per-class spread is
+    // best-effort and must never break the (tested) source invariant. This is
+    // what keeps an all-"news" pool spreading by source even though the class
+    // cap can't be satisfied.
+    if (pickIndex === -1) pickIndex = remaining.findIndex((item) => fitsSource(item));
+    // True degenerate (e.g. an all-one-source pool): place the highest-ranked
+    // remaining item rather than drop it or loop forever.
     if (pickIndex === -1) pickIndex = 0;
     const [picked] = remaining.splice(pickIndex, 1);
     result.push(picked);

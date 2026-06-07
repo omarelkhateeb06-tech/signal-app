@@ -15,6 +15,8 @@ import {
   applyDiversityCap,
   MAX_PER_SOURCE,
   DIVERSITY_WINDOW,
+  CLASS_WINDOW,
+  MAX_PER_CLASS,
   NATIVE_SOURCE_TYPE,
   type DiversityItem,
 } from "../../src/feed/diversityCap";
@@ -29,6 +31,17 @@ function ingested(id: string, source: string): TestRow {
 
 function native(id: string): TestRow {
   return { id, primarySourceName: "SIGNAL", sourceType: NATIVE_SOURCE_TYPE };
+}
+
+// A non-"news" ingested class (THE LAUNCH). Uncapped by the class cap, so it
+// can be pulled up to break a run of plain news.
+function launch(id: string, source: string): TestRow {
+  return {
+    id,
+    primarySourceName: source,
+    sourceType: "ingested",
+    contentType: "launch",
+  };
 }
 
 /** Max occurrences of any one non-native source in any window of `size`. */
@@ -161,8 +174,51 @@ describe("applyDiversityCap", () => {
     expect(applyDiversityCap([], MAX_PER_SOURCE, DIVERSITY_WINDOW)).toEqual([]);
   });
 
+  it("(h) per-class cap pulls non-news up past clustered news", () => {
+    // 6 plain-news items from distinct sources (so the source cap is inert)
+    // then one launch ranked last. With MAX_PER_CLASS.news=5 over
+    // CLASS_WINDOW=8, the 6th news can't share the top window, so the
+    // lower-ranked launch is pulled up ahead of it.
+    const input: TestRow[] = [
+      ingested("n0", "S0"),
+      ingested("n1", "S1"),
+      ingested("n2", "S2"),
+      ingested("n3", "S3"),
+      ingested("n4", "S4"),
+      ingested("n5", "S5"),
+      launch("l0", "PH"),
+    ];
+    const out = applyDiversityCap(input);
+    const idx = (id: string): number => out.findIndex((r) => r.id === id);
+    // The launch (ranked last) is pulled ahead of the 6th news item.
+    expect(idx("l0")).toBeLessThan(idx("n5"));
+    expect(idSet(out)).toEqual(idSet(input));
+  });
+
+  it("(i) the class cap never breaks the source invariant", () => {
+    // Mixed classes with one firehose source over-represented. Even with the
+    // class layer active, the layered fallback keeps the source cap intact:
+    // no source exceeds MAX_PER_SOURCE in any source window.
+    const input: TestRow[] = [
+      ingested("f0", "Firehose"),
+      ingested("f1", "Firehose"),
+      ingested("f2", "Firehose"),
+      launch("l0", "PH"),
+      ingested("f3", "Firehose"),
+      launch("l1", "PH2"),
+    ];
+    for (let i = 0; i < 30; i++) input.push(ingested(`u${i}`, `U${i}`));
+    const out = applyDiversityCap(input, MAX_PER_SOURCE, DIVERSITY_WINDOW);
+    expect(maxSourceRunInAnyWindow(out, DIVERSITY_WINDOW)).toBeLessThanOrEqual(
+      MAX_PER_SOURCE,
+    );
+    expect(idSet(out)).toEqual(idSet(input));
+  });
+
   it("(g) exposes the spec'd default constants", () => {
     expect(MAX_PER_SOURCE).toBe(2);
     expect(DIVERSITY_WINDOW).toBe(20);
+    expect(CLASS_WINDOW).toBe(8);
+    expect(MAX_PER_CLASS.news).toBe(5);
   });
 });
