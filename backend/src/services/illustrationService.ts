@@ -70,7 +70,7 @@ async function callHiggsfield(prompt: string): Promise<string> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
+      Authorization: `Key ${key}`,
     },
     body: JSON.stringify({
       model: "nano_banana_2",
