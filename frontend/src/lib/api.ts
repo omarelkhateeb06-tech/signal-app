@@ -319,6 +319,23 @@ export async function getRelatedStoriesRequest(id: string): Promise<Story[]> {
   return res.data.data.stories;
 }
 
+export interface EngagementEventInput {
+  event_type: string;
+  event_id?: string | null;
+  dwell_ms?: number | null;
+  metadata?: Record<string, unknown>;
+  occurred_at?: string;
+}
+
+// Phase 12o — append-only engagement telemetry (batched). Best-effort; the
+// caller (engagementTracker) swallows failures so telemetry never disrupts UX.
+export async function postEngagementEventsRequest(
+  events: EngagementEventInput[],
+): Promise<void> {
+  if (events.length === 0) return;
+  await api.post("/api/v1/engagement/events", { events });
+}
+
 export async function saveStoryRequest(id: string): Promise<SaveToggleResponse> {
   const res = await api.post<{ data: SaveToggleResponse }>(
     `/api/v1/stories/${id}/save`,

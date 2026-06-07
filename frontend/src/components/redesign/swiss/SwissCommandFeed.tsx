@@ -9,6 +9,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { useTier } from "@/hooks/useTier";
 import { extractApiError } from "@/lib/api";
+import { trackEngagement, flushEngagement } from "@/lib/engagementTracker";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
 import { RankedStream } from "./RankedStream";
@@ -77,13 +78,46 @@ export function SwissCommandFeed(): JSX.Element {
     ]).finally(() => setIsRefreshing(false));
   };
 
+  // Tracks the currently-open story + when it opened, so a story_view with
+  // dwell time can be emitted when the reader moves on or leaves the feed.
+  const viewRef = useRef<{ id: string; openedAt: number } | null>(null);
+
   // Selecting a story opens it on the right and opens the mobile drawer; on
   // ≥lg the drawer styles are inert (the panel is always visible) so that
-  // part is a no-op.
+  // part is a no-op. Also emits engagement telemetry (Phase 12o): a
+  // click_through on each new selection, and a story_view (with dwell) for the
+  // story being navigated away from.
   const handleSelect = (id: string): void => {
+    const prev = viewRef.current;
+    if (!prev || prev.id !== id) {
+      if (prev) {
+        trackEngagement({
+          event_type: "story_view",
+          event_id: prev.id,
+          dwell_ms: Date.now() - prev.openedAt,
+        });
+      }
+      trackEngagement({ event_type: "click_through", event_id: id });
+      viewRef.current = { id, openedAt: Date.now() };
+    }
     setSelectedId(id);
     setDrawerOpen(true);
   };
+
+  // On unmount (leaving the feed), emit the final open story's dwell + flush.
+  useEffect(() => {
+    return () => {
+      const v = viewRef.current;
+      if (v) {
+        trackEngagement({
+          event_type: "story_view",
+          event_id: v.id,
+          dwell_ms: Date.now() - v.openedAt,
+        });
+        flushEngagement();
+      }
+    };
+  }, []);
 
   // Lock body scroll while the drawer is open on a narrow viewport only.
   useEffect(() => {
