@@ -223,6 +223,32 @@ export const onboardingEvents = pgTable(
   }),
 );
 
+// Append-only engagement telemetry (Phase 12o.2/12o.3) — scroll-dwell,
+// click-through, share. Batched from the client to /api/v1/engagement/events;
+// never read on the request path. Aggregated into Ranking v2 (12o.5) once
+// behavioural data accrues. `eventId` is intentionally un-FK'd — it may target
+// the events OR the legacy stories namespace, and telemetry must never block
+// on a missing target.
+export const engagementEvents = pgTable(
+  "engagement_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    eventId: uuid("event_id"),
+    dwellMs: integer("dwell_ms"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userCreatedIdx: index("engagement_events_user_created_idx").on(t.userId, t.createdAt),
+    typeIdx: index("engagement_events_type_idx").on(t.eventType),
+    eventIdx: index("engagement_events_event_idx").on(t.eventId),
+  }),
+);
+
 // ---------- Writers ----------
 
 export const writers = pgTable("writers", {
@@ -775,6 +801,8 @@ export type UserTopicInterest = typeof userTopicInterests.$inferSelect;
 export type NewUserTopicInterest = typeof userTopicInterests.$inferInsert;
 export type OnboardingEvent = typeof onboardingEvents.$inferSelect;
 export type NewOnboardingEvent = typeof onboardingEvents.$inferInsert;
+export type EngagementEvent = typeof engagementEvents.$inferSelect;
+export type NewEngagementEvent = typeof engagementEvents.$inferInsert;
 export type Writer = typeof writers.$inferSelect;
 export type NewWriter = typeof writers.$inferInsert;
 export type Story = typeof stories.$inferSelect;
