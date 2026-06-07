@@ -4,19 +4,22 @@
 // stores the URL in events.illustration_url. Four visual archetypes map to
 // the seven generator slugs so every card type has a coherent, on-brand look.
 //
-// The only hard dep is HIGGSFIELD_API_KEY. The service is entirely soft-fail:
-// any error (missing key, API error, timeout) logs + returns null so the
-// publish step is never blocked on image generation.
+// The only hard dep is HIGGSFIELD_API_KEY (format "KEY_ID:KEY_SECRET"). The
+// service is entirely soft-fail: any error (missing key, API error, timeout,
+// out of credits) logs + returns null so the publish step is never blocked.
 //
-// API: Higgsfield REST — POST https://api.higgsfield.ai/v1/generation/image
-// Model: nano_banana_2 (same model the banana MCP uses for in-session generation).
-// ~1 credit per image. Response is synchronous — no polling required.
+// Uses the official @higgsfield/client v2 SDK, which resolves the model
+// endpoint from Higgsfield's schema registry and handles the async
+// submit→poll lifecycle internally (2s interval, 5min max). The model slug is
+// overridable via HIGGSFIELD_MODEL for future tuning; the default is the
+// confirmed-working flux-pro/kontext/max text-to-image endpoint.
 
+import { higgsfield, config } from "@higgsfield/client/v2";
 import { eq } from "drizzle-orm";
 import { db as defaultDb } from "../db";
 import { events } from "../db/schema";
 
-const HIGGSFIELD_API_URL = "https://api.higgsfield.ai/v1/generation/image";
+const DEFAULT_MODEL = "flux-pro/kontext/max/text-to-image";
 
 // ── 4 visual archetypes ────────────────────────────────────────────────────
 //
@@ -25,20 +28,20 @@ const HIGGSFIELD_API_URL = "https://api.higgsfield.ai/v1/generation/image";
 //   finance: #4ade80  err: #ef4444
 
 export type IllustrationArchetype =
-  | "convergence"  // cross-sector-chain-native → THE CONNECTION
-  | "research"     // arxiv-synthesis-native → THE RESEARCH READ
-  | "market"       // earnings-reaction-native, supply-chain-synthesis-native
-  | "signal";      // github-trending-native, tool-spotlight-native, hn-synthesis-native
+  | "convergence" // cross-sector-chain-native → THE CONNECTION
+  | "research" // arxiv-synthesis-native → THE RESEARCH READ
+  | "market" // earnings-reaction-native, supply-chain-synthesis-native
+  | "signal"; // github-trending-native, tool-spotlight-native, hn-synthesis-native
 
 // Maps ingestion_sources.slug → archetype.
 const SLUG_TO_ARCHETYPE: Record<string, IllustrationArchetype> = {
-  "cross-sector-chain-native":       "convergence",
-  "arxiv-synthesis-native":          "research",
-  "earnings-reaction-native":        "market",
-  "supply-chain-synthesis-native":   "market",
-  "github-trending-native":          "signal",
-  "tool-spotlight-native":           "signal",
-  "hn-synthesis-native":             "signal",
+  "cross-sector-chain-native": "convergence",
+  "arxiv-synthesis-native": "research",
+  "earnings-reaction-native": "market",
+  "supply-chain-synthesis-native": "market",
+  "github-trending-native": "signal",
+  "tool-spotlight-native": "signal",
+  "hn-synthesis-native": "signal",
 };
 
 const DEFAULT_ARCHETYPE: IllustrationArchetype = "signal";
@@ -54,40 +57,39 @@ const ARCHETYPES: Record<IllustrationArchetype, string> = {
     "Editorial magazine illustration: a monochrome terminal interface window with amber glow on deep charcoal background. Abstract code-motif lines, geometric circuit traces, and glowing cursor shapes. Tech-editorial aesthetic, dark and precise. No readable text, no human figures, no logos.",
 };
 
-// ── Higgsfield REST client ─────────────────────────────────────────────────
+// ── Higgsfield SDK client ──────────────────────────────────────────────────
 
-interface HiggsfieldResponse {
-  images?: Array<{ url: string }>;
-  // The API may return the URL directly at different keys depending on model.
-  url?: string;
+// The SDK reads credentials from a module-global set once via config(). We
+// initialize lazily on first use so importing this module never throws when
+// the key is absent (dev / tests).
+let configured = false;
+function ensureConfigured(): boolean {
+  if (configured) return true;
+  const credentials = process.env.HIGGSFIELD_API_KEY;
+  if (!credentials) return false;
+  config({ credentials });
+  configured = true;
+  return true;
 }
 
-async function callHiggsfield(prompt: string): Promise<string> {
-  const key = process.env.HIGGSFIELD_API_KEY;
-  if (!key) throw new Error("HIGGSFIELD_API_KEY not set");
-
-  const res = await fetch(HIGGSFIELD_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Key ${key}`,
-    },
-    body: JSON.stringify({
-      model: "nano_banana_2",
-      prompt,
+async function generateImage(prompt: string): Promise<string> {
+  const model = process.env.HIGGSFIELD_MODEL ?? DEFAULT_MODEL;
+  const jobSet = await higgsfield.subscribe(model, {
+    input: {
       aspect_ratio: "16:9",
-    }),
-    signal: AbortSignal.timeout(60_000), // 60s — generation can take ~20–30s
+      prompt,
+      safety_tolerance: 2,
+    },
+    withPolling: true,
   });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Higgsfield API ${res.status}: ${body.slice(0, 200)}`);
+  if (!jobSet.isCompleted) {
+    const status = jobSet.jobs?.[0]?.status ?? "unknown";
+    throw new Error(`Higgsfield job not completed (status=${status})`);
   }
 
-  const json = (await res.json()) as HiggsfieldResponse;
-  const url = json.images?.[0]?.url ?? json.url;
-  if (!url) throw new Error("Higgsfield response missing image URL");
+  const url = jobSet.jobs?.[0]?.results?.raw?.url;
+  if (!url) throw new Error("Higgsfield job completed but returned no image URL");
   return url;
 }
 
@@ -107,7 +109,8 @@ export async function generateAndStoreIllustration(
 ): Promise<IllustrationResult | null> {
   const db = deps.db ?? defaultDb;
 
-  if (!process.env.HIGGSFIELD_API_KEY) {
+  if (!ensureConfigured()) {
+    // No key — illustration is an optional enhancement, skip silently.
     return null;
   }
 
@@ -115,7 +118,7 @@ export async function generateAndStoreIllustration(
   const prompt = ARCHETYPES[archetype];
 
   try {
-    const url = await callHiggsfield(prompt);
+    const url = await generateImage(prompt);
 
     await db
       .update(events)

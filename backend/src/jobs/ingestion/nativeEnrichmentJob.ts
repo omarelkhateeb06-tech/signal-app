@@ -255,11 +255,17 @@ export async function processNativeEnrichment(
   try {
     const { eventId } = await runWriteEvent(candidateId, { db });
 
-    // Phase C — illustration generation. Soft-fail: a missing API key or
-    // Recraft error never blocks the publish. The URL is stored directly on
-    // the events row when generation succeeds.
+    // Phase C — illustration generation. Awaited so the CLI path (which exits
+    // when the loop returns) doesn't terminate before the image is stored, and
+    // so the published event reflects its final state. The service is itself
+    // soft-fail (missing key / API error / out of credits → returns null); the
+    // extra try/catch guarantees even an unexpected throw can't undo a publish.
     if (generatorSlug) {
-      void generateAndStoreIllustration(eventId, generatorSlug, { db });
+      try {
+        await generateAndStoreIllustration(eventId, generatorSlug, { db });
+      } catch {
+        // Illustration is best-effort; the event is already published.
+      }
     }
 
     return {

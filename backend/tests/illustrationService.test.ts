@@ -1,10 +1,20 @@
 // Phase C — illustrationService unit tests.
 //
-// The service is a thin wrapper around fetch + a Drizzle UPDATE. Tests verify:
+// The service wraps the @higgsfield/client v2 SDK + a Drizzle UPDATE. Tests
+// mock the SDK at the module boundary and verify:
 //   1. resolveArchetype maps every registered slug correctly.
-//   2. generateAndStoreIllustration returns null + skips fetch when key unset.
-//   3. generateAndStoreIllustration calls fetch and stores on success.
-//   4. generateAndStoreIllustration soft-fails (returns null) on API error.
+//   2. generateAndStoreIllustration returns null + skips the SDK when key unset.
+//   3. generateAndStoreIllustration calls subscribe and stores on success.
+//   4. generateAndStoreIllustration soft-fails (returns null) on SDK error,
+//      incomplete job, or missing URL.
+
+const mockSubscribe = jest.fn();
+const mockConfig = jest.fn();
+
+jest.mock("@higgsfield/client/v2", () => ({
+  config: (...args: unknown[]) => mockConfig(...args),
+  higgsfield: { subscribe: (...args: unknown[]) => mockSubscribe(...args) },
+}));
 
 import {
   generateAndStoreIllustration,
@@ -42,7 +52,7 @@ describe("resolveArchetype", () => {
 
 // ── generateAndStoreIllustration ─────────────────────────────────────────
 
-const FAKE_URL = "https://img.recraft.ai/generated/test-image.png";
+const FAKE_URL = "https://img.higgsfield.ai/generated/test-image.png";
 
 const mockUpdate = jest.fn().mockReturnValue({
   set: jest.fn().mockReturnValue({
@@ -58,31 +68,27 @@ beforeEach(() => {
 });
 
 describe("generateAndStoreIllustration — key unset", () => {
-  it("returns null without calling fetch", async () => {
-    const fetchSpy = jest
-      .spyOn(global, "fetch")
-      .mockResolvedValue({} as Response);
+  it("returns null without calling the SDK", async () => {
     const result = await generateAndStoreIllustration(
       "event-1",
       "cross-sector-chain-native",
       { db: mockDb },
     );
     expect(result).toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect(mockSubscribe).not.toHaveBeenCalled();
   });
 });
 
 describe("generateAndStoreIllustration — key set", () => {
   beforeEach(() => {
-    process.env.HIGGSFIELD_API_KEY = "test-key";
+    process.env.HIGGSFIELD_API_KEY = "kid:secret";
   });
 
-  it("returns result + writes URL on success", async () => {
-    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ images: [{ url: FAKE_URL }] }),
-    } as Response);
+  it("returns result + writes URL on a completed job", async () => {
+    mockSubscribe.mockResolvedValue({
+      isCompleted: true,
+      jobs: [{ status: "completed", results: { raw: { url: FAKE_URL } } }],
+    });
 
     const result = await generateAndStoreIllustration(
       "event-1",
@@ -91,19 +97,18 @@ describe("generateAndStoreIllustration — key set", () => {
     );
 
     expect(result).toEqual({ url: FAKE_URL, archetype: "convergence" });
-    expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("higgsfield.ai"),
-      expect.objectContaining({ method: "POST" }),
+    expect(mockSubscribe).toHaveBeenCalledWith(
+      expect.stringContaining("text-to-image"),
+      expect.objectContaining({ withPolling: true }),
     );
-    fetchSpy.mockRestore();
+    expect(mockUpdate).toHaveBeenCalled();
   });
 
-  it("returns null on API error (soft-fail)", async () => {
-    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({
-      ok: false,
-      status: 429,
-      text: async () => "rate limited",
-    } as Response);
+  it("returns null when the job did not complete (soft-fail)", async () => {
+    mockSubscribe.mockResolvedValue({
+      isCompleted: false,
+      jobs: [{ status: "failed" }],
+    });
 
     const result = await generateAndStoreIllustration(
       "event-2",
@@ -112,13 +117,11 @@ describe("generateAndStoreIllustration — key set", () => {
     );
 
     expect(result).toBeNull();
-    fetchSpy.mockRestore();
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("returns null on fetch throw (soft-fail)", async () => {
-    const fetchSpy = jest
-      .spyOn(global, "fetch")
-      .mockRejectedValue(new Error("network timeout"));
+  it("returns null when the SDK throws, e.g. out of credits (soft-fail)", async () => {
+    mockSubscribe.mockRejectedValue(new Error("Not enough credits"));
 
     const result = await generateAndStoreIllustration(
       "event-3",
@@ -127,6 +130,21 @@ describe("generateAndStoreIllustration — key set", () => {
     );
 
     expect(result).toBeNull();
-    fetchSpy.mockRestore();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns null when a completed job has no image URL (soft-fail)", async () => {
+    mockSubscribe.mockResolvedValue({
+      isCompleted: true,
+      jobs: [{ status: "completed", results: { raw: {} } }],
+    });
+
+    const result = await generateAndStoreIllustration(
+      "event-4",
+      "supply-chain-synthesis-native",
+      { db: mockDb },
+    );
+
+    expect(result).toBeNull();
   });
 });

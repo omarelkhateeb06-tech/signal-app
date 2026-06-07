@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
+    "@higgsfield/client": "^0.2.1",
     "@mozilla/readability": "^0.6.0",
     "@sendgrid/mail": "^8.1.4",
     "@sentry/node": "^8.39.0",

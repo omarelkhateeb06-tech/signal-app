@@ -1,23 +1,51 @@
 [
   {
+    "eventId": "01886fc2-c9a8-4a4b-9239-fffb9c31b2da",
+    "headline": "Huawei's Ascend independence claim exposes the architectural bet",
+    "generatorType": "cross-sector-chain-native",
+    "sector": "semiconductors",
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115122_5993e1e7-5090-42dc-982a-3a65e55ad07e.png"
+  },
+  {
+    "eventId": "3af3d4dc-907a-42f1-b174-fbe58fa7640a",
+    "headline": "Memory Shortage Premium Meets Rate Expectations — SK Hynix Bet",
+    "generatorType": "cross-sector-chain-native",
+    "sector": "finance",
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115122_5993e1e7-5090-42dc-982a-3a65e55ad07e.png"
+  },
+  {
+    "eventId": "ffbdd74c-be89-482d-9d31-a3bff7fcef2d",
+    "headline": "The AI practitioner's paradox: abundance is creating laziness",
+    "generatorType": "hn-synthesis-native",
+    "sector": "ai",
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115129_4e75cee7-0b49-4035-887a-f82bb9b2705d.png"
+  },
+  {
     "eventId": "651235e1-8da2-4d6f-9e29-d840733e0704",
     "headline": "The AI labor collapse is forcing finance to confront demand destruction",
     "generatorType": "hn-synthesis-native",
     "sector": "finance",
-    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260602_122640_d98dbbdf-2ba9-4438-9792-bcf04bcbe768.png"
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115129_4e75cee7-0b49-4035-887a-f82bb9b2705d.png"
   },
   {
-    "eventId": "ffbdd74c-be89-482d-9d31-a3bff7fcef2d",
-    "headline": "The AI practitioner's paradox: abundance is creating laziness, not leverage",
-    "generatorType": "hn-synthesis-native",
+    "eventId": "864a03c0-99d1-42d0-9ee3-e8976da9dc24",
+    "headline": "Efficient adaptation is becoming the path to scaling constraints",
+    "generatorType": "arxiv-synthesis-native",
     "sector": "ai",
-    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260602_122642_72183fbd-5f89-4621-bfa4-c1bc601678fe.png"
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115124_337c7299-7f87-4e65-8806-3080adf391e3.png"
   },
   {
-    "eventId": "3af3d4dc-907a-42f1-b174-fbe58fa7640a",
-    "headline": "Memory Shortage Premium Meets Rate Expectations - SK Hynix Bet",
-    "generatorType": "cross-sector-chain-native",
-    "sector": "finance",
-    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260602_122643_2a61fcf5-0c4a-41b8-ad58-946b41752229.jpeg"
+    "eventId": "47f8af59-19c0-4f01-8508-8d3d664c55cc",
+    "headline": "The AI chip shortage is forcing a choice between local inference",
+    "generatorType": "hn-synthesis-native",
+    "sector": "semiconductors",
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115129_4e75cee7-0b49-4035-887a-f82bb9b2705d.png"
+  },
+  {
+    "eventId": "13bbd26b-c4f5-4a9c-a910-3102773166ce",
+    "headline": "AI chip demand is outrunning the tools that make them",
+    "generatorType": "supply-chain-synthesis-native",
+    "sector": "semiconductors",
+    "illustrationUrl": "https://d8j0ntlcm91z4.cloudfront.net/user_3EJtHciobaid0OLIzGpEtHQJBPF/hf_20260607_115127_a5cbc7d6-9a66-4536-ac4e-a03430092501.png"
   }
 ]
