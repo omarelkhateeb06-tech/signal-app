@@ -9,6 +9,7 @@ import { useTier } from "@/hooks/useTier";
 import { useThroughLine } from "@/hooks/useThroughLine";
 import { DepthToggle } from "@/components/stories/DepthToggle";
 import { StorySaveButton } from "@/components/stories/StorySaveButton";
+import { ShareButton } from "@/components/stories/ShareButton";
 import { sourceDisplayLabel } from "@/lib/feedCard";
 import { timeAgo } from "@/lib/timeAgo";
 import { ROLES } from "@/lib/onboarding";
@@ -412,7 +413,10 @@ function StoryDetail({
             <span>{story.sources.length} sources</span>
           )}
         </div>
-        <StorySaveButton story={story} />
+        <div className="flex items-center gap-4">
+          <ShareButton story={story} />
+          <StorySaveButton story={story} />
+        </div>
       </div>
     </div>
   );
