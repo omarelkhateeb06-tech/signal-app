@@ -41,6 +41,77 @@ function accessionToPath(accession: string): string {
   return accession.replace(/-/g, "");
 }
 
+// ---- Reader-friendly title / excerpt helpers (issue #86) ----
+//
+// Raw EDGAR names are ALL-CAPS legal entities ("NVIDIA CORP", "ADVANCED MICRO
+// DEVICES INC") and form codes are opaque ("8-K"). Left raw they read as
+// machine output and polluted the feed. These produce a title-cased company
+// name (legal suffixes dropped) + a plain-English form label so an EDGAR
+// candidate reads like editorial content rather than a database row.
+
+const LEGAL_SUFFIXES = new Set([
+  "corp", "corporation", "inc", "incorporated", "co", "company",
+  "llc", "lp", "ltd", "plc", "nv", "sa", "ag",
+]);
+
+export function humanizeCompanyName(raw: string): string {
+  // Drop the EDGAR state-of-incorporation suffix, e.g. "ACME CORP /DE/".
+  const withoutState = raw.replace(/\s*\/[A-Za-z]{2}\/?\s*$/, "").trim();
+  // Title-case ("NVIDIA CORP" -> "Nvidia Corp").
+  const titled = withoutState
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  // Drop trailing legal-form tokens ("Nvidia Corp" -> "Nvidia").
+  const tokens = titled.split(/\s+/).filter(Boolean);
+  while (tokens.length > 1) {
+    const last = (tokens[tokens.length - 1] ?? "").replace(/[.,]/g, "").toLowerCase();
+    if (LEGAL_SUFFIXES.has(last)) tokens.pop();
+    else break;
+  }
+  return tokens.join(" ") || titled;
+}
+
+const FORM_LABELS: Record<string, string> = {
+  "10-K": "annual report (10-K)",
+  "10-Q": "quarterly report (10-Q)",
+  "8-K": "material-event filing (8-K)",
+  "S-1": "IPO registration (S-1)",
+  "20-F": "annual report (20-F)",
+};
+
+export function formLabel(form: string): string {
+  return FORM_LABELS[form] ?? `${form} filing`;
+}
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+export function humanDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const month = MONTHS[parseInt(m[2] ?? "", 10) - 1] ?? "";
+  const day = parseInt(m[3] ?? "", 10);
+  const year = m[1] ?? "";
+  return month && day && year ? `${month} ${day}, ${year}` : iso;
+}
+
+export function buildEdgarTitle(companyName: string, form: string): string {
+  return `${humanizeCompanyName(companyName)} — ${formLabel(form)}`;
+}
+
+export function buildEdgarSummary(
+  companyName: string,
+  form: string,
+  filingDateStr: string,
+): string {
+  const date = filingDateStr ? ` on ${humanDate(filingDateStr)}` : "";
+  // "its" dodges the a/an article problem ("a annual report" is wrong) and
+  // reads naturally for every form label.
+  return `${humanizeCompanyName(companyName)} filed its ${formLabel(form)} with the SEC${date}.`;
+}
+
 interface EdgarFilings {
   recent: {
     accessionNumber: string[];
@@ -108,7 +179,7 @@ async function fetchCikCandidates(
       ? `https://www.sec.gov/Archives/edgar/data/${numericCik}/${accessionToPath(accession)}/${primaryDoc}`
       : `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${paddedCik}&type=${form}`;
 
-    const title = `${companyName} — ${form} (${filingDateStr})`;
+    const title = buildEdgarTitle(companyName, form);
     const externalId = accession;
     const contentHash = sha256Truncated(`${filingUrl}\n${title}`);
 
@@ -116,7 +187,7 @@ async function fetchCikCandidates(
       externalId,
       url: filingUrl,
       title,
-      summary: null,
+      summary: buildEdgarSummary(companyName, form, filingDateStr),
       publishedAt: filingDate,
       contentHash,
       rawPayload: {

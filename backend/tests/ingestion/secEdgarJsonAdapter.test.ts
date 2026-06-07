@@ -128,7 +128,7 @@ describe("secEdgarJsonAdapter", () => {
       );
     });
 
-    it("titles candidates as `{companyName} — {form} ({filingDate})`", async () => {
+    it("gives candidates reader-friendly titles + excerpts (issue #86)", async () => {
       const since = new Date("2026-04-01T00:00:00Z");
       mockJson(
         buildSubmissionsJson("NVIDIA CORP", [
@@ -138,8 +138,12 @@ describe("secEdgarJsonAdapter", () => {
       const result = await secEdgarJsonAdapter(
         makeCtx({ config: { ciks: ["0001045810"] }, lastPolledAt: since }),
       );
-      expect(result.candidates[0]!.title).toBe("NVIDIA CORP — 10-K (2026-04-15)");
-      expect(result.candidates[0]!.summary).toBeNull();
+      // Title-cased company (legal suffix dropped) + plain-English form label —
+      // no more raw "NVIDIA CORP — 10-K (2026-04-15)".
+      expect(result.candidates[0]!.title).toBe("Nvidia — annual report (10-K)");
+      expect(result.candidates[0]!.summary).toBe(
+        "Nvidia filed its annual report (10-K) with the SEC on April 15, 2026.",
+      );
     });
 
     it("uses default 7-day lookback when lastPolledAt is null", async () => {
