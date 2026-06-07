@@ -23,7 +23,10 @@ const limitArg = process.argv.find((a) => a.startsWith("--limit="));
 const limit = limitArg ? parseInt(limitArg.split("=")[1] ?? "50", 10) : 50;
 
 async function main(): Promise<void> {
-  if (!process.env.HIGGSFIELD_API_KEY) {
+  // Dry-run only lists pending events (no image generation), so it doesn't
+  // need the key — this lets the scheduled membership-MCP flow enumerate work
+  // without the backend API key set. Live mode still requires it.
+  if (!isDryRun && !process.env.HIGGSFIELD_API_KEY) {
     console.error("HIGGSFIELD_API_KEY is not set. Aborting.");
     process.exit(1);
   }
