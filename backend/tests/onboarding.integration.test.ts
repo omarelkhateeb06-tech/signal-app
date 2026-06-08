@@ -38,7 +38,7 @@ function validCompletionPayload(overrides: Record<string, unknown> = {}): Record
     domain: "general_not_sure",
     seniority: "mid",
     depth_preference: "briefed",
-    topics: [{ sector: "ai", topic: "foundation_models" }],
+    topics: [{ sector: "ai", topic: "models_and_research" }],
     goals: ["stay_current"],
     digest_preference: "morning",
     timezone: "America/New_York",
@@ -170,14 +170,14 @@ describe("POST /api/v1/onboarding/complete", () => {
   });
 
   it("returns 400 when a topic is not valid for its sector", async () => {
-    // foundries is a semiconductors topic, not an ai topic
+    // manufacturing is a semiconductors topic, not an ai topic
     mock.queueSelect([{ id: userId }]); // user existence check
     const res = await request(app)
       .post("/api/v1/onboarding/complete")
       .set(...auth(token))
       .send(
         validCompletionPayload({
-          topics: [{ sector: "ai", topic: "foundries" }],
+          topics: [{ sector: "ai", topic: "manufacturing" }],
         }),
       );
     expect(res.status).toBe(400);
@@ -264,8 +264,8 @@ describe("POST /api/v1/onboarding/complete", () => {
       .send(
         validCompletionPayload({
           topics: [
-            { sector: "ai", topic: "foundation_models" },
-            { sector: "ai", topic: "foundation_models" }, // duplicate
+            { sector: "ai", topic: "models_and_research" },
+            { sector: "ai", topic: "models_and_research" }, // duplicate
             { sector: "ai", topic: "agents" },
           ],
         }),
@@ -273,5 +273,42 @@ describe("POST /api/v1/onboarding/complete", () => {
 
     // No unique-violation bubble-up; the controller dedupes in-memory.
     expect(res.status).toBe(200);
+  });
+
+  it("accepts an empty domain — field of work is optional (#18)", async () => {
+    mock.queueSelect([{ id: userId }]); // user exists
+    mock.queueSelect([]); // existing profile: none
+    mock.queueInsert([
+      {
+        userId,
+        sectors: ["ai"],
+        role: "engineer",
+        domain: null,
+        seniority: "mid",
+        depthPreference: "briefed",
+        goals: ["stay_current"],
+        digestPreference: "morning",
+        timezone: "America/New_York",
+        completedAt: new Date("2026-04-23T00:00:00Z"),
+      },
+    ]); // insert .returning()
+
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(validCompletionPayload({ domain: "" }));
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 400 when domain is a non-empty unknown value", async () => {
+    // The empty string is the only bypass; a garbage non-empty domain
+    // still fails the refine (proves #18 didn't weaken validation).
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(validCompletionPayload({ domain: "astrology" }));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_INPUT");
   });
 });

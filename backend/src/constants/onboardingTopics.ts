@@ -63,42 +63,34 @@ export const DEFAULT_GOAL: Goal = "stay_current";
 // checkboxes for every sector the user selected on Screen 1. Skip on
 // Screen 5 persists *all* topics for every selected sector (the
 // "I want to see everything in my sectors" interpretation).
+// Issue #24 — consolidated June 2026 from 10 fine-grained topics/sector to 5
+// broad categories/sector. The old 12-20-style granularity was too in-the-
+// weeds for users who haven't formed specific opinions, degrading the
+// matched_interests signal (over/under-picking). Pre-existing user_topic_
+// interests rows with the old values are harmless: they're passed to
+// commentary as plain matched-topic strings and simply don't pre-fill against
+// the new option set on a profile edit (the user re-picks broad categories).
 export const TOPICS_BY_SECTOR = {
   ai: [
-    "foundation_models",
-    "training_infra",
-    "inference_infra",
+    "models_and_research",
+    "infrastructure",
     "agents",
-    "multimodal",
-    "safety_alignment",
-    "research_papers",
-    "ai_policy",
-    "ai_products",
-    "open_source_models",
+    "products_and_apps",
+    "safety_and_policy",
   ],
   finance: [
-    "public_markets",
-    "rates_and_macro",
-    "credit",
-    "private_equity",
-    "venture_capital",
-    "m_and_a",
+    "markets_and_macro",
+    "private_capital",
     "crypto",
-    "regulation_and_policy",
-    "earnings",
-    "quantitative_research",
+    "policy_and_regulation",
+    "quant_research",
   ],
   semiconductors: [
-    "foundries",
-    "advanced_packaging",
-    "eda",
-    "memory",
-    "gpu_accelerators",
-    "networking_silicon",
-    "export_controls",
-    "supply_chain",
-    "automotive_silicon",
-    "edge_and_iot",
+    "design_and_eda",
+    "manufacturing",
+    "chips_and_accelerators",
+    "supply_and_policy",
+    "applications",
   ],
 } as const satisfies Record<Sector, readonly string[]>;
 

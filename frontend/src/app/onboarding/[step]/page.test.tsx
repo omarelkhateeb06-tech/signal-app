@@ -120,15 +120,14 @@ describe("Onboarding step dispatcher", () => {
     const store = useOnboardingStore.getState();
     store.setSectors(["ai"]);
     store.setRole("engineer");
-    // Phase 12c — domain required by the server-side completion schema.
-    // The test mocks the API so validation never actually runs, but
-    // seeding keeps the store shape realistic and future-proofs against
-    // a switch to a non-mock client.
+    // Domain is optional (#18) but we seed it anyway to keep the store
+    // shape realistic. The test mocks the API so validation never runs;
+    // seeding future-proofs against a switch to a non-mock client.
     store.setDomain("general_not_sure");
     store.setSeniority("mid");
     store.setDepthPreference("briefed");
     store.setGoals(["stay_current"]);
-    store.setTopics([{ sector: "ai", topic: "foundation_models" }]);
+    store.setTopics([{ sector: "ai", topic: "models_and_research" }]);
     store.setDigestPreference("morning");
     store.setTimezone("UTC");
 

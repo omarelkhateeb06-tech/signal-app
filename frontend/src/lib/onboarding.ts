@@ -112,42 +112,30 @@ export interface TopicOption {
   label: string;
 }
 
+// Issue #24 — consolidated to 5 broad categories per sector (was 10 fine-
+// grained topics). Keep byte-identical in value with the backend canonical
+// list in backend/src/constants/onboardingTopics.ts.
 export const TOPICS_BY_SECTOR: Readonly<Record<string, readonly TopicOption[]>> = {
   ai: [
-    { value: "foundation_models", label: "Foundation models" },
-    { value: "training_infra", label: "Training infrastructure" },
-    { value: "inference_infra", label: "Inference infrastructure" },
-    { value: "agents", label: "Agents" },
-    { value: "multimodal", label: "Multimodal" },
-    { value: "safety_alignment", label: "Safety & alignment" },
-    { value: "research_papers", label: "Research papers" },
-    { value: "ai_policy", label: "AI policy" },
-    { value: "ai_products", label: "AI products" },
-    { value: "open_source_models", label: "Open-source models" },
+    { value: "models_and_research", label: "Models & research" },
+    { value: "infrastructure", label: "Infrastructure & compute" },
+    { value: "agents", label: "Agents & autonomy" },
+    { value: "products_and_apps", label: "Products & applications" },
+    { value: "safety_and_policy", label: "Safety & policy" },
   ],
   finance: [
-    { value: "public_markets", label: "Public markets" },
-    { value: "rates_and_macro", label: "Rates & macro" },
-    { value: "credit", label: "Credit" },
-    { value: "private_equity", label: "Private equity" },
-    { value: "venture_capital", label: "Venture capital" },
-    { value: "m_and_a", label: "M&A" },
-    { value: "crypto", label: "Crypto" },
-    { value: "regulation_and_policy", label: "Regulation & policy" },
-    { value: "earnings", label: "Earnings" },
-    { value: "quantitative_research", label: "Quantitative research" },
+    { value: "markets_and_macro", label: "Markets & macro" },
+    { value: "private_capital", label: "Private capital & deals" },
+    { value: "crypto", label: "Crypto & digital assets" },
+    { value: "policy_and_regulation", label: "Policy & regulation" },
+    { value: "quant_research", label: "Quant & research" },
   ],
   semiconductors: [
-    { value: "foundries", label: "Foundries" },
-    { value: "advanced_packaging", label: "Advanced packaging" },
-    { value: "eda", label: "EDA" },
-    { value: "memory", label: "Memory" },
-    { value: "gpu_accelerators", label: "GPUs & accelerators" },
-    { value: "networking_silicon", label: "Networking silicon" },
-    { value: "export_controls", label: "Export controls" },
-    { value: "supply_chain", label: "Supply chain" },
-    { value: "automotive_silicon", label: "Automotive silicon" },
-    { value: "edge_and_iot", label: "Edge & IoT" },
+    { value: "design_and_eda", label: "Design & EDA" },
+    { value: "manufacturing", label: "Manufacturing & packaging" },
+    { value: "chips_and_accelerators", label: "Chips & accelerators" },
+    { value: "supply_and_policy", label: "Supply chain & export controls" },
+    { value: "applications", label: "Applications & edge" },
   ],
 };
 

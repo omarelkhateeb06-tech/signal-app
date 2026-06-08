@@ -52,10 +52,14 @@ const completeSchema = z.object({
   // domain). Domain validated via a refine() rather than z.enum so the
   // error message is stable across sector-specific option lists.
   role: z.enum(ROLES),
+  // Issue #18 — field of work is OPTIONAL. Accept an empty string (the
+  // user skipped it) or a recognized domain value. Empty maps to null at
+  // write time; commentary already omits the domain line when it's absent.
   domain: z
     .string()
-    .min(1)
-    .refine(isValidDomain, { message: "Domain is not a recognized value" }),
+    .refine((d) => d === "" || isValidDomain(d), {
+      message: "Domain is not a recognized value",
+    }),
   // Screen 3
   seniority: z.enum(SENIORITIES),
   // Screen 4 (Phase 12c: depth now shows *after* goals — the step
@@ -207,7 +211,7 @@ export async function postOnboardingComplete(
         // is deliberately NOT touched here; it defaults to 1 on insert
         // and completion shouldn't bump it (bumps happen on post-
         // onboarding Settings mutations per Decision 7 of the 12c spec).
-        domain: input.domain,
+        domain: input.domain || null,
         seniority: input.seniority,
         depthPreference: input.depth_preference,
         goals: input.goals,

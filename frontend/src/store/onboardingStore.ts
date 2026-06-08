@@ -21,12 +21,13 @@ const INITIAL_SECTORS: string[] = SECTORS.map((s) => s.value);
 export interface OnboardingState {
   // Screen 1 — required, multi-select
   sectors: string[];
-  // Screen 2 — role + domain, both required, both single
+  // Screen 2 — role (required) + domain (optional, single)
   role: string | null;
-  // Phase 12c: Screen 2 now also captures `domain` (the specific
-  // field-within-sector the user works in). Required; no default.
-  // Validated server-side against the DOMAIN_OPTIONS union including
-  // the "general_not_sure" sentinel. Feeds the Haiku commentary prompt.
+  // Phase 12c: Screen 2 also captures `domain` (the specific
+  // field-within-sector the user works in). Issue #18 — OPTIONAL; null
+  // when skipped, sent as "" on the wire. Validated server-side against
+  // the DOMAIN_OPTIONS union (or "" / the "general_not_sure" sentinel).
+  // Feeds the Haiku commentary prompt when present.
   domain: string | null;
   // Screen 3 — required, single
   seniority: string | null;

@@ -125,9 +125,9 @@ function Screen1(): JSX.Element {
 //
 // If the user navigates back to Screen 1, changes sectors, then
 // returns here, a previously-chosen domain may no longer be in the
-// filtered list. We reset `domain` to null in that case — the user
-// must re-pick before Continue. This runs once per sectors change,
-// not per render.
+// filtered list. We reset `domain` to null in that case. Since #18 made
+// the field optional this no longer blocks Continue — it just clears a
+// now-invalid pick. This runs once per sectors change, not per render.
 
 function Screen2(): JSX.Element {
   const { sectors, role, setRole, domain, setDomain } = useOnboardingStore();
@@ -156,8 +156,8 @@ function Screen2(): JSX.Element {
     }
   }, [domain, domainOptions, setDomain]);
 
-  const canContinue =
-    role !== null && role.length > 0 && domain !== null && domain.length > 0;
+  // Issue #18 — field of work is OPTIONAL. Only role is required to advance.
+  const canContinue = role !== null && role.length > 0;
 
   return (
     <OnboardingShell
@@ -200,21 +200,22 @@ function Screen2(): JSX.Element {
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
-            What field do you work in?
+            What field do you work in?{" "}
+            <span className="font-normal normal-case text-ink-muted">
+              — optional
+            </span>
           </legend>
           <p className="text-sm text-ink-muted">
-            Pick the closest match. Options are scoped to your selected
-            sectors — choose &ldquo;General / Not sure&rdquo; if nothing
-            fits.
+            Pick the closest match, or skip it. Options are scoped to your
+            selected sectors — choose &ldquo;General / Not sure&rdquo; if
+            nothing fits.
           </p>
           <select
             className="w-full rounded-md border bg-background p-3 font-medium"
             value={domain ?? ""}
             onChange={(e) => setDomain(e.target.value)}
           >
-            <option value="" disabled>
-              Select a field&hellip;
-            </option>
+            <option value="">No specific field</option>
             {domainOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
@@ -527,11 +528,11 @@ function Screen7(): JSX.Element {
       await complete.mutateAsync({
         sectors: store.sectors,
         role: store.role ?? "",
-        // Phase 12c — domain added to the completion payload. Screen 2
-        // gates Continue on domain !== null, so in the normal flow this
-        // coalescing branch never fires; kept for type-safety with the
-        // backend zod `.min(1)` guard surfacing a clean error if we ever
-        // land here with nothing set.
+        // Phase 12c — domain in the completion payload. Issue #18 made it
+        // OPTIONAL: Screen 2 no longer gates Continue on domain, so the
+        // coalescing branch fires whenever the user skips the field. The
+        // empty string is the wire sentinel for "skipped"; the backend
+        // accepts it (zod refine allows "") and maps it to null at write.
         domain: store.domain ?? "",
         seniority: store.seniority ?? "",
         depth_preference: store.depthPreference,
@@ -601,6 +602,22 @@ function Screen7(): JSX.Element {
             </label>
           );
         })}
+      </div>
+      {/* Issue #25 — explain what each option actually delivers. The digest
+          is the 12i daily email: top stories ranked by the same feed score,
+          grouped by sector, with a one-line "why it matters" per story. */}
+      <div className="mt-4 space-y-2 rounded-md border border-line bg-bg/50 p-4 text-sm text-ink-muted">
+        <p>
+          <span className="font-medium text-ink">Yes, daily</span> — each
+          morning we email the day&apos;s top stories across your sectors,
+          ranked the same way as your feed, with a one-line take on why each
+          one matters.
+        </p>
+        <p>
+          <span className="font-medium text-ink">No, thanks</span> — skip the
+          email and read everything in the feed instead.
+        </p>
+        <p>You can change this anytime in Settings.</p>
       </div>
       {store.timezone && (
         <p className="mt-4 text-center text-xs text-ink-muted">

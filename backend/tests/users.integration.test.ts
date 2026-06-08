@@ -430,7 +430,7 @@ describe("user profile endpoints", () => {
           seniority: "senior",
           topic_interests: [
             { sector: "ai", topic: "agents" },
-            { sector: "ai", topic: "foundation_models" },
+            { sector: "ai", topic: "models_and_research" },
           ],
         });
 
@@ -453,7 +453,7 @@ describe("user profile endpoints", () => {
       ]);
       mock.queueSelect([
         { sector: "ai", topic: "agents" },
-        { sector: "ai", topic: "foundation_models" },
+        { sector: "ai", topic: "models_and_research" },
       ]);
       mock.queueInsert([
         {
@@ -479,7 +479,7 @@ describe("user profile endpoints", () => {
           seniority: "senior",
           // Same set, reversed order — set equality should short-circuit.
           topic_interests: [
-            { sector: "ai", topic: "foundation_models" },
+            { sector: "ai", topic: "models_and_research" },
             { sector: "ai", topic: "agents" },
           ],
         });
