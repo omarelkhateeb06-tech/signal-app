@@ -49,6 +49,12 @@ const CANDIDATE_URLS: Record<string, string[]> = {
     "https://www.asml.com/en/investors/rss",
   ],
   "bis-press": [
+    // Federal Register — Industry & Security Bureau (BIS) rulemaking +
+    // enforcement actions. The official export-control primary, and the
+    // replacement for the dead bis.doc.gov press feeds below (now
+    // HTML-only / 404). Brackets are percent-encoded so Node fetch in the
+    // RSS adapter accepts the URL unchanged.
+    "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=industry-and-security-bureau",
     "https://www.bis.doc.gov/index.php/all-articles?format=feed&type=rss",
     "https://www.bis.gov/rss/press-releases",
   ],
@@ -64,11 +70,11 @@ const CANDIDATE_URLS: Record<string, string[]> = {
     "https://ai.meta.com/blog/rss/",
     "https://research.facebook.com/feed/",
   ],
-  "money-stuff": [
-    // Paywalled — no public feed exists. Listed so the report
-    // explicitly logs "no candidate" for ops visibility; the apply
-    // path will disable the source.
-  ],
+  // money-stuff intentionally omitted: it polls fine on its Bloomberg
+  // author RSS (bloomberg.com/opinion/authors/.../matthew-s-levine.rss).
+  // It was previously listed with empty candidates, which made `--apply`
+  // DISABLE a healthy source. A working source does not belong in the
+  // repair registry — leave it out so the probe never touches it.
   "reuters-business": [
     "https://www.reutersagency.com/feed/?best-customer-impacts=business-news",
     "https://www.reuters.com/arc/outboundfeeds/v3/all/rss",
