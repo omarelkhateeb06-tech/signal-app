@@ -21,4 +21,10 @@ module.exports = {
   },
   setupFiles: ["<rootDir>/tests/setup.ts"],
   clearMocks: true,
+  // Issue #81 — BullMQ/ioredis keep their Redis sockets open past the last
+  // test, so Jest prints "A worker process has failed to exit gracefully" and
+  // hangs on the open handles. The leak is known + benign (queue/worker
+  // connections in the ingestion suites); force-exit once all suites pass
+  // rather than thread afterAll teardown through every BullMQ-touching test.
+  forceExit: true,
 };

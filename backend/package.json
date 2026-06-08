@@ -29,6 +29,7 @@
     "backfill-illustrations": "ts-node src/scripts/backfillIllustrations.ts",
     "apply-illustrations": "ts-node src/scripts/applyIllustrations.ts",
     "fix-broken-sources": "ts-node src/scripts/fixBrokenSources.ts",
+    "retry-stuck-events": "ts-node src/scripts/retryStuckEvents.ts",
     "smoke": "ts-node src/scripts/smokeTest.ts"
   },
   "dependencies": {
