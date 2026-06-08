@@ -15,7 +15,7 @@
  * Exits non-zero on any failure so CI / deploy hooks can gate on it.
  */
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 const baseUrl = (process.env.SMOKE_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const skipSignup = process.env.SMOKE_SKIP_SIGNUP === "1";

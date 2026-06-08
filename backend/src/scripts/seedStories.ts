@@ -27,7 +27,7 @@
  * DB failure.
  */
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 // Phase 12e.8 — production guard. Refuse to run when NODE_ENV is
 // "production". The hand-curated seed file is dev-only content; a

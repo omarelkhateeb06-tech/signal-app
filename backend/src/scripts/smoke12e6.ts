@@ -38,7 +38,7 @@
 //   invariants — sample 5 published candidates for writeEvent invariants
 //   teardown  — close worker, queue, redis, pg pool
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 import IORedis from "ioredis";
 import { Worker, type Job } from "bullmq";

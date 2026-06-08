@@ -20,7 +20,7 @@
 // illustration-manifest.json, resolved relative to this file so it works
 // regardless of the process CWD.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { and, eq } from "drizzle-orm";

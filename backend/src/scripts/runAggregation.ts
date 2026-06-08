@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../lib/loadEnv";
 import { runAggregation } from "../jobs/aggregationJob";
 import { closeRedis } from "../lib/redis";
 import { pool } from "../db";

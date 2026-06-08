@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../lib/loadEnv";
 import { sendDailyDigests } from "../jobs/digestJob";
 import { startEmailWorker, stopEmailWorker } from "../jobs/emailWorker";
 import { closeEmailQueue } from "../jobs/emailQueue";

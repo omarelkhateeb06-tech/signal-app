@@ -15,7 +15,7 @@
  * Phase 12a. Prod DB runbook lives in docs/SCHEMA.md.
  */
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import readline from "node:readline";
 import { eq } from "drizzle-orm";
 import { db, pool } from "../db";

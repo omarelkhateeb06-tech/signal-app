@@ -49,7 +49,7 @@
 // runIngestionPoll). On fatal error, set process.exitCode = 1 and let
 // the event loop drain naturally.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { db, pool } from "../db";

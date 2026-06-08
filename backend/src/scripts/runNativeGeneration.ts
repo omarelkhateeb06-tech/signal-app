@@ -44,7 +44,7 @@
 // followup #47 (Node-on-Windows libuv shutdown crash). On fatal error,
 // set process.exitCode = 1 and let the event loop drain naturally.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { eq } from "drizzle-orm";
 
 import { db, pool } from "../db";

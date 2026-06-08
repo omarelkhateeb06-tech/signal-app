@@ -15,7 +15,7 @@
 //   npm run retry-stuck-events --workspace=backend            # dry-run (lists)
 //   npm run retry-stuck-events --workspace=backend -- --apply # re-attempt writes
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db as defaultDb, pool } from "../db";

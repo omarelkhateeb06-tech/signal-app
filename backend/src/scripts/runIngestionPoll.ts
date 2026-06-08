@@ -10,7 +10,7 @@
 // Exits 0 on a structured result (including failureReason set), 1 on a
 // thrown error (e.g. source not found).
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { eq } from "drizzle-orm";
 
 import { db, pool } from "../db";

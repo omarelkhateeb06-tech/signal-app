@@ -70,7 +70,7 @@
 //
 // Requires ANTHROPIC_API_KEY for the real run (Haiku tier generation).
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { eq, sql } from "drizzle-orm";
 
 import { db } from "../db";

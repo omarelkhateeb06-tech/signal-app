@@ -3,7 +3,7 @@
 // whether the embedding stage was failing soft, or whether the persist
 // step was the issue.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 import { eq } from "drizzle-orm";
 

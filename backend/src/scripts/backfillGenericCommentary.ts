@@ -29,7 +29,7 @@
 //   npm run backfill-generic-commentary -- --table=stories
 //   npm run backfill-generic-commentary -- --table=events
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "../db";

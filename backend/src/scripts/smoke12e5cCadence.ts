@@ -4,7 +4,7 @@
 // jobs so the smoke writeup has the real BullMQ-side schedule list,
 // not just the expected-shape derived from source rows.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 import {
   scheduleSourcePollRepeatable,

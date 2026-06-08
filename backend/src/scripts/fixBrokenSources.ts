@@ -26,7 +26,7 @@
 // `consecutive_failure_count`, `enabled`, and `updated_at`. The
 // source row + its history stay intact for audit.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { eq } from "drizzle-orm";
 import { db, pool } from "../db";
 import { ingestionSources } from "../db/schema";

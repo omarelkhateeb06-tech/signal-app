@@ -23,7 +23,7 @@
  * Exit codes: 0 on success or dry-run, 1 on validation/DB failure.
  */
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import readline from "node:readline";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";

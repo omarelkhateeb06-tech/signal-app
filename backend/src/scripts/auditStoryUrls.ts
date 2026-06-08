@@ -26,7 +26,7 @@
  * No DB writes. No URL mutation. Report-only.
  */
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import fs from "node:fs";
 import path from "node:path";
 import { db, pool } from "../db";

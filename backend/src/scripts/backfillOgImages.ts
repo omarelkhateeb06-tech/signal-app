@@ -25,7 +25,7 @@
 //   npm run backfill-og-images -- --table=stories
 //   npm run backfill-og-images -- --table=events
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { JSDOM, VirtualConsole } from "jsdom";
 import { eq, isNull } from "drizzle-orm";
 

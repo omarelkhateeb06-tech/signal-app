@@ -36,7 +36,7 @@
 // All phases emit structured JSON snapshots to stdout for the smoke
 // writeup to consume.
 
-import "dotenv/config";
+import "../lib/loadEnv";
 
 import { Worker, type Job } from "bullmq";
 import { eq, sql, inArray, gte, asc } from "drizzle-orm";

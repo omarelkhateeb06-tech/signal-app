@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../lib/loadEnv";
 import { sql } from "drizzle-orm";
 import { db, pool, schema } from "./index";
 

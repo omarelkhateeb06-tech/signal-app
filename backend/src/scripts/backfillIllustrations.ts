@@ -9,7 +9,7 @@
 //   npm run backfill-illustrations --workspace=backend -- --dry-run
 //   npm run backfill-illustrations --workspace=backend -- --limit=10
 
-import "dotenv/config";
+import "../lib/loadEnv";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { events, ingestionSources, eventSources } from "../db/schema";
