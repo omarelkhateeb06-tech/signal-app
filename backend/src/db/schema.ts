@@ -39,6 +39,9 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
   "rss",
   "arxiv_atom",
   "sec_edgar_json",
+  // Phase 12 ingestion Tier 1 — SEC Form D (Reg D private financings).
+  // Discovery stream via EDGAR full-text search; content_type='filing'.
+  "sec_form_d",
   "hackernews_api",
   "reddit_api",
   // Phase 12n.2 — native generators (no poll adapter; driven by the
@@ -66,6 +69,7 @@ export const INGESTION_ADAPTER_TYPES = [
   "rss",
   "arxiv_atom",
   "sec_edgar_json",
+  "sec_form_d",
   "hackernews_api",
   "reddit_api",
   "native_generator",

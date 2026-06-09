@@ -79,8 +79,10 @@ Tier 0 turned out to be a *repair* job, not an *add* job (see §1 correction). T
 
 | source | shape | sectors | priority | notes |
 |--------|-------|---------|----------|-------|
-| **SEC Form D** (private placements / VC & PE raises) | [ADAPTER] | finance, ai, semis | 1 | **the Crunchbase replacement.** Form D is the official "we raised a round" filing. Likely an extension of `sec_edgar_json` (different form-type filter) rather than a brand-new adapter. Maps to `content_type='filing'` / THE LAUNCH-adjacent treatment. |
-| **FRED macro series** (rates, CPI, unemployment, etc.) | [ADAPTER] | finance | 2 | new `fred_api` adapter; free API key. Each release → a compact data card (filing-style). Pick a small, high-signal series set (§7). |
+| **SEC Form D** (private financings) | [ADAPTER] | ai, finance, semis | 1 | ✅ **SHIPPED 2026-06-08.** New `sec_form_d` adapter (not an extension — it's a *discovery* stream, unlike the CIK-watch `sec_edgar_json`). See "Form D notes" below. |
+| **FRED macro series** (rates, CPI, unemployment, etc.) | [ADAPTER] | finance | 2 | new `fred_api` adapter; free API key. Each release → a compact data card (filing-style). Pick a small, high-signal series set (§7). **Next up.** |
+
+**Form D — build notes & the volume reality (learned from live data).** Form D is a firehose (~190 filings/day) that is mostly real-estate / EB-5 / generic LP-fund / SPV noise. The adapter discovers recent filings via EDGAR full-text search (EFTS), fetches each filing's `primary_doc.xml`, and pre-filters on **(a)** industry group ∈ operating-tech only (Computers / Other Technology / Telecommunications / Manufacturing — fund categories deliberately excluded; a live sample was ~85% LP/SPV noise) and **(b)** a **disclosed** offering ≥ $5M (null / "Indefinite" / 0 dropped — no size signal). The Haiku relevance gate then assigns the ai/finance/semis sector and rejects what's still off-topic. Net: a **precision source, ~1–2 candidates/day pre-gate, not a firehose** — it surfaces the occasional genuine "operating company raised $X" scoop. All knobs (`minOfferingUsd`, `industryAllowlist`, `maxFilings`, `lookbackDays`) live in the source `config`, so widening coverage (lower the floor, re-add fund categories) is a data change, not a code change. `content_type='filing'` → EARNINGS/SEC card. SEC fair-access respected (descriptive UA, 150ms inter-request, transient-5xx retry).
 
 ### Tier 2 — New generator — authored long-form synthesis
 
@@ -148,8 +150,8 @@ To add any [RSS] source:
 ## 8. Proposed build order
 
 1. ✅ **Tier 0 — resurrect dead feeds** (amd, meta, bis-press→Federal Register; intel re-confirm; money-stuff regression fixed). *(done 2026-06-08)*
-2. **SEC Form D adapter** — extends EDGAR; highest-value net-new signal (private-capital intent).
-3. **FRED adapter** — macro data cards. (A disabled `fred-api` placeholder row already exists, mis-typed as `rss`; the real build adds a `fred_api` adapter.)
+2. ✅ **SEC Form D adapter** — new `sec_form_d` discovery adapter, operating-tech + disclosed-size pre-filter, content_type='filing'. *(done 2026-06-08)*
+3. **FRED adapter** — macro data cards. (A disabled `fred-api` placeholder row already exists, mis-typed as `rss`; the real build adds a `fred_api` adapter.) **← next**
 4. **Dwarkesh/transcript generator** — the authored-synthesis path.
 5. **Reddit** — finish the stub (a `reddit-finance` placeholder row already exists, disabled).
 6. **Bluesky** + **Anthropic/Perplexity via RSS bridge** — community/bridge sources once a bridge path is chosen (§7 Q1).

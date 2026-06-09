@@ -10,6 +10,7 @@ import type { AdapterFn } from "../types";
 import { rssAdapter } from "./rss";
 import { arxivAtomAdapter } from "./arxivAtom";
 import { secEdgarJsonAdapter } from "./secEdgarJson";
+import { secFormDAdapter } from "./secFormD";
 import { hackerNewsAdapter } from "./hackerNews";
 import { redditAdapter } from "./reddit";
 import { githubAdapter } from "./github";
@@ -18,6 +19,10 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   rss: rssAdapter,
   arxiv_atom: arxivAtomAdapter,
   sec_edgar_json: secEdgarJsonAdapter,
+  // Phase 12 ingestion Tier 1 — Form D private-financing discovery
+  // (content_type='filing'). Discovery stream, not a CIK watch like
+  // sec_edgar_json; the Haiku relevance gate assigns the sector.
+  sec_form_d: secFormDAdapter,
   hackernews_api: hackerNewsAdapter,
   reddit_api: null,
   // Phase 12R.A — direct GitHub repo polling (WORTH AN AFTERNOON card).
