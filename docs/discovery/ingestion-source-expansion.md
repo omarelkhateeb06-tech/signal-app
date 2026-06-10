@@ -80,9 +80,11 @@ Tier 0 turned out to be a *repair* job, not an *add* job (see §1 correction). T
 | source | shape | sectors | priority | notes |
 |--------|-------|---------|----------|-------|
 | **SEC Form D** (private financings) | [ADAPTER] | ai, finance, semis | 1 | ✅ **SHIPPED 2026-06-08.** New `sec_form_d` adapter (not an extension — it's a *discovery* stream, unlike the CIK-watch `sec_edgar_json`). See "Form D notes" below. |
-| **FRED macro series** (rates, CPI, unemployment, etc.) | [ADAPTER] | finance | 2 | new `fred_api` adapter; free API key. Each release → a compact data card (filing-style). Pick a small, high-signal series set (§7). **Next up.** |
+| **FRED macro series** (rates, CPI, unemployment, etc.) | [ADAPTER] | finance | 2 | ✅ **SHIPPED 2026-06-10.** New `fred_api` adapter; series set = FEDFUNDS / CPIAUCSL / DGS10 / UNRATE / PCEPI. See "FRED notes" below. |
 
 **Form D — build notes & the volume reality (learned from live data).** Form D is a firehose (~190 filings/day) that is mostly real-estate / EB-5 / generic LP-fund / SPV noise. The adapter discovers recent filings via EDGAR full-text search (EFTS), fetches each filing's `primary_doc.xml`, and pre-filters on **(a)** industry group ∈ operating-tech only (Computers / Other Technology / Telecommunications / Manufacturing — fund categories deliberately excluded; a live sample was ~85% LP/SPV noise) and **(b)** a **disclosed** offering ≥ $5M (null / "Indefinite" / 0 dropped — no size signal). The Haiku relevance gate then assigns the ai/finance/semis sector and rejects what's still off-topic. Net: a **precision source, ~1–2 candidates/day pre-gate, not a firehose** — it surfaces the occasional genuine "operating company raised $X" scoop. All knobs (`minOfferingUsd`, `industryAllowlist`, `maxFilings`, `lookbackDays`) live in the source `config`, so widening coverage (lower the floor, re-add fund categories) is a data change, not a code change. `content_type='filing'` → EARNINGS/SEC card. SEC fair-access respected (descriptive UA, 150ms inter-request, transient-5xx retry).
+
+**FRED — build notes.** Not a stream of articles: each configured series yields at most **one candidate per poll** (its latest reading), so a release becomes a single compact data card; re-polls re-emit and the candidate-row dedup (`externalId = SERIES:date`) drops them, same as the RSS adapters. Two requests per series — `/series` metadata (title, units, frequency, and `last_updated`, which doubles as `publishedAt` and the stale-series gate) and `/series/observations` (desc, limit 15). The index-level series (CPI, PCE) headline the **YoY % change** ("CPI Inflation: 2.4% YoY (May 2026)") since a raw index level means nothing to a reader; missing YoY baseline falls back to metadata-driven generic presentation. `bodyText` carries the last ~6 readings + provenance so the body seam never fetches the chart-chrome FRED page. Config knobs (`seriesIds`, `lookbackDays`) live in source `config`; **lookbackDays=45, not 14** — monthly series publish ~2–6 weeks after the observation period, so a 14-day bound would drop current readings for most of each cycle. Requires `FRED_API_KEY` (free, email-registration); logs-and-skips when unset (native-scheduler pattern), and the key rides in query strings so logs carry series IDs, never URLs. Migrations 0052 (enum value) / 0053 (repoint the 0014 placeholder row: `rss`→`fred_api`, enable, priority 2, quality_score 8). `content_type='filing'` → EARNINGS/SEC card.
 
 ### Tier 2 — New generator — authored long-form synthesis
 
@@ -142,7 +144,7 @@ To add any [RSS] source:
 
 1. **Bluesky bridge** — which path? (a) `openrss.org`/`rss.app` style bridge on a curated author list, (b) Bluesky's own `app.bsky.feed` API via a small adapter (more robust, more code), or (c) a firehose sampler. *Default proposal: start with a curated-author RSS bridge (Tier 0), upgrade to an API adapter later if signal is good.*
 2. **Podcast/YouTube transcripts** — source + cost? YouTube auto-captions (free, scrape-ish), a transcript API, or Whisper on the audio (compute). *Default proposal: start with YouTube caption fetch for a hand-picked channel list; Dwarkesh first.*
-3. **FRED series set** — which indicators? *Default proposal: Fed funds rate, CPI, 10Y treasury, unemployment, PCE — finance-sector only, low cadence.*
+3. ~~**FRED series set**~~ — *resolved 2026-06-10: shipped with the default proposal (FEDFUNDS, CPIAUCSL, DGS10, UNRATE, PCEPI — finance-sector only, hourly poll with dedup). Series set is a `config.seriesIds` data change to widen.*
 4. **IG/TikTok** — confirm hard-park, or is there a sanctioned-scraper appetite? *Default: hard-park.*
 
 ---
@@ -151,8 +153,8 @@ To add any [RSS] source:
 
 1. ✅ **Tier 0 — resurrect dead feeds** (amd, meta, bis-press→Federal Register; intel re-confirm; money-stuff regression fixed). *(done 2026-06-08)*
 2. ✅ **SEC Form D adapter** — new `sec_form_d` discovery adapter, operating-tech + disclosed-size pre-filter, content_type='filing'. *(done 2026-06-08)*
-3. **FRED adapter** — macro data cards. (A disabled `fred-api` placeholder row already exists, mis-typed as `rss`; the real build adds a `fred_api` adapter.) **← next**
-4. **Dwarkesh/transcript generator** — the authored-synthesis path.
+3. ✅ **FRED adapter** — macro data cards (FEDFUNDS/CPIAUCSL/DGS10/UNRATE/PCEPI), migrations 0052/0053, `FRED_API_KEY`-gated. *(done 2026-06-10)*
+4. **Dwarkesh/transcript generator** — the authored-synthesis path. **← next**
 5. **Reddit** — finish the stub (a `reddit-finance` placeholder row already exists, disabled).
 6. **Bluesky** + **Anthropic/Perplexity via RSS bridge** — community/bridge sources once a bridge path is chosen (§7 Q1).
 7. *(parked)* X, IG/TikTok, LinkedIn.

@@ -36,6 +36,11 @@ export const PROD_REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     description:
       "OpenAI text-embedding-3-small for the 12e.6a embedding seam — without it, ingestion candidates skip embedding and clustering, every event becomes a new event",
   },
+  {
+    name: "FRED_API_KEY",
+    description:
+      "FRED macro-data adapter (fed funds / CPI / 10Y Treasury / unemployment / PCE cards) — without it, the enabled fred-api source polls but always skips, producing no macro data cards",
+  },
 ];
 
 function envIsPresent(env: NodeJS.ProcessEnv, name: string): boolean {

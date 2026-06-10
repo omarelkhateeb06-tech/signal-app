@@ -50,6 +50,10 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
   "native_generator",
   // Phase 12R.A — direct GitHub Search API polling (real-time repo signal).
   "github_api",
+  // Phase 12 ingestion Tier 1 — FRED macro data (St. Louis Fed). One compact
+  // data card per series release (fed funds / CPI / 10Y / unemployment / PCE);
+  // content_type='filing'. Requires FRED_API_KEY (logs-and-skips when unset).
+  "fred_api",
 ]);
 export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
   "discovered",
@@ -74,6 +78,7 @@ export const INGESTION_ADAPTER_TYPES = [
   "reddit_api",
   "native_generator",
   "github_api",
+  "fred_api",
 ] as const;
 export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
 

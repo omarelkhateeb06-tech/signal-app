@@ -14,6 +14,7 @@ import { secFormDAdapter } from "./secFormD";
 import { hackerNewsAdapter } from "./hackerNews";
 import { redditAdapter } from "./reddit";
 import { githubAdapter } from "./github";
+import { fredApiAdapter } from "./fredApi";
 
 const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   rss: rssAdapter,
@@ -27,6 +28,10 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   reddit_api: null,
   // Phase 12R.A — direct GitHub repo polling (WORTH AN AFTERNOON card).
   github_api: githubAdapter,
+  // Phase 12 ingestion Tier 1 — FRED macro data cards (content_type=
+  // 'filing'). One compact data card per series release; requires
+  // FRED_API_KEY and logs-and-skips when it is unset.
+  fred_api: fredApiAdapter,
   // Phase 12n.2 — native posts are AUTHORED, not pulled off a feed.
   // They never run through the poll/adapter path; the native generator
   // registry (generators/index.ts) owns them. Null here keeps the
