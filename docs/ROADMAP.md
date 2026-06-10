@@ -7,6 +7,10 @@
 
 > **JUNE 6, 2026 UPDATE (added — nothing below removed):** Two major things landed since the June 1 snapshot. (1) **Editorial Redesign v2 shipped + deployed to production** (PR #144) — content-type-aware feed, THE CONNECTION illustrated hero, lead-with-explanation cards, stickiness pass (thumbnails, tier-gated Pro teaser, "since your last visit" return loop), the Earnings/SEC data-led card (migration 0045 `content_type`), and the Signal Originals band rebuilt on the card system. See new §6.19. (2) A **moat-coverage audit (8-advisor, ~7.5/10)** identified the missing *real-time / social* source layer (X takes, GitHub repos, tool/startup launches, real-time community sentiment) and produced a dedicated spec — now scoped as **its own phase, Phase 12R / "V1·Live"**. See new §3 "V1·Live", new §6.20, and `docs/REALTIME_SIGNAL_LAYER.md`. A new **Unit Economics / Cost Model** section was added (§19) with verified June 2026 API pricing. All prior content is retained verbatim; statuses are advanced via additive annotations, not edits.
 
+> **JUNE 7, 2026 UPDATE (added — nothing above removed):** Four things landed June 7. (1) **Image-first detail view** — the right-panel reader now bursts the story image full-bleed at the top (Bloomberg/WSJ pattern) before the depth toggle / headline / brief. (2) **Originals band collapsed to a single hero** — the feed opens with one THE CONNECTION hero and interleaves the other native Originals into the ranked stream; the redundant 6-wide "Signal Originals" band was removed (RankedStream already hoists the top Connection). (3) **Phase 12R.A breadth shipped** (PR #145) — Product Hunt → THE LAUNCH (`content_type='launch'`), a direct `github_api` adapter (WORTH AN AFTERNOON), and the `what_to_do_with_it` hook across the tier prompts; Reddit deliberately **not** activated (commercial cost, consistent with §19). (4) **Custom native-post illustrations are now AUTOMATED** — but via a membership-powered Higgsfield path (the banana MCP driven by a SessionStart hook), **not** the OpenAI backend pipeline §6.18 anticipated; $0 instead of ~$0.04/image. **New pre-launch gap surfaced:** AI-generated images are not yet labeled in the UI (a stated §6.18 / §15 requirement). Full detail in new **§20**. All prior content retained verbatim; statuses advanced via additive annotation.
+
+> **JUNE 10, 2026 UPDATE (added — nothing above removed):** The ingestion-track sessions June 8–10 landed four clusters (commits `7db8d1f`, `43a3f1e`, `12a20e4`, `090b13d`, `931506d`). (1) **Onboarding cluster** — topic taxonomy consolidated to 5 broad categories per sector (#24), field-of-work made optional on Screen 2 (#18), digest explainer added to Screen 7 (#25), and the #53 CLI dotenv-override loader (`lib/loadEnv.ts`, first-import in every CLI script) killed the shell-shadowed-`.env` trap. (2) **Ingestion Tier 0 — dead-feed resurrection:** amd-newsroom, meta-ai-blog re-enabled; intel-newsroom re-confirmed; bis-press upgraded to the **Federal Register BIS API RSS** (live export-control rulemaking/enforcement primary). A regression where `fixBrokenSources --apply` disabled the *healthy* money-stuff feed was caught + fixed (lesson recorded: never list a working source in the repair registry). Still dead, need a bridge: anthropic-news, asml-news, tsmc-newsroom, the-batch, huggingface-papers, reuters-business. (3) **SEC Form D adapter** (`sec_form_d`, migrations 0050/0051) — Reg D private-financing *discovery* via EDGAR full-text search, pre-filtered to operating-tech industries + ≥$5M disclosed offerings (~1–2 candidates/day pre-gate); this is the free primary-source **Crunchbase replacement** (§19). (4) **FRED adapter** (`fred_api`, migrations 0052/0053) — macro data cards (fed funds, CPI, 10-Y Treasury, unemployment, PCE) as EARNINGS/SEC cards; index series headline YoY %; gated on `FRED_API_KEY` (free key — **needs setting on Railway Variables**, adapter logs-and-skips until then). **Migrations 0050–0053 are pending on prod and apply on the next deploy.** Running source-expansion detail lives in `docs/discovery/ingestion-source-expansion.md`; next on the track: YouTube/podcast transcript generator → Reddit stub completion → Bluesky/Anthropic RSS bridge. 12h (Stripe) remains the launch gate. All prior content retained verbatim.
+
 ---
 
 ## 1. What SIGNAL Is
@@ -929,3 +933,69 @@ Verified API pricing (June 2026 web research) + a spend-vs-revenue model. **The 
 - **Takeaways:** (1) optimize for *Pro conversions*, not user count — cost barely scales with users. (2) The real-time layer ~4×'s the break-even point (mostly commercial Reddit + X) — **gate Phase B (X) and commercial Reddit until the user base justifies them**; start with the genuinely-free pieces (GitHub + Product Hunt) and run Reddit on the free non-commercial tier during private beta. (3) **Instrument real AI spend** — don't trust estimates; the Anthropic/OpenAI/Railway invoices are knowable ground truth. (4) Prompt caching + batch are real cost levers (50–90% on Haiku/embeddings).
 
 **Sources (June 2026):** X API pricing — xpoz.ai, postproxy.dev · Reddit API — octolens.com, replydaddy.com · Crunchbase — dev.to · Bright Data — costbench.com · Claude Haiku 4.5 — pricepertoken.com, platform.claude.com · OpenAI embeddings — helicone.ai.
+
+---
+
+## 20. June 7, 2026 Session — Imagery, Real-Time Phase A, Illustration Automation (ADDED June 7)
+
+This section is purely additive: it records the June 7 working session. Nothing in §1–§19 is removed; statuses below advance items already described in §6.18 (12q illustrations), §6.19 (redesign), §6.20 (12R Real-Time Layer), §7.3 (design roadmap), and §14 (pre-launch ops). Where this session diverged from the prior plan, the divergence is called out explicitly.
+
+### 20.1 What shipped (and where it lives)
+
+**(1) Image-first detail view — `DetailPanel.tsx` (`components/redesign/swiss/`).** The persistent right-panel reader now renders the story's `image_url` (og:image) or `illustration_url` full-bleed at the top of the detail, before the INTEL DEPTH toggle / kicker / headline / CORE BRIEF. Honest fallback: nothing renders when neither field is present (no placeholder). This is the Bloomberg/WSJ "image leads" pattern from §7.2 applied to the reader surface. Note: this is **complementary to — not the same as** — the still-open "native-post detail synthesis-as-hero" item (§6.18/§6.19 follow-ups); that item (make the 200-word native editorial body the hero of the native detail) remains open.
+
+**(2) Originals band → single Connection hero + interleave — `SwissCommandFeed.tsx`.** Removed the standalone 6-wide `SignalOriginals` band that opened the feed with up to six native posts before any news. `RankedStream` already hoists the highest-ranked THE CONNECTION into the full-width hero and renders the other natives as type-aware rows at their ranked positions, so the band was a redundant second surfacing. Result: the feed opens with one Connection hero, then the ranked stream with Originals woven in. (An 8-advisor board review backed leading with the single flagship over a wall of self-authored posts.) `SignalOriginals.tsx` remains in the tree but is no longer mounted by the primary feed.
+
+**(3) Phase 12R.A breadth — SHIPPED (PR #145, merged + deployed; advances §6.20).**
+- **Product Hunt → THE LAUNCH:** seeded as an `rss` source (zero new adapter code); new `content_type='launch'` lights up THE LAUNCH card via `deriveCardType`. Free. ✅
+- **GitHub → WORTH AN AFTERNOON:** a direct `github_api` adapter (repo search by sector topic), classified as a tool card. Complements the `tool-spotlight-native` route. Added the `github_api` value to `ingestionAdapterTypeEnum` (two-file add/use split per the enum rule). `GITHUB_TOKEN` is an optional Railway env for rate-limit headroom (unauthenticated works at lower limits). Free. ✅
+- **`what_to_do_with_it` hook:** threaded an "actionable" flag (set when a source's `content_type` is `tool`/`launch`) through `tierGenerationSeam` into all three tier prompts (accessible/briefed/technical) so repos/launches lead with "what you can apply this toward," not just "why it matters." ✅
+- **Migrations:** 0046 (`content_type` extended), 0047 (`github_api` enum add), 0048 (Product Hunt + GitHub source seeds). Applied cleanly on prod deploy.
+- **Reddit:** deliberately **NOT** activated. Commercial Reddit access requires a contract (~$12k/yr, §19); the registry still returns `null` for `reddit_api`. This is consistent with §19's "don't pay for commercial Reddit until the user base justifies it." Dropped from Phase A scope for now (not a blocker; revisit at scale).
+
+**(4) Custom native-post illustrations — AUTOMATED (advances §6.18 "Custom illustrations: 🟡 groundwork shipped → automated generation").** Two layers, and the mechanism diverges from the prior plan:
+- **Backend SDK path (built, DORMANT):** `services/illustrationService.ts` wraps the official `@higgsfield/client` v2 SDK (model `flux-pro/kontext/max/text-to-image`), with four brand archetypes — **convergence** (cross-sector-chain-native → THE CONNECTION), **research** (arxiv-synthesis-native), **market** (earnings-reaction-native, supply-chain-synthesis-native), **signal** (github-trending-native, tool-spotlight-native, hn-synthesis-native). `generateAndStoreIllustration` is awaited at the tail of `processNativeEnrichment` (after `writeEvent`), fully soft-fail (missing key / API error / out-of-credits → returns null, never blocks a publish). Ambient shim `backend/src/types/higgsfield-client.d.ts` + `tsconfig` `ts-node.files=true` make the `/v2` subpath resolve under classic moduleResolution. **This path is dormant:** the Higgsfield account has no API/cloud credits (the SDK returns "Not enough credits"), so `HIGGSFIELD_API_KEY` was removed from Railway and the backend cleanly skips illustration. Re-arm instantly if API credits are ever purchased.
+- **Live mechanism — membership via SessionStart hook:** because the Higgsfield *membership* (separate from paid API credits) only works through the interactive banana MCP, illustration runs as an automatic agent turn at session start. `.claude/settings.json` → `SessionStart` injects `.claude/hooks/illustrate-on-session-start.md`, which lists native events lacking `illustration_url` (`backfillIllustrations.ts --dry-run`, prod URL from the gitignored `backend/.env`), generates one `nano_banana_pro` 16:9 image per pending event per archetype via the banana MCP, then persists via `applyIllustrations.ts --apply`. No prompting required; runs only while the desktop app is open (computer-off → the designed ConnectionHero three-diamond chain-motif fallback, never a broken image). The 7 existing native posts were illustrated this session via the manual MCP batch.
+
+**Tests:** backend ~1318 passing (+13 illustration tests across the session); type-check + lint clean throughout.
+
+### 20.2 Mechanism divergence from the prior plan (called out honestly)
+
+§6.18 / §15 anticipated automated native-post illustration via the **OpenAI image API backend pipeline** ("preferred over Higgsfield MCP (chat-only)"), at ~$0.04/image. This session instead made the **Higgsfield membership** drive itself automatically through the SessionStart hook — $0 marginal cost, and it sidesteps the "Higgsfield is chat-only" limitation the roadmap flagged (the hook turns the chat/MCP into an automatic step). Both standing rules are respected: illustrations attach to **native posts only** (`source_type='native'` / native generator slugs) and **never to real sourced news stories**. The OpenAI-backend route remains a valid future alternative (and the SDK path is the drop-in paid alternative if credits are purchased).
+
+### 20.3 NEW pre-launch gap introduced this session
+
+**AI-generated images are not yet labeled in the UI.** §6.18, §15, and the §16 Product heuristics all require: *"Label AI-generated images as such in the UI."* The native-post illustrations now rendering on ConnectionHero (and the type-card thumbnails) carry no "AI-generated" marker. This is a stated launch requirement and should be satisfied before any public cut — a small per-image label/badge on native-post art. Tracked as a new pre-launch item (see §20.6).
+
+### 20.4 Reconciliation note — `searchStories` / `getRelatedStories`
+
+External/older snapshots of this roadmap list this as still open. The current on-disk §15 and CLAUDE.md both record it as **RESOLVED** (a June audit found `searchStories` was migrated to `events` in Phase 12p and `getRelatedStories` in Phase 12q; the only remaining `stories` reads are intentional dual-read anchor lookups for legacy story-detail resolution). No further rewrite is owed. Recorded here to stop the item being re-chased.
+
+### 20.5 Real-Time Layer — what's IN vs OUT as of June 7
+
+| Source | Card | Status (June 7) |
+|---|---|---|
+| GitHub repos | WORTH AN AFTERNOON | ✅ **IN** — direct `github_api` adapter shipped (PR #145), plus the existing `tool-spotlight-native` route |
+| Product Hunt | THE LAUNCH | ✅ **IN** — seeded as `rss`, `content_type='launch'` (PR #145) |
+| `what_to_do_with_it` hook | (cross-cutting) | ✅ **IN** — shipped across tier prompts (PR #145) |
+| Reddit | PRACTITIONER BRIEF (community) | ⛔ **OUT for now** — adapter built, registry returns `null`; commercial access needs a contract (~$12k/yr). Deferred on cost, not capability |
+| X / Twitter | THE TAKE | ⏸️ **HELD** — Phase 12R.B, paid (~$300–600/mo pay-per-use); blocked on Omar's access + budget decision |
+| Crunchbase / funding | THE LAUNCH | ⏳ **LATER** — Phase 12R.C ($99/mo Pro); funding RSS is free and could come earlier |
+| Instagram / TikTok | — | ❌ **OUT of scope** — low signal-to-noise, no clean ingestion path (§6.20) |
+| LinkedIn | — | ❌ **PARKED** — no clean ingestion path, ToS risk (§6.20) |
+
+Net: Phase A's genuinely-free pieces are **done**; the paid pieces (X, commercial Reddit, Crunchbase) are intentionally gated until the user base justifies the spend (§19).
+
+### 20.6 New / carried operational items (additive to §14)
+
+| Item | Status |
+|---|---|
+| **Label AI-generated native-post images in the UI** | NEW — required by §6.18/§15; introduced by this session's illustration automation. Do before public launch. |
+| **`GITHUB_TOKEN` on Railway** | Optional — rate-limit headroom for the new `github_api` adapter; unauthenticated works at lower limits. |
+| **Illustration automation is desktop-session-bound** | By design — runs via the SessionStart hook when the app is open (membership, $0). Computer-off → chain-motif fallback. Switch to the dormant SDK path only if Higgsfield API credits are purchased. |
+| Run `backfill-generic-commentary` + remove `WEEKLY_DIGEST_CRON` | Still pending (carried from §14). |
+| Gate/remove `/redesign-preview` | Still pending (carried from §14). |
+
+### 20.7 Memory
+
+A project memory (`image_generation_higgsfield.md`) records the imagery decision so future sessions inherit it: use the Higgsfield **membership** (banana MCP / `nano_banana_pro`) via the SessionStart hook for native-post illustration; the backend `@higgsfield/client` SDK path (`flux-pro/kontext/max`) is dormant pending API credits; never introduce Recraft/DALL-E/Replicate; API credits are separate from the web-app subscription.
