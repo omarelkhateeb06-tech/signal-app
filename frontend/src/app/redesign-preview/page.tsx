@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { notFound } from "next/navigation";
 import { RankedStream } from "@/components/redesign/swiss/RankedStream";
-import { ConnectionHero } from "@/components/redesign/swiss/ConnectionHero";
-import { StoryExhibit } from "@/components/redesign/swiss/StoryExhibit";
+import { storyTitleAndBrief } from "@/components/redesign/swiss/swissView";
 import { isConnectionStory } from "@/lib/feedCardType";
 import type { FeedItem, Story } from "@/types/story";
 
@@ -234,54 +234,94 @@ const ORIGINALS: Story[] = [
   }),
 ];
 
-function OriginalsBand(): JSX.Element {
-  const heroIdx = ORIGINALS.findIndex((s) => isConnectionStory(s));
-  const hero = heroIdx >= 0 ? ORIGINALS[heroIdx] : null;
+// (a) Image-first detail reader — mirrors the real DetailPanel's new layout:
+// the image bursts at the top, then the depth control, kicker, headline, and
+// the structured read. Renders no image when the story has none (honest).
+function DetailMock({ story }: { story: Story | null }): JSX.Element {
+  if (!story) {
+    return (
+      <div className="p-8 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-muted">
+        Select a story
+      </div>
+    );
+  }
+  const art = story.image_url ?? story.illustration_url ?? null;
+  const { title, brief } = storyTitleAndBrief(story);
+  const why = story.why_it_matters_to_you?.trim() || brief;
   return (
-    <section className="border-b border-line bg-accent/[0.03] px-6 py-6 md:px-8">
-      <div className="mb-4 flex items-center gap-2">
-        <span aria-hidden className="h-1.5 w-1.5 flex-none bg-accent" />
-        <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
-          Signal Originals
-        </h2>
-        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
-          written by SIGNAL
-        </span>
-      </div>
-      {hero && (
-        <ConnectionHero
-          story={hero}
-          rank={1}
-          isActive={false}
-          onSelect={() => undefined}
-        />
+    <div className="space-y-6 px-6 py-6 md:px-8">
+      {art && (
+        <div className="-mx-6 h-[210px] overflow-hidden bg-ink md:-mx-8 md:h-[270px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={art} alt="" className="h-full w-full object-cover" />
+        </div>
       )}
-      <div>
-        {ORIGINALS.map((s, i) =>
-          i === heroIdx ? null : (
-            <StoryExhibit
-              key={s.id}
-              story={{ ...s, id: `orig-${i}` }}
-              rank={i + 1}
-              isActive={false}
-              onSelect={() => undefined}
-              freshSinceMs={Date.parse("2026-06-06T00:00:00Z")}
-            />
-          ),
-        )}
+      <div className="flex items-center gap-3 border-b border-line pb-3">
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-ink">
+          Intel Depth:
+        </span>
+        {["Accessible", "Briefed", "Technical"].map((d, i) => (
+          <span
+            key={d}
+            className={`font-mono text-[10px] uppercase tracking-[0.14em] ${i === 1 ? "bg-accent px-2 py-0.5 text-bg" : "text-ink-muted"}`}
+          >
+            {d}
+          </span>
+        ))}
       </div>
-    </section>
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+        {story.sector}
+      </div>
+      <h2 className="font-display text-[28px] font-bold leading-[1.08] tracking-tight md:text-[32px]">
+        {title}
+      </h2>
+      <div>
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+          The Core Brief //
+        </p>
+        <p className="mt-2 text-[15px] leading-[1.85] text-ink">{brief}</p>
+      </div>
+      <div className="border-l-[3px] border-accent bg-accent/[0.06] py-3 pl-4 pr-3">
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
+          Why It Matters //
+        </p>
+        <p className="mt-2 font-serif text-[15px] italic leading-[1.8] text-ink">
+          {why}
+        </p>
+      </div>
+    </div>
   );
 }
 
+// (b) Lead with ONE Connection hero, then news with the other Originals
+// interleaved among it (not a 6-wide band at the top).
+const NATIVE_ORIGINALS = ORIGINALS.filter((s) => !isConnectionStory(s));
+function interleavedItems(): FeedItem[] {
+  const merged: Story[] = [];
+  let ni = 0;
+  STORIES.forEach((s, i) => {
+    merged.push(s);
+    if ((i + 1) % 3 === 0 && ni < NATIVE_ORIGINALS.length) {
+      merged.push(NATIVE_ORIGINALS[ni++]);
+    }
+  });
+  merged.push(...NATIVE_ORIGINALS.slice(ni));
+  return merged.map((s, i) => ({ ...s, id: `mock-${i}`, gated: false }));
+}
+
 export default function RedesignPreviewPage(): JSX.Element {
+  // Dev-only surface — hard-404 in production builds (ROADMAP §14 carried
+  // item). NODE_ENV is inlined at build time, so the prod bundle gates
+  // unconditionally while local dev keeps the preview.
+  if (process.env.NODE_ENV === "production") {
+    notFound();
+  }
+
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const items: FeedItem[] = STORIES.map((s, i) => ({
-    ...s,
-    id: `mock-${i}`,
-    gated: false,
-  }));
+  const items: FeedItem[] = interleavedItems();
   const [activeId, setActiveId] = useState<string | null>("mock-1");
+  const activeStory =
+    (items.find((i) => i.id === activeId) as Story | undefined) ?? null;
 
   return (
     <div className="theme-swiss min-h-dvh bg-bg text-ink">
@@ -294,7 +334,6 @@ export default function RedesignPreviewPage(): JSX.Element {
         </header>
         <div className="flex flex-col lg:flex-row">
           <div className="min-w-0 flex-1 lg:flex-[1.5] lg:border-r lg:border-line">
-            <OriginalsBand />
             <RankedStream
               items={items}
               activeId={activeId}
@@ -308,18 +347,8 @@ export default function RedesignPreviewPage(): JSX.Element {
               showTeaser
             />
           </div>
-          <aside className="hidden w-[360px] flex-none p-8 lg:block">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-              The Through-Line //
-            </p>
-            <p className="mt-3 font-serif text-[15px] italic leading-relaxed text-ink">
-              &ldquo;Today&rsquo;s macro picture connects sovereign wealth directly
-              to 2nm yields, triggering a software decentralization loop that
-              commoditizes NVLink/CUDA.&rdquo;
-            </p>
-            <div className="mt-6 border-t border-line pt-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
-              Detail reader renders here on select
-            </div>
+          <aside className="hidden w-[400px] flex-none lg:block">
+            <DetailMock story={activeStory} />
           </aside>
         </div>
       </div>
