@@ -50,3 +50,12 @@ docs/sessions/
 
 # scratch space for ingestion discovery / fixture preparation
 tmp/
+
+# graphify second-brain outputs (local knowledge graph; rebuilt via /graphify)
+graphify-out/
+
+# Playwright MCP page dumps / screenshots (session artifacts)
+.playwright-mcp/
+
+# ad-hoc design preview screenshots captured at repo root
+ab-preview*.png
