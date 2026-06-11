@@ -81,6 +81,21 @@ describe("deriveCardType — native generators", () => {
     ).toBe("tool");
   });
 
+  it("maps the YouTube episode generators to the dispatch brand", () => {
+    for (const slug of [
+      "youtube-dwarkesh-native",
+      "youtube-asianometry-native",
+      "youtube-techtechpotato-native",
+      "youtube-nopriors-native",
+      "youtube-acquired-native",
+    ]) {
+      const d = deriveCardType(story({ kind: "native", generator_type: slug }));
+      expect(d.type).toBe("dispatch");
+      expect(d.label).toBe("DISPATCH");
+      expect(d.isHero).toBe(false);
+    }
+  });
+
   it("falls back to the generic SIGNAL ORIGINAL for an unmapped native generator", () => {
     const d = deriveCardType(
       story({ kind: "native", generator_type: "github-trending-native" }),

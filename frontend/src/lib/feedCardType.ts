@@ -44,6 +44,13 @@ const GENERATOR_TYPE: Record<string, FeedCardType> = {
   "hn-synthesis-native": "practitioner",
   "tool-spotlight-native": "tool",
   "earnings-reaction-native": "earnings",
+  // YouTube episode dispatches (Tier 2) — "what was said + why it matters"
+  // briefs share the DISPATCH brand.
+  "youtube-dwarkesh-native": "dispatch",
+  "youtube-asianometry-native": "dispatch",
+  "youtube-techtechpotato-native": "dispatch",
+  "youtube-nopriors-native": "dispatch",
+  "youtube-acquired-native": "dispatch",
 };
 
 /** Content type → uppercase brand label. */

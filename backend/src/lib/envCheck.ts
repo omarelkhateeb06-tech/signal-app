@@ -41,6 +41,11 @@ export const PROD_REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     description:
       "FRED macro-data adapter (fed funds / CPI / 10Y Treasury / unemployment / PCE cards) — without it, the enabled fred-api source polls but always skips, producing no macro data cards",
   },
+  {
+    name: "YOUTUBE_API_KEY",
+    description:
+      "YouTube Data API for the youtube-*-native episode-dispatch generators — without it, the enabled channel sources skip every native run, producing no episode briefs",
+  },
 ];
 
 function envIsPresent(env: NodeJS.ProcessEnv, name: string): boolean {
