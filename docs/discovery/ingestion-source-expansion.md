@@ -90,7 +90,9 @@ Tier 0 turned out to be a *repair* job, not an *add* job (see §1 correction). T
 
 | source | shape | sectors | priority | notes |
 |--------|-------|---------|----------|-------|
-| **YouTube / podcast transcripts (Dwarkesh first)** | [GENERATOR] | ai, finance, semis | 2 | Omar's favorite. We do **not** post the raw transcript — a generator fetches the transcript and authors a DISPATCH-style "what was said + why it matters" brief. Needs a transcript source (§7). Start with a hand-curated channel list (Dwarkesh, then expand). |
+| **YouTube / podcast transcripts (Dwarkesh first)** | [GENERATOR] | ai, finance, semis | 2 | ✅ **SHIPPED 2026-06-10.** Five `youtube-*-native` generator instances (Dwarkesh, Asianometry, TechTechPotato, No Priors, Acquired). See "YouTube dispatch notes" below. |
+
+**YouTube dispatch — build notes.** One NativeGenerator **instance per channel** (factory over `YOUTUBE_CHANNELS` in `generators/youtubeTranscript.ts`; the registry is one-slug-per-generator, and per-channel source rows give independent dedup spaces + enable/disable). Per run each channel authors **at most one** DISPATCH brief from its newest qualifying upload: Data API v3 (`channels?forHandle` → uploads playlist → `playlistItems` → `videos` duration check, ~4 quota units/channel/run) qualifies uploads inside a 7-day window, above a 10-minute duration floor (kills Shorts/clips), and not already posted (`external_id = youtube:{videoId}`). Captions come from the **unofficial timedtext endpoint** (`kind=asr` then manual-track fallback) — when it yields under 500 chars the brief is authored **description-only**, and the prompt instructs Haiku to DECLINE when the description can't support something concrete (same skip-JSON contract as toolSpotlight). We never post the raw transcript. Card brand: **DISPATCH** (5 slug entries in `feedCardType.ts` `GENERATOR_TYPE`); illustration archetype falls back to `signal`. Migration 0054 seeds the five source rows (0042's native shape: SIGNAL writer, priority 2, quality 7, interval 0). Requires `YOUTUBE_API_KEY` (free Google Cloud read quota) — logs-and-skips per channel when unset; key rides in query strings so logs carry handles, never URLs. Known risk, accepted for v1: timedtext is unofficial and increasingly gated — the description-only mode is the designed degradation, and `yt-dlp` in the Railway image is the documented upgrade path if caption coverage gets bad.
 
 ### Tier 3 — Real builds — deferred (not blocking launch)
 
@@ -143,7 +145,7 @@ To add any [RSS] source:
 ## 7. Open questions (need an answer before the relevant tier)
 
 1. **Bluesky bridge** — which path? (a) `openrss.org`/`rss.app` style bridge on a curated author list, (b) Bluesky's own `app.bsky.feed` API via a small adapter (more robust, more code), or (c) a firehose sampler. *Default proposal: start with a curated-author RSS bridge (Tier 0), upgrade to an API adapter later if signal is good.*
-2. **Podcast/YouTube transcripts** — source + cost? YouTube auto-captions (free, scrape-ish), a transcript API, or Whisper on the audio (compute). *Default proposal: start with YouTube caption fetch for a hand-picked channel list; Dwarkesh first.*
+2. ~~**Podcast/YouTube transcripts**~~ — *resolved 2026-06-10: shipped with the default proposal — Data API v3 listing + timedtext caption fetch, hand-picked 5-channel roster (Dwarkesh / Asianometry / TechTechPotato / No Priors / Acquired), description-only fallback when captions are unavailable. Whisper/yt-dlp remain the upgrade path if timedtext coverage degrades.*
 3. ~~**FRED series set**~~ — *resolved 2026-06-10: shipped with the default proposal (FEDFUNDS, CPIAUCSL, DGS10, UNRATE, PCEPI — finance-sector only, hourly poll with dedup). Series set is a `config.seriesIds` data change to widen.*
 4. **IG/TikTok** — confirm hard-park, or is there a sanctioned-scraper appetite? *Default: hard-park.*
 
@@ -154,8 +156,8 @@ To add any [RSS] source:
 1. ✅ **Tier 0 — resurrect dead feeds** (amd, meta, bis-press→Federal Register; intel re-confirm; money-stuff regression fixed). *(done 2026-06-08)*
 2. ✅ **SEC Form D adapter** — new `sec_form_d` discovery adapter, operating-tech + disclosed-size pre-filter, content_type='filing'. *(done 2026-06-08)*
 3. ✅ **FRED adapter** — macro data cards (FEDFUNDS/CPIAUCSL/DGS10/UNRATE/PCEPI), migrations 0052/0053, `FRED_API_KEY`-gated. *(done 2026-06-10)*
-4. **Dwarkesh/transcript generator** — the authored-synthesis path. **← next**
-5. **Reddit** — finish the stub (a `reddit-finance` placeholder row already exists, disabled).
+4. ✅ **Dwarkesh/transcript generator** — five `youtube-*-native` DISPATCH generators, migration 0054, `YOUTUBE_API_KEY`-gated. *(done 2026-06-10)*
+5. **Reddit** — finish the stub (a `reddit-finance` placeholder row already exists, disabled). **← next**
 6. **Bluesky** + **Anthropic/Perplexity via RSS bridge** — community/bridge sources once a bridge path is chosen (§7 Q1).
 7. *(parked)* X, IG/TikTok, LinkedIn.
 
