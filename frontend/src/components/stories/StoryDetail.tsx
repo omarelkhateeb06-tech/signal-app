@@ -10,6 +10,7 @@ import { Commentary } from "./Commentary";
 import { DepthToggle } from "./DepthToggle";
 import { SourceBody } from "./SourceBody";
 import { UpgradeCtaButton } from "./UpgradeCta";
+import { AiArtBadge } from "@/components/redesign/swiss/AiArtBadge";
 import { Card } from "@/components/ui/Card";
 import {
   useStoryCommentary,
@@ -129,6 +130,7 @@ export function StoryDetail({ story }: StoryDetailProps): JSX.Element {
               className="object-cover"
             />
           </div>
+          <AiArtBadge />
         </div>
       )}
       <header className="space-y-4">

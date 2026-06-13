@@ -138,6 +138,18 @@ describe("StoryCard native illustration", () => {
     expect(
       container.querySelector('img[src="https://cdn.example.com/n.png"]'),
     ).not.toBeNull();
+    // AI illustration → carries the honest label (§20.3).
+    expect(container.textContent).toContain("AI Illustration");
+  });
+
+  it("does not label a real og:image as AI-generated", () => {
+    const { container } = renderCard(
+      baseStory({ image_url: "https://cdn.example.com/og.jpg" }),
+    );
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/og.jpg"]'),
+    ).not.toBeNull();
+    expect(container.textContent).not.toContain("AI Illustration");
   });
 
   it("renders no image for a native card without an illustration", () => {

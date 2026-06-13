@@ -180,6 +180,15 @@ describe("StoryDetail native post layout", () => {
     expect(img).not.toBeNull();
     // alt is sourced from the headline (decorative hero, but labelled).
     expect(img?.getAttribute("alt")).toBe("Detail headline");
+    // The AI-illustration hero must carry the honest "AI" label (§20.3).
+    expect(container.textContent).toContain("AI Illustration");
+  });
+
+  it("does not label a real og:image hero as AI-generated", () => {
+    const { container } = renderDetail(
+      baseStory({ image_url: "https://cdn.example.com/hero.jpg" }),
+    );
+    expect(container.textContent).not.toContain("AI Illustration");
   });
 
   it("renders no illustration hero when a native post has no illustration_url", () => {

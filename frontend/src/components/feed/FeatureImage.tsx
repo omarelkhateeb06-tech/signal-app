@@ -3,6 +3,7 @@
 import Image from "next/image";
 import type { Story } from "@/types/story";
 import { sourceDisplayLabel } from "@/lib/feedCard";
+import { AiArtBadge } from "@/components/redesign/swiss/AiArtBadge";
 
 // Phase 12y — the image primitive for the modular feed. Renders the
 // story's og:image (or a native post's editorial illustration). When a
@@ -37,6 +38,11 @@ export function FeatureImage({
 }): JSX.Element {
   const src =
     story.image_url ?? (story.kind === "native" ? story.illustration_url : null);
+  // The displayed image is the AI editorial illustration only when we fell
+  // through to illustration_url — i.e. a native post with no scraped og:image.
+  // The badge must never appear on a real sourced og:image.
+  const isAiArt =
+    !story.image_url && story.kind === "native" && Boolean(story.illustration_url);
   const color = SECTOR_VAR[story.sector] ?? "var(--ink-muted)";
   const sector = SECTOR_LABEL[story.sector] ?? story.sector.toUpperCase();
   const source = sourceDisplayLabel(story) ?? "VALO";
@@ -53,6 +59,7 @@ export function FeatureImage({
           sizes={sizes}
           className="object-cover transition-transform duration-[600ms] ease-soft-out group-hover:scale-[1.03]"
         />
+        {isAiArt && <AiArtBadge />}
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 h-1"
