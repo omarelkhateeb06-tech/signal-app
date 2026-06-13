@@ -98,12 +98,14 @@ Tier 0 turned out to be a *repair* job, not an *add* job (see §1 correction). T
 
 | source | shape | reason deferred |
 |--------|-------|-----------------|
-| **Reddit** | [ADAPTER] (finish stub) | the stub throws; needs OAuth, a fixed subreddit list, top-of-day-above-threshold, ~4h cadence. Community-priority (4). Worth doing, but after Tier 0–2. |
+| **Reddit** | [ADAPTER] (finish stub) | the stub throws; needs OAuth, a fixed subreddit list, top-of-day-above-threshold, ~4h cadence. Community-priority (4). Worth doing, but after Tier 0–2. **← next on the track.** |
+| **Bluesky** | [ADAPTER] (`bluesky_api`) | **the zero-code RSS bridge is NOT viable — verified 2026-06-10 (see §7 Q1 below).** A real build needs an AT-Protocol adapter that carries the post text as `bodyText` (HN-self-post pattern) **plus** a per-source exemption from the 500-char body floor, and a design call on whether 300-char takes are standalone cards or a trending/clustering signal. Tier-3, deferred. |
 | **X / Twitter** | [DEFER] | **paid API.** Park until there's budget; highest-noise source so it must land *after* ranking is proven on calmer sources. |
 
 ### Parked / rejected (with reasons — don't re-litigate without a trigger)
 
 - **Crunchbase** — cost; **replaced by SEC Form D**, which is the primary-source version of the same signal.
+- **Anthropic news via RSS bridge** — *parked 2026-06-10 (verified):* Anthropic exposes no native RSS (`/rss.xml`, `/news/rss`, `/feed.xml` → 404; `/news` is HTML only) and `openrss.org` does not auto-generate a feed for arbitrary URLs (it serves its own HTML landing page, which the adapter rejects as `wrong_content_type`). A real bridge needs a paid/account scraper (rss.app) or a self-hosted one — fragile single-source dependency, not worth it now. Revisit if Anthropic ships a feed or we already run a scraper for another reason.
 - **Instagram / TikTok** — no clean API; scraping is a ToS/stability risk. *(Open question §7: is a sanctioned scraper ever worth it? Default: no.)*
 - **LinkedIn** — no usable API + aggressive anti-scraping. Hard park.
 
@@ -144,7 +146,7 @@ To add any [RSS] source:
 
 ## 7. Open questions (need an answer before the relevant tier)
 
-1. **Bluesky bridge** — which path? (a) `openrss.org`/`rss.app` style bridge on a curated author list, (b) Bluesky's own `app.bsky.feed` API via a small adapter (more robust, more code), or (c) a firehose sampler. *Default proposal: start with a curated-author RSS bridge (Tier 0), upgrade to an API adapter later if signal is good.*
+1. ~~**Bluesky bridge** — which path?~~ — *resolved 2026-06-10: the RSS-bridge path (a) is DEAD on arrival. Two hard blockers, verified against the live code + endpoints: (i) the heuristic body seam requires extracted article text ≥ `BODY_LENGTH_FLOOR_CHARS` (500), and a Bluesky post is capped at 300 chars; (ii) a Bluesky RSS item's `<link>` is the `bsky.app` post permalink, a JS app shell from which `@mozilla/readability` extracts ~nothing → `body_parse_error`/`body_too_short`. So a plain `rss` source over Bluesky just manufactures failing candidates. The only real path is (b) a `bluesky_api` AT-Protocol adapter that carries the post text as `bodyText` (HN-self-post pattern) AND adds a per-source body-floor exemption — Tier 3, deferred. Open sub-question for that build: is a 300-char take a standalone enriched card, or better consumed as a trending/clustering signal? Likely the latter. Anthropic-via-bridge is separately parked (no native RSS; openrss serves HTML, not a feed) — see Parked/rejected.*
 2. ~~**Podcast/YouTube transcripts**~~ — *resolved 2026-06-10: shipped with the default proposal — Data API v3 listing + timedtext caption fetch, hand-picked 5-channel roster (Dwarkesh / Asianometry / TechTechPotato / No Priors / Acquired), description-only fallback when captions are unavailable. Whisper/yt-dlp remain the upgrade path if timedtext coverage degrades.*
 3. ~~**FRED series set**~~ — *resolved 2026-06-10: shipped with the default proposal (FEDFUNDS, CPIAUCSL, DGS10, UNRATE, PCEPI — finance-sector only, hourly poll with dedup). Series set is a `config.seriesIds` data change to widen.*
 4. **IG/TikTok** — confirm hard-park, or is there a sanctioned-scraper appetite? *Default: hard-park.*
@@ -158,7 +160,7 @@ To add any [RSS] source:
 3. ✅ **FRED adapter** — macro data cards (FEDFUNDS/CPIAUCSL/DGS10/UNRATE/PCEPI), migrations 0052/0053, `FRED_API_KEY`-gated. *(done 2026-06-10)*
 4. ✅ **Dwarkesh/transcript generator** — five `youtube-*-native` DISPATCH generators, migration 0054, `YOUTUBE_API_KEY`-gated. *(done 2026-06-10)*
 5. **Reddit** — finish the stub (a `reddit-finance` placeholder row already exists, disabled). **← next**
-6. **Bluesky** + **Anthropic/Perplexity via RSS bridge** — community/bridge sources once a bridge path is chosen (§7 Q1).
+6. ~~**Bluesky** + **Anthropic/Perplexity via RSS bridge**~~ — *RSS-bridge path retired 2026-06-10 (see §7 Q1 + Parked/rejected). Bluesky returns only as a Tier-3 `bluesky_api` adapter if/when the design call is made; Anthropic returns only if it ships a real feed.*
 7. *(parked)* X, IG/TikTok, LinkedIn.
 
 Each step is independently shippable, tested, and gated; none blocks 12h (Stripe), which remains the real launch gate.
