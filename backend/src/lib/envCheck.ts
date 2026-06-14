@@ -46,6 +46,16 @@ export const PROD_REQUIRED_ENV_VARS: RequiredEnvVar[] = [
     description:
       "YouTube Data API for the youtube-*-native episode-dispatch generators — without it, the enabled channel sources skip every native run, producing no episode briefs",
   },
+  {
+    name: "REDDIT_CLIENT_ID",
+    description:
+      "Reddit OAuth app id for the reddit_api adapter — without it (and REDDIT_CLIENT_SECRET), the enabled reddit sources skip every poll, producing no community posts",
+  },
+  {
+    name: "REDDIT_CLIENT_SECRET",
+    description:
+      "Reddit OAuth app secret for the reddit_api adapter — pairs with REDDIT_CLIENT_ID; both required for the adapter to poll",
+  },
 ];
 
 function envIsPresent(env: NodeJS.ProcessEnv, name: string): boolean {

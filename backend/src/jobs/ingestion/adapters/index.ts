@@ -26,7 +26,10 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   // sec_edgar_json; the Haiku relevance gate assigns the sector.
   sec_form_d: secFormDAdapter,
   hackernews_api: hackerNewsAdapter,
-  reddit_api: null,
+  // Phase 12 ingestion — top-of-day posts from a fixed subreddit list
+  // (OAuth client-credentials). Requires REDDIT_CLIENT_ID/SECRET and
+  // logs-and-skips when unset.
+  reddit_api: redditAdapter,
   // Phase 12R.A — direct GitHub repo polling (WORTH AN AFTERNOON card).
   github_api: githubAdapter,
   // Phase 12 ingestion Tier 1 — FRED macro data cards (content_type=
@@ -42,11 +45,6 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   // adapter map exhaustive over the enum without implying a feed adapter.
   native_generator: null,
 };
-
-// Suppress "imported but not yet wired" noise — the reddit adapter
-// stays linked here so a future phase only needs to flip the registry
-// entry rather than hunt down both an import and a map slot.
-void redditAdapter;
 
 export function getAdapter(type: IngestionAdapterType): AdapterFn | null {
   return REGISTRY[type];
