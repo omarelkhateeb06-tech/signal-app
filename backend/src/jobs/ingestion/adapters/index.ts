@@ -15,6 +15,7 @@ import { hackerNewsAdapter } from "./hackerNews";
 import { redditAdapter } from "./reddit";
 import { githubAdapter } from "./github";
 import { fredApiAdapter } from "./fredApi";
+import { sitemapAdapter } from "./sitemap";
 
 const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   rss: rssAdapter,
@@ -32,6 +33,9 @@ const REGISTRY: Record<IngestionAdapterType, AdapterFn | null> = {
   // 'filing'). One compact data card per series release; requires
   // FRED_API_KEY and logs-and-skips when it is unset.
   fred_api: fredApiAdapter,
+  // Phase 12 ingestion — sitemap.xml article discovery for primaries with no
+  // usable RSS (wired today for anthropic-news; general fallback otherwise).
+  sitemap: sitemapAdapter,
   // Phase 12n.2 — native posts are AUTHORED, not pulled off a feed.
   // They never run through the poll/adapter path; the native generator
   // registry (generators/index.ts) owns them. Null here keeps the

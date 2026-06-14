@@ -54,6 +54,11 @@ export const ingestionAdapterTypeEnum = pgEnum("ingestion_adapter_type", [
   // data card per series release (fed funds / CPI / 10Y / unemployment / PCE);
   // content_type='filing'. Requires FRED_API_KEY (logs-and-skips when unset).
   "fred_api",
+  // Phase 12 ingestion — sitemap.xml discovery for tier-1 primaries that have
+  // no usable RSS (Anthropic). Emits one candidate per recent /news/ article;
+  // the body seam fetches each long-form page. The general fallback for any
+  // source whose RSS dies.
+  "sitemap",
 ]);
 export const ingestionCandidateStatusEnum = pgEnum("ingestion_candidate_status", [
   "discovered",
@@ -79,6 +84,7 @@ export const INGESTION_ADAPTER_TYPES = [
   "native_generator",
   "github_api",
   "fred_api",
+  "sitemap",
 ] as const;
 export type IngestionAdapterType = (typeof INGESTION_ADAPTER_TYPES)[number];
 
