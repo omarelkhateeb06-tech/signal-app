@@ -16,10 +16,12 @@ This project has **persistent cross-session memory**. A fresh session that ignor
 4. **Auto-memory** at `~/.claude/projects/.../memory/MEMORY.md` — short cross-session notes (rebrand-to-Valo, worktree workflow, environment quirks).
 
 **Current HEAD reality (June 2026), since the detail below drifted:**
-- **Migrations run through `0046`** (the §3 list stops at 0031 — it is historical; the live count is in `backend/src/db/migrations/`).
+- **Migrations run through `0057`** (the §3 list stops at 0031 — it is historical; the live count is in `backend/src/db/migrations/`).
+- **Ingestion is feature-complete on all non-paid sources.** Adapter types (`INGESTION_ADAPTER_TYPES` tuple + `ingestionAdapterTypeEnum` in `schema.ts`, registry in `jobs/ingestion/adapters/index.ts`): `rss`, `arxiv_atom`, `sec_edgar_json`, `sec_form_d`, `hackernews_api`, `reddit_api`, `github_api`, `fred_api`, `sitemap`, plus `native_generator` (no poll adapter). Native generators (`generators/index.ts`): 7 synthesis generators + 5 `youtube-*-native` episode-dispatch instances. **`sitemap`** resurrects no-RSS primaries (anthropic-news off `sitemap.xml`); **`reddit_api`**, **`fred_api`**, and the YouTube generators are **gated on env keys** (`REDDIT_CLIENT_ID`/`SECRET`, `FRED_API_KEY`, `YOUTUBE_API_KEY`) and log-and-skip until set on Railway. The durable gotcha: the heuristic body seam's 500-char floor (`heuristics.ts`) makes short-form social (Bluesky/X) non-viable as plain `rss` — see `docs/discovery/ingestion-source-expansion.md`.
+- **"The Through-Line" (briefing) is a shipped feature** absent from the older phase tables: `briefingController` + `throughLineService`/`throughLineClient` at `/api/v1/briefing`, consumed by `useThroughLine.ts` and rendered as the feed masthead. A Haiku-synthesized, profile-personalized, tier-gated editorial read connecting the day's top stories. Five Haiku clients now exist (commentary / relevance / facts / tier / through-line).
 - **The feed is the Editorial Redesign v2** (content-type-aware cards). Card classification is canonical in `frontend/src/lib/feedCardType.ts` (`deriveCardType` maps `kind`/`generator_type`/`events.content_type`/`sources` → branded card). Card types: THE CONNECTION (hero), THE RESEARCH READ, PRACTITIONER BRIEF, WORTH AN AFTERNOON, EARNINGS/SEC, THE LAUNCH, MULTI-SOURCE, DISPATCH, SIGNAL ORIGINAL. Components live under `frontend/src/components/redesign/swiss/` (the *primary* feed despite the "redesign" path name — rename pending).
 - **`events.content_type`** (migration 0045/0046): `'filing'` (EDGAR), `'launch'` (Product Hunt / source-declared via `ingestion_sources.config.contentType`), else null. Set in `writeEvent.classifyContentType`.
-- **Real-Time Layer (Phase 12R)** is in progress on branch `claude/realtime-phase-a` (Product Hunt → THE LAUNCH shipped).
+- **Real-Time Layer (Phase 12R.A)** shipped + merged to `main` (Product Hunt → THE LAUNCH, `github_api` adapter → WORTH AN AFTERNOON, `what_to_do_with_it` hook). Reddit is now live too (`reddit_api`, key-gated). Remaining 12R is the paid tier (X/Crunchbase) — parked on cost.
 - **Search/related are on `events`** (Phase 12p/12q) — *not* on legacy `stories`, despite older notes claiming otherwise. The only remaining `stories` reads in `storyController` are intentional dual-read **anchor lookups** so legacy hand-curated story-detail pages still resolve; results come from `events`. (Verified June 2026.)
 - **Archival feed designs were retired** June 2026 (`MagazineFeed`/`SwissFeed`/`TerminalFeed` + `/feed-swiss`, `/feed-b`). Only the production `SwissCommandFeed` and the dev-only `/redesign-preview` remain.
 - **Remaining cosmetic item:** `components/redesign/swiss/` is the *production* feed despite the "redesign" path name — a rename to `components/feed/` is deferred (high-churn, low-risk; this note removes the confusion in the meantime).
@@ -297,13 +299,17 @@ Routers mounted in `app.ts`:
 | base path              | auth        | purpose                                  |
 |------------------------|-------------|------------------------------------------|
 | `/api/v1/auth`         | none + `authLimiter` | signup, login, me, logout                |
-| `/api/v1/users`        | JWT         | profile read/write                       |
+| `/api/v1/users`        | JWT         | profile read/write, `/me/tier` snapshot  |
 | `/api/v1/me/api-keys`  | JWT         | self-service API-key CRUD (v2 keys)      |
-| `/api/v1/stories`      | JWT         | feed, search, detail, save/unsave, related, comments-on-story |
+| `/api/v1/onboarding`   | JWT         | 7-screen onboarding questionnaire (12b)  |
+| `/api/v1/engagement`   | JWT         | engagement-event capture (clicks/saves → ranking; migration 0049) |
+| `/api/v1/stories`      | JWT         | feed, search, detail, save/unsave, related, commentary, comments-on-story |
 | `/api/v1/comments`     | JWT         | comment CRUD (replies, update, delete)   |
 | `/api/v1/teams`        | JWT + public invite endpoints | team CRUD + members + invites + dashboard + team feed |
 | `/api/v1/emails`       | public + `emailLimiter` | unsubscribe (GET + POST), preferences (JWT) |
+| `/api/v1/briefing`     | JWT         | "The Through-Line" — personalized, tier-gated daily synthesis (`throughLineService`) |
 | `/health`              | none        | liveness                                 |
+| `/admin`               | `ADMIN_USER_IDS` allowlist | ingestion source status / ops (`adminController`) |
 
 ### v2 (`/api/v2/*`, API-key-authenticated) — the public Intelligence API
 
