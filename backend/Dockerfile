@@ -18,8 +18,11 @@ WORKDIR /app
 # version ranges on every build.
 COPY package.json package-lock.json ./
 
-# Install all deps (including dev for TypeScript compilation)
-RUN npm ci
+# Install all deps (including dev for TypeScript compilation).
+# BuildKit cache mount keeps the npm cache across Railway rebuilds so
+# packages are not re-downloaded on every deploy.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy source
 COPY . .
@@ -49,9 +52,11 @@ ENV BUILD_TIME=$BUILD_TIME
 # Copy manifest + lockfile
 COPY --from=builder --chown=signal:nodejs /app/package.json /app/package-lock.json ./
 
-# Install production deps only, deterministically from the lockfile
-RUN npm ci --omit=dev && \
-    npm cache clean --force
+# Install production deps only, deterministically from the lockfile.
+# Cache mount avoids re-downloading on clean rebuilds; the mount is
+# external to the image layer so npm cache clean is not needed here.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev
 
 # Copy compiled code (includes migration runner + .sql migrations)
 COPY --from=builder --chown=signal:nodejs /app/dist ./dist
