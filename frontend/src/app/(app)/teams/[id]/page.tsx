@@ -10,8 +10,6 @@ import { TeamStoryCard } from "@/components/teams/TeamStoryCard";
 import { extractApiError } from "@/lib/api";
 import { Skeleton } from "@/components/ui/Skeleton";
 
-const PAGE_SIZE = 20;
-
 export default function TeamFeedPage(): JSX.Element {
   const params = useParams<{ id: string }>();
   const teamId = params?.id;
@@ -20,10 +18,16 @@ export default function TeamFeedPage(): JSX.Element {
   const { data: team, isLoading: teamLoading, error: teamError } = useTeam(teamId);
   const { data: members } = useTeamMembers(teamId);
   const {
-    data: feed,
+    data: feedData,
     isLoading: feedLoading,
     error: feedError,
-  } = useTeamFeed(teamId, { limit: PAGE_SIZE, offset: 0 });
+    fetchNextPage,
+    isFetchingNextPage,
+    hasNextPage,
+  } = useTeamFeed(teamId);
+
+  const stories = feedData?.pages.flatMap((p) => p.stories) ?? [];
+  const total = feedData?.pages[0]?.total ?? 0;
 
   useEffect(() => {
     if (teamId) setActiveTeam(teamId);
@@ -117,7 +121,7 @@ export default function TeamFeedPage(): JSX.Element {
         </div>
       )}
 
-      {!feedLoading && !feedError && feed && feed.stories.length === 0 && (
+      {!feedLoading && !feedError && feedData && stories.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-12 text-center">
           <p className="text-sm text-slate-600">
             No stories yet.{" "}
@@ -144,15 +148,26 @@ export default function TeamFeedPage(): JSX.Element {
       )}
 
       <div className="space-y-4">
-        {feed?.stories.map((story) => (
+        {stories.map((story) => (
           <TeamStoryCard key={story.id} story={story} teamId={teamId} />
         ))}
       </div>
 
-      {feed && feed.stories.length > 0 && (
-        <div className="py-4 text-center text-xs text-slate-500">
-          Showing {feed.stories.length} of {feed.total}
-          {feed.has_more && " · Load more coming soon"}
+      {stories.length > 0 && (
+        <div className="space-y-3 py-4 text-center">
+          <p className="text-xs text-slate-500">
+            Showing {stories.length} of {total}
+          </p>
+          {hasNextPage && (
+            <button
+              type="button"
+              onClick={() => void fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isFetchingNextPage ? "Loading…" : "Load more"}
+            </button>
+          )}
         </div>
       )}
     </div>

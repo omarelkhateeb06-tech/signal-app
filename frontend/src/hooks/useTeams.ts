@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -106,14 +108,25 @@ export function useTeamMembers(
   });
 }
 
+const TEAM_FEED_PAGE_SIZE = 20;
+
 export function useTeamFeed(
   id: string | null | undefined,
-  params: TeamFeedParams = {},
   options: { enabled?: boolean } = {},
-): UseQueryResult<TeamFeedResponse, Error> {
-  return useQuery({
-    queryKey: feedKey(id ?? "", params),
-    queryFn: () => getTeamFeedRequest(id as string, params),
+): UseInfiniteQueryResult<
+  { pages: TeamFeedResponse[]; pageParams: number[] },
+  Error
+> {
+  return useInfiniteQuery({
+    queryKey: feedKey(id ?? "", { limit: TEAM_FEED_PAGE_SIZE }),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      getTeamFeedRequest(id as string, {
+        limit: TEAM_FEED_PAGE_SIZE,
+        offset: typeof pageParam === "number" ? pageParam : 0,
+      }),
+    getNextPageParam: (last) =>
+      last.has_more ? last.offset + last.limit : undefined,
     enabled: Boolean(id) && (options.enabled ?? true),
   });
 }
