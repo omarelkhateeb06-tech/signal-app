@@ -42,6 +42,8 @@ function nativeToStory(item: NativeArchiveItem): Story {
     why_it_matters_to_you: "",
     commentary: null,
     commentary_source: null,
+    // Native archive items don't carry a SIGNAL rating; omit the badge.
+    signal_rating: null,
     generic_commentary: item.generic_commentary,
     generator_type: item.generator_type,
     source_url: "",

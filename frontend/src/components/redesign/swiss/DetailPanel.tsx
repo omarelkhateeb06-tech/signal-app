@@ -25,6 +25,7 @@ import {
 import { TakeawayList } from "./TakeawayList";
 import { toggleSavedTakeaway, useSavedTakeaways } from "./savedTakeaways";
 import { AiArtBadge } from "./AiArtBadge";
+import { SignalRating } from "./SignalRating";
 
 // Right panel. Default state = the reader's intelligence profile, market
 // context, and the editorial manifesto. Active state (a story selected on
@@ -365,6 +366,10 @@ function StoryDetail({
       <h2 className="font-display text-[30px] font-bold leading-[1.06] tracking-tight text-ink md:text-[34px]">
         {view.title}
       </h2>
+
+      {story.signal_rating != null && (
+        <SignalRating score={story.signal_rating} variant="full" />
+      )}
 
       {synthesis ? (
         <div>

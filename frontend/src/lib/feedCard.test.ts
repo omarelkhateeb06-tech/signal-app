@@ -36,6 +36,7 @@ function story(overrides: Partial<Story> = {}): Story {
     is_saved: false,
     save_count: 0,
     comment_count: 0,
+    signal_rating: 72,
     ...overrides,
   };
 }

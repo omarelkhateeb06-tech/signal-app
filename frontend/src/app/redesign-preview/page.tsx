@@ -58,6 +58,7 @@ function mock(overrides: Partial<Story>): Story {
     id: "mock",
     sector: "ai",
     headline: "Source headline",
+    signal_rating: 80,
     context: "",
     why_it_matters: "",
     gated: false,

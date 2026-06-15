@@ -43,6 +43,18 @@ export function matchPercent(rank: number, sourceCount: number): number {
   return Math.min(98, base + breadthBonus);
 }
 
+/**
+ * Map a SIGNAL rating (0–100, server-computed credibility score) to a band
+ * label + a tint class for the badge. Pure; thresholds: 80+ High, 60–79
+ * Solid, 40–59 Mixed, <40 Low.
+ */
+export function signalRatingTone(score: number): { label: string; cls: string } {
+  if (score >= 80) return { label: "High", cls: "text-accent" };
+  if (score >= 60) return { label: "Solid", cls: "text-ink" };
+  if (score >= 40) return { label: "Mixed", cls: "text-ink-muted" };
+  return { label: "Low", cls: "text-ink-muted" };
+}
+
 export interface StoryView {
   /** Primary headline — native headline, or the ingested hook title. */
   title: string;

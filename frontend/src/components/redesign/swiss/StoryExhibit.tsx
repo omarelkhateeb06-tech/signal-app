@@ -25,6 +25,7 @@ import { leadStat } from "@/lib/leadStat";
 import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
 import { LockedTeaser } from "./LockedTeaser";
 import { AiArtBadge } from "./AiArtBadge";
+import { SignalRating } from "./SignalRating";
 
 // One entry in the ranked stream (left panel). The left is a scannable index;
 // reading the full structured briefing happens in the right detail panel
@@ -94,6 +95,7 @@ function Kicker({
   matchPct,
   typeNote,
   commentCount = 0,
+  signalRating,
 }: {
   rank: number;
   sector: string;
@@ -103,6 +105,7 @@ function Kicker({
   matchPct: number;
   typeNote?: JSX.Element | null;
   commentCount?: number;
+  signalRating?: number | null;
 }): JSX.Element {
   const sourceNote =
     !typeNote && sourceCount === 1 && sourceLabel ? `via ${sourceLabel}` : null;
@@ -114,6 +117,7 @@ function Kicker({
       </span>
       <span className="text-line">{"//"}</span>
       <span className="text-ink-muted">{SECTOR_SHORT[sector] ?? sector}</span>
+      {signalRating != null && <SignalRating score={signalRating} variant="compact" />}
       {readMinutes != null && <span>· {readMinutes} min read</span>}
       {sourceNote && <span>· {sourceNote}</span>}
       {typeNote && <span>· {typeNote}</span>}
@@ -314,6 +318,7 @@ export function StoryExhibit({
             matchPct={matchPct}
             typeNote={typeNote}
             commentCount={type === "practitioner" ? 0 : story.comment_count}
+            signalRating={story.signal_rating}
           />
           <h3
             className={clsx(

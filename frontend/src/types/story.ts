@@ -134,6 +134,10 @@ export interface Story {
   is_saved: boolean;
   save_count: number;
   comment_count: number;
+  // SIGNAL rating — 0–100 credibility score (primary-source tier + quality +
+  // corroboration), computed server-side. Null for legacy hand-curated rows
+  // with no source-tier data; the UI omits the badge when null.
+  signal_rating: number | null;
   reading_time_minutes?: number;
 }
 

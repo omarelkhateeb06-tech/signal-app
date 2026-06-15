@@ -39,6 +39,12 @@ import {
   W4,
 } from "../feed/rankingConstants";
 import { applyDiversityCap } from "../feed/diversityCap";
+import {
+  QUALITY_WEIGHT,
+  TIER_BONUS_STEP,
+  CORROBORATION_STEP,
+  CORROBORATION_CAP,
+} from "../feed/signalRating";
 
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 10;
@@ -160,6 +166,9 @@ function shapeStory(row: StoryRow, role: string | null): Record<string, unknown>
     // Phase 12u — legacy hand-curated stories are never filings. Emitted as
     // null (not omitted) to keep the wire shape uniform with shapeEvent.
     content_type: null,
+    // SIGNAL rating — legacy hand-curated stories carry no source-tier /
+    // corroboration data; null so the frontend simply omits the badge.
+    signal_rating: null,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -217,6 +226,11 @@ interface EventRow {
   // to sort events vs. legacy stories on a unified scale. Never sent
   // to the wire (shapeEvent strips it).
   effectiveScore: number;
+  // SIGNAL rating — 0–100 credibility score (primary-source tier + quality +
+  // corroboration), computed by eventSignalRatingExpr and passed to the wire
+  // by shapeEvent. Mirror of feed/signalRating.ts. Selected by every event
+  // query.
+  signalRating: number;
 }
 
 interface EventSourceRow {
@@ -279,6 +293,8 @@ function shapeEvent(
     // for SEC/earnings events; null otherwise (general). Always emitted so
     // the frontend can branch on it without an undefined check.
     content_type: row.contentType ?? null,
+    // SIGNAL rating — 0–100 credibility score (source tier + corroboration).
+    signal_rating: row.signalRating,
     published_at: row.publishedAt,
     created_at: row.createdAt,
     author: row.authorId
@@ -376,6 +392,38 @@ function eventQualityScoreExpr(): ReturnType<typeof sql<number>> {
  */
 function eventAlternatesCountExpr(): ReturnType<typeof sql<number>> {
   return sql<number>`GREATEST(0, (SELECT COUNT(*)::int - 1 FROM event_sources es WHERE es.event_id = ${events.id}))`;
+}
+
+/**
+ * Priority (source tier, 1 = lab/SEC … 4 = community) of the event's primary
+ * source. Falls back to 3 (the schema default — "news") when no primary
+ * source row resolves. Mirrors eventQualityScoreExpr.
+ */
+function eventPriorityExpr(): ReturnType<typeof sql<number>> {
+  return sql<number>`COALESCE(
+    (SELECT isrc.priority
+       FROM event_sources es
+       JOIN ingestion_sources isrc ON isrc.id = es.ingestion_source_id
+       WHERE es.event_id = ${events.id} AND es.role = 'primary'
+       LIMIT 1),
+    3
+  )`;
+}
+
+/**
+ * SIGNAL rating (0–100): primary-source quality × weight + tier bonus +
+ * capped corroboration. SQL mirror of `calculateSignalRating`
+ * (feed/signalRating.ts) — keep the two in lockstep.
+ */
+export function eventSignalRatingExpr(): ReturnType<typeof sql<number>> {
+  const quality = eventQualityScoreExpr();
+  const priority = eventPriorityExpr();
+  const alternates = eventAlternatesCountExpr();
+  return sql<number>`GREATEST(0, LEAST(100, ROUND(
+    ${quality}::numeric * ${QUALITY_WEIGHT}::numeric
+    + (4 - LEAST(4, GREATEST(1, ${priority}::numeric))) * ${TIER_BONUS_STEP}::numeric
+    + LEAST(${CORROBORATION_CAP}::numeric, ${alternates}::numeric * ${CORROBORATION_STEP}::numeric)
+  )))::int`;
 }
 
 /**
@@ -639,6 +687,7 @@ export async function getFeed(req: Request, res: Response, next: NextFunction): 
         isSaved: isEventSavedExpr(userId),
         saveCount: eventSaveCountExpr(),
         commentCount: eventCommentCountExpr(),
+        signalRating: eventSignalRatingExpr(),
         effectiveScore: eventEffectiveScore,
       })
       .from(events)
@@ -842,6 +891,7 @@ export async function getStoryById(
           isSaved: isEventSavedExpr(userId),
           saveCount: eventSaveCountExpr(),
           commentCount: eventCommentCountExpr(),
+          signalRating: eventSignalRatingExpr(),
         })
         .from(events)
         .leftJoin(writers, eq(writers.id, events.authorId))
@@ -1172,6 +1222,7 @@ export async function searchStories(
         isSaved: isEventSavedExpr(userId),
         saveCount: eventSaveCountExpr(),
         commentCount: eventCommentCountExpr(),
+        signalRating: eventSignalRatingExpr(),
         effectiveScore: sql<number>`0`,
         rank: rankExpr,
       })
@@ -1379,6 +1430,7 @@ export async function getRelatedStories(
         isSaved: isEventSavedExpr(userId),
         saveCount: eventSaveCountExpr(),
         commentCount: eventCommentCountExpr(),
+        signalRating: eventSignalRatingExpr(),
         effectiveScore: sql<number>`0`,
       })
       .from(events)

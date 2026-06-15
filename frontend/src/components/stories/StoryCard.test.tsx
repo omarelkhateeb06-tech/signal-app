@@ -71,6 +71,7 @@ function baseStory(overrides: Partial<Story> = {}): Story {
     is_saved: false,
     save_count: 0,
     comment_count: 0,
+    signal_rating: 72,
     // Tests predate the explicit `kind` field; derive it from the source
     // name so existing native fixtures (source_name "SIGNAL") stay native.
     kind:
