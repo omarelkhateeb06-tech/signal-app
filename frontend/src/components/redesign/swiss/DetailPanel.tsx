@@ -19,6 +19,7 @@ import {
   SECTOR_LABEL,
   fullStoryView,
   indicatorsNote,
+  nativeSynthesisBody,
   sectorColor,
 } from "./swissView";
 import { TakeawayList } from "./TakeawayList";
@@ -286,7 +287,11 @@ function StoryDetail({
     envelope && !isGatePayload(envelope) ? envelope.commentary : null;
 
   const view = fullStoryView(story);
-  const indicators = indicatorsNote(story);
+  // Native posts lead with their full editorial synthesis as the hero. For
+  // those, `context` is SIGNAL's own writing; suppress "Indicators to
+  // Monitor" (which surfaces `context`) so the body isn't shown twice.
+  const synthesis = nativeSynthesisBody(story);
+  const indicators = synthesis ? null : indicatorsNote(story);
   const source = sourceDisplayLabel(story);
   const stamp = timeAgo(story.published_at ?? story.created_at);
 
@@ -361,13 +366,22 @@ function StoryDetail({
         {view.title}
       </h2>
 
-      {view.brief && (
+      {synthesis ? (
         <div>
-          <SectionLabel>The Core Brief</SectionLabel>
-          <p className="mt-2 max-w-[66ch] text-[15px] leading-[1.85] text-ink">
-            {view.brief}
+          <SectionLabel>The Briefing</SectionLabel>
+          <p className="mt-2 max-w-[66ch] font-serif text-[16px] leading-[1.9] text-ink">
+            {synthesis}
           </p>
         </div>
+      ) : (
+        view.brief && (
+          <div>
+            <SectionLabel>The Core Brief</SectionLabel>
+            <p className="mt-2 max-w-[66ch] text-[15px] leading-[1.85] text-ink">
+              {view.brief}
+            </p>
+          </div>
+        )
       )}
 
       {whyThesis && (

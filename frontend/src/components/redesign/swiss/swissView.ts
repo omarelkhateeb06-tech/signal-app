@@ -72,6 +72,21 @@ export function storyTitleAndBrief(story: Story): { title: string; brief: string
   };
 }
 
+/**
+ * The full SIGNAL-authored synthesis paragraph for a native post. Native
+ * generators write a 90–180 word editorial body that lands on the wire as
+ * `context`; the shorter `generic_commentary` is a derivative used as the
+ * feed-card brief. The detail panel surfaces this as the editorial hero
+ * ("The Briefing"). Returns null for ingested stories — their `context` is a
+ * source-article summary, not SIGNAL's own writing — and when the body is
+ * empty.
+ */
+export function nativeSynthesisBody(story: Story): string | null {
+  if (!isNativeStory(story)) return null;
+  const body = story.context?.trim();
+  return body && body.length > 0 ? body : null;
+}
+
 // Sentence boundary for takeaway extraction: terminal punctuation followed
 // by whitespace + a capital / opening quote. Kept local (the feedCard
 // BOUNDARY also matches em-dashes, which we want to preserve inside a
