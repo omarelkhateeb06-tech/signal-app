@@ -84,6 +84,7 @@ export async function callHaikuForTier(
     {
       assistantPrefill: opts.prefill ?? tierDefaults.prefill,
       maxTokens: opts.maxTokens ?? tierDefaults.maxTokens,
+      callSite: `tier:${tier}`,
     },
   );
 }

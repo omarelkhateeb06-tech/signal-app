@@ -47,6 +47,7 @@ export async function callHaikuForFacts(
     {
       assistantPrefill: opts.assistantPrefill ?? FACTS_PROMPT_ASSISTANT_PREFILL,
       maxTokens: opts.maxTokens ?? FACTS_DEFAULT_MAX_TOKENS,
+      callSite: "facts",
     },
   );
 }

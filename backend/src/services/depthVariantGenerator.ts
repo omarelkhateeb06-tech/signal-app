@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { DepthLevel, WhyItMattersTemplate } from "../db/schema";
 import { DEPTH_LEVELS } from "../db/schema";
+import { logLlmUsage } from "../lib/llmCost";
 
 // Haiku is the locked model for bulk regeneration (Phase 12a). Latency and
 // cost dominate at 20+ stories × 3 variants; quality ceiling is explicitly
@@ -87,6 +88,17 @@ export async function generateDepthVariantsForStory(
       max_tokens: 600,
       messages: [{ role: "user", content: buildPrompt(story, depth) }],
     });
+    const usage = (res as { usage?: { input_tokens?: number; output_tokens?: number } })
+      .usage;
+    if (usage && typeof usage.input_tokens === "number") {
+      logLlmUsage({
+        provider: "anthropic",
+        callSite: "depth_variant",
+        model,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens ?? 0,
+      });
+    }
     // Collect all text blocks in order. Haiku typically returns one, but
     // the SDK models this as an array — don't assume shape.
     const text = res.content

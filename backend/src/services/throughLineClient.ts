@@ -19,6 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { COMMENTARY_MODEL } from "./haikuCommentaryClient";
+import { logLlmUsage } from "../lib/llmCost";
 
 // Re-export the dated pin so both request paths reference one constant.
 export const THROUGH_LINE_MODEL = COMMENTARY_MODEL;
@@ -91,6 +92,17 @@ export async function callHaikuForThroughLine(
       },
       { signal: controller.signal },
     );
+    const usage = (res as { usage?: { input_tokens?: number; output_tokens?: number } })
+      .usage;
+    if (usage && typeof usage.input_tokens === "number") {
+      logLlmUsage({
+        provider: "anthropic",
+        callSite: "through_line",
+        model,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens ?? 0,
+      });
+    }
     const text = res.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("\n")

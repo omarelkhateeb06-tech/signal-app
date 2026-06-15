@@ -282,7 +282,7 @@ export async function getOrGenerateCommentary(
   });
 
   // ---- 4 & 5. Call + parse, with one parse-failure retry ----
-  const callOpts = { assistantPrefill: COMMENTARY_PREFILL };
+  const callOpts = { assistantPrefill: COMMENTARY_PREFILL, callSite: "commentary" };
   let haiku: HaikuResult = await callHaikuForCommentary(
     prompt,
     deps.haiku,

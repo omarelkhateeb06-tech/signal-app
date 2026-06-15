@@ -46,6 +46,7 @@ export async function callHaikuForRelevance(
     {
       assistantPrefill: opts.assistantPrefill ?? "{",
       maxTokens: opts.maxTokens ?? RELEVANCE_DEFAULT_MAX_TOKENS,
+      callSite: "relevance",
     },
   );
 }

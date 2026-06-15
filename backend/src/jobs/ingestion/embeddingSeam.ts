@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "../../db";
 import { ingestionCandidates } from "../../db/schema";
+import { logLlmUsage } from "../../lib/llmCost";
 
 export const EMBEDDING_MODEL = "text-embedding-3-small";
 export const EMBEDDING_DIMENSIONS = 1536;
@@ -80,6 +81,16 @@ export async function computeEmbedding(
       model: EMBEDDING_MODEL,
       input,
     });
+    const usage = (response as { usage?: { prompt_tokens?: number } }).usage;
+    if (usage && typeof usage.prompt_tokens === "number") {
+      logLlmUsage({
+        provider: "openai",
+        callSite: "embedding",
+        model: EMBEDDING_MODEL,
+        inputTokens: usage.prompt_tokens,
+        outputTokens: 0,
+      });
+    }
     const embedding = response.data[0]?.embedding;
     if (!embedding || embedding.length !== EMBEDDING_DIMENSIONS) {
       return {

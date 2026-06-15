@@ -26,6 +26,7 @@
 // stumbling over a missing ANTHROPIC_API_KEY.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { logLlmUsage } from "../lib/llmCost";
 
 // Pinned dated model. Do not replace with the alias — keeping the date
 // in-repo means "which model served this commentary" is answerable
@@ -71,6 +72,9 @@ export interface HaikuCallOptions {
   // smaller value for a retry that's already known to be tighter, or
   // a larger value for an experimental depth.
   maxTokens?: number;
+  // Cost-instrumentation label for the spend log (e.g. "commentary",
+  // "relevance", "facts", "tier:accessible"). Defaults to "unlabeled".
+  callSite?: string;
 }
 
 let cachedClient: Anthropic | null = null;
@@ -136,6 +140,19 @@ export async function callHaikuForCommentary(
       },
       { signal: controller.signal },
     );
+    // Record spend. Guarded read — test mocks return a bare {content}
+    // object with no usage, which simply skips the log.
+    const usage = (res as { usage?: { input_tokens?: number; output_tokens?: number } })
+      .usage;
+    if (usage && typeof usage.input_tokens === "number") {
+      logLlmUsage({
+        provider: "anthropic",
+        callSite: opts.callSite ?? "unlabeled",
+        model,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens ?? 0,
+      });
+    }
     const continuation = res.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("\n")
