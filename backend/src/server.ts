@@ -5,6 +5,7 @@ import { runStartupEnvCheck } from "./lib/envCheck";
 import { startEmailWorker } from "./jobs/emailWorker";
 import { startEmailScheduler } from "./jobs/emailScheduler";
 import { startNativeGenerationScheduler } from "./jobs/nativeGenerationScheduler";
+import { startTopicExtractionScheduler } from "./jobs/topicExtractionScheduler";
 import { startAggregationWorker } from "./jobs/aggregationWorker";
 import { scheduleAggregationRepeatable } from "./jobs/aggregationQueue";
 import { startSourcePollWorker } from "./jobs/ingestion/sourcePollWorker";
@@ -30,6 +31,10 @@ startEmailScheduler();
 // aging out of the feed. Degrades gracefully (logs + skips) when
 // ANTHROPIC_API_KEY is unset; disable with DISABLE_NATIVE_SCHEDULER=1.
 startNativeGenerationScheduler();
+// Phase 12 — drains not-yet-attempted events for the "In Focus" topic chips
+// (LLM extraction, off the ingestion hot path). Degrades gracefully (logs +
+// skips) when ANTHROPIC_API_KEY is unset; disable with DISABLE_TOPIC_SCHEDULER=1.
+startTopicExtractionScheduler();
 startAggregationWorker();
 void scheduleAggregationRepeatable().catch((err: unknown) => {
   // eslint-disable-next-line no-console

@@ -710,6 +710,16 @@ export const events = pgTable(
     // which the feed renders as a distinct data-led card. CHECK constraint
     // lives in migration 0045.
     contentType: text("content_type"),
+    // Phase 12 — "In Focus" topic chips. Canonical entity/topic labels
+    // extracted per event by the topic-extraction job (LLM). Empty until the
+    // job processes the row. The GIN index that powers the in-focus frequency
+    // aggregation is created migration-side (0060) — GIN-on-array is awkward to
+    // express in Drizzle and unused by the ORM query layer (raw unnest).
+    topics: text("topics").array().notNull().default([]),
+    // Set when the topic-extraction job has processed this event (on success
+    // OR a genuinely-empty result). NULL = not yet attempted; the job filters
+    // on it so an empty result isn't re-queued every run.
+    topicsExtractedAt: timestamp("topics_extracted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

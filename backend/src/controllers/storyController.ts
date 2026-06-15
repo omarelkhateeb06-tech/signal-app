@@ -1468,3 +1468,43 @@ export async function getRelatedStories(
     next(error);
   }
 }
+
+// Phase 12 — "In Focus" topic chips. Aggregates the most frequent topics
+// across recently-published events (events.topics, populated out-of-band by
+// the topic-extraction job). Ordered by frequency with a min-count floor so
+// one-off labels don't surface. Events with no topics contribute nothing
+// (unnest of an empty array yields zero rows).
+const IN_FOCUS_WINDOW_DAYS = 14;
+const IN_FOCUS_MIN_COUNT = 2;
+const IN_FOCUS_LIMIT = 12;
+
+export async function getInFocusTopics(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const result = await db.execute(sql`
+      SELECT topic, COUNT(*)::int AS count
+      FROM ${events}, unnest(${events.topics}) AS topic
+      WHERE COALESCE(${events.publishedAt}, ${events.createdAt})
+            > NOW() - make_interval(days => ${IN_FOCUS_WINDOW_DAYS})
+      GROUP BY topic
+      HAVING COUNT(*) >= ${IN_FOCUS_MIN_COUNT}
+      ORDER BY count DESC, topic ASC
+      LIMIT ${IN_FOCUS_LIMIT}
+    `);
+    const rows =
+      (result as { rows?: Record<string, unknown>[] }).rows ?? [];
+    res.json({
+      data: {
+        topics: rows.map((r) => ({
+          topic: String(r.topic),
+          count: Number(r.count),
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

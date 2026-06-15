@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   getFeed,
+  getInFocusTopics,
   getNativeStories,
   getRelatedStories,
   getStoryById,
@@ -33,6 +34,8 @@ storiesRouter.get("/search", requireProfile, searchStories);
 // Phase 12r — /native MUST be registered before /:id so Express matches
 // the literal "native" segment before treating it as a UUID parameter.
 storiesRouter.get("/native", getNativeStories);
+// Phase 12 — "In Focus" topic chips. Literal segment registered before /:id.
+storiesRouter.get("/in-focus", requireProfile, getInFocusTopics);
 storiesRouter.get("/:id/related", getRelatedStories);
 storiesRouter.post("/:id/save", saveStory);
 storiesRouter.delete("/:id/save", unsaveStory);

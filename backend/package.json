@@ -22,6 +22,7 @@
     "run-ingestion-enrich": "ts-node src/scripts/runIngestionEnrich.ts",
     "run-ingestion-poll": "ts-node src/scripts/runIngestionPoll.ts",
     "run-native-generation": "ts-node src/scripts/runNativeGeneration.ts",
+    "run-topic-extraction": "ts-node src/scripts/runTopicExtraction.ts",
     "regenerate-depth-variants": "ts-node src/scripts/regenerateDepthVariants.ts",
     "backfill-generic-commentary": "ts-node src/scripts/backfillGenericCommentary.ts",
     "backfill-tier-outputs": "ts-node src/scripts/backfillTierOutputs.ts",
