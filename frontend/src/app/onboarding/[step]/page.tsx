@@ -561,7 +561,7 @@ function Screen7(): JSX.Element {
     <OnboardingShell
       step={7}
       title="Receive a daily digest email?"
-      description="A short, role-neutral roundup of the day's stories, sent in the morning."
+      description="A short roundup of the day's top stories, sent every morning."
       canContinue={canContinue}
       isSubmitting={complete.isPending}
       continueLabel="Finish"
