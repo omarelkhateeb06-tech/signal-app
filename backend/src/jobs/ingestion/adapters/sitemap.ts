@@ -40,6 +40,8 @@ const DEFAULT_LOOKBACK_DAYS = 7;
 const DEFAULT_MAX_URLS = 200;
 // Bound on sub-sitemaps followed from a <sitemapindex> per poll.
 const MAX_SUBSITEMAPS = 8;
+// Bytes to read when scanning for og:title — enough to cover <head>.
+const OG_TITLE_SCAN_BYTES = 4096;
 
 function sha256Truncated(input: string): string {
   return crypto.createHash("sha256").update(input, "utf8").digest("hex").slice(0, 32);
@@ -184,6 +186,37 @@ export function titleFromSlug(loc: string): string {
   return words.join(" ");
 }
 
+// Fetch the og:title meta tag from the first OG_TITLE_SCAN_BYTES of an article
+// page. Falls back to null on any fetch error, missing tag, or blank value.
+// Both attribute orderings of <meta property="og:title" content="..."> are matched.
+async function fetchOgTitleFromPage(url: string, ua: string): Promise<string | null> {
+  try {
+    const res = await requestOnce(url, ua);
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const decoder = new TextDecoder();
+    let text = "";
+    let totalBytes = 0;
+    try {
+      while (totalBytes < OG_TITLE_SCAN_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        totalBytes += value.length;
+      }
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+    const match =
+      /<meta\s[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i.exec(text) ??
+      /<meta\s[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i.exec(text);
+    const title = match?.[1]?.trim() ?? null;
+    return title && title.length > 0 ? title : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildCandidate(entry: SitemapUrl, publishedAt: Date): Candidate {
   let url = entry.loc;
   try {
@@ -219,6 +252,7 @@ export async function sitemapAdapter(ctx: AdapterContext): Promise<AdapterResult
   const maxUrls = typeof cfg.maxUrls === "number" ? cfg.maxUrls : DEFAULT_MAX_URLS;
   const sitemapFilter =
     typeof cfg.sitemapFilter === "string" ? cfg.sitemapFilter : null;
+  const fetchOgTitleEnabled = cfg.fetchOgTitle === true;
 
   const rootXml = await fetchText(ctx.endpoint, ua);
 
@@ -275,12 +309,26 @@ export async function sitemapAdapter(ctx: AdapterContext): Promise<AdapterResult
   candidates.sort(
     (a, b) => (b.publishedAt?.getTime() ?? 0) - (a.publishedAt?.getTime() ?? 0),
   );
+  const final = candidates.length > maxUrls ? candidates.slice(0, maxUrls) : candidates;
   if (candidates.length > maxUrls) {
     // eslint-disable-next-line no-console
     console.log(
       `[sitemap-adapter] capped at maxUrls=${maxUrls} (matched ${candidates.length} in window) — raise config.maxUrls to widen`,
     );
-    return { candidates: candidates.slice(0, maxUrls) };
   }
-  return { candidates };
+
+  // og:title upgrade — replace slug-derived titles with real page headlines.
+  // Runs only when config.fetchOgTitle is true; any per-URL fetch error falls
+  // back silently to the slug-derived title already on the candidate.
+  if (fetchOgTitleEnabled) {
+    for (let i = 0; i < final.length; i++) {
+      if (i > 0) await sleep(INTER_REQUEST_DELAY_MS);
+      const ogTitle = await fetchOgTitleFromPage(final[i]!.url, ua);
+      if (ogTitle) {
+        final[i] = { ...final[i]!, title: ogTitle };
+      }
+    }
+  }
+
+  return { candidates: final };
 }
