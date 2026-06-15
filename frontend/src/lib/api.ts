@@ -325,6 +325,18 @@ export async function getInFocusRequest(): Promise<InFocusTopic[]> {
   return res.data.data.topics;
 }
 
+// Phase 12 — coverage/activity dashboard.
+export interface DashboardData {
+  total_events_30d: number;
+  sector_counts: Array<{ sector: string; count: number }>;
+  volume_by_day: Array<{ date: string; count: number }>;
+}
+
+export async function getDashboardRequest(): Promise<DashboardData> {
+  const res = await api.get<{ data: DashboardData }>("/api/v1/dashboard");
+  return res.data.data;
+}
+
 export async function getRelatedStoriesRequest(id: string): Promise<Story[]> {
   const res = await api.get<{ data: { stories: Story[] } }>(
     `/api/v1/stories/${id}/related`,

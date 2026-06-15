@@ -18,6 +18,7 @@ import { TrialBadge } from "@/components/layout/TrialBadge";
 
 const PRIMARY_NAV: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/feed", label: "Feed" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/saved", label: "Saved" },
   { href: "/search", label: "Search" },
   { href: "/settings", label: "Settings" },

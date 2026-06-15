@@ -14,6 +14,7 @@ import { emailsRouter } from "./routes/emails";
 import { engagementRouter } from "./routes/engagement";
 import { onboardingRouter } from "./routes/onboarding";
 import { storiesRouter } from "./routes/stories";
+import { dashboardRouter } from "./routes/dashboard";
 import { teamsRouter } from "./routes/teams";
 import { usersRouter } from "./routes/users";
 import { v2Router } from "./routes/v2";
@@ -86,6 +87,7 @@ export function createApp(): Express {
   app.use("/api/v1/onboarding", onboardingRouter);
   app.use("/api/v1/engagement", engagementRouter);
   app.use("/api/v1/stories", storiesRouter);
+  app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
