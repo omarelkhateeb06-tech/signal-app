@@ -2,8 +2,10 @@
 
 **Document purpose:** Single consensus document covering both product strategy (what SIGNAL is, what it becomes over time) and engineering phasing (what we build to get there). Engineering detail level intended for use as a working reference across Claude Code sessions. Non-engineering concerns (financials, customer acquisition, legal structure beyond what blocks engineering) deliberately excluded — covered elsewhere.
 
-**Snapshot date:** June 6, 2026
-**Status:** V1 Extended engineering-complete through June 1, 2026. Native posts pipeline expanded to 7 generators with 25/day global cap. Source registry at 70 sources (59 active, 11 disabled). June 1 cluster shipped: drizzle-orm security upgrade, test suite cleanup, feed fixes (events-only, pagination, lead-image), new generators (cross-sector chain, tool spotlight), Treatment 2 prompt rewrites, Lighthouse quick wins, commentary date anchor. enrichmentJob.test.ts failures fixed. Commentary hook improvement + sector mismatch + CLAUDE.md doc in progress.
+**Snapshot date:** June 14, 2026
+**Status:** Ingestion track feature-complete (migrations 0000–0057). All adapter types shipped: `rss`, `arxiv_atom`, `sec_edgar_json`, `hackernews_api`, `reddit_api`, `github_api`, `sec_form_d`, `fred_api`, `sitemap`, `native_generator`. Feed is Editorial Redesign v2, events-only. Through-Line briefing, paywall, daily digest, and AI-image labeling all live on prod. **Launch gate: Phase 12h (Stripe billing)** — blocked on LLC + Stripe account from Omar. All other pre-beta engineering is shipped or post-launch polish.
+
+> **Historical session notes (June 6–14) are preserved verbatim below** as > annotation blocks throughout the document. They contain detailed commit SHAs, migration archaeology, and decision rationale. The sections below reflect the consolidated current-state view; the annotations add depth.
 
 > **JUNE 6, 2026 UPDATE (added — nothing below removed):** Two major things landed since the June 1 snapshot. (1) **Editorial Redesign v2 shipped + deployed to production** (PR #144) — content-type-aware feed, THE CONNECTION illustrated hero, lead-with-explanation cards, stickiness pass (thumbnails, tier-gated Pro teaser, "since your last visit" return loop), the Earnings/SEC data-led card (migration 0045 `content_type`), and the Signal Originals band rebuilt on the card system. See new §6.19. (2) A **moat-coverage audit (8-advisor, ~7.5/10)** identified the missing *real-time / social* source layer (X takes, GitHub repos, tool/startup launches, real-time community sentiment) and produced a dedicated spec — now scoped as **its own phase, Phase 12R / "V1·Live"**. See new §3 "V1·Live", new §6.20, and `docs/REALTIME_SIGNAL_LAYER.md`. A new **Unit Economics / Cost Model** section was added (§19) with verified June 2026 API pricing. All prior content is retained verbatim; statuses are advanced via additive annotations, not edits.
 
@@ -831,48 +833,42 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 
 ---
 
-## 17. Immediate Next Actions
+## 17. Immediate Next Actions (updated 2026-06-14)
 
-**Engineering — in active CC session (carried from June 1):**
-1. **Commentary hook improvement** (Phase 12p) — Rewrite System B accessible/briefed/technical tier prompts in `commentaryPromptV2.ts` to open with a hook. Apply to all ingested events. *(June 6: the lead-with-explanation surface ships this; confirm the prompt rewrite itself landed.)*
-2. **Sector mismatch fix** (Phase 12n.7) — Strengthen HN repo discovery author-stage quality gate to decline non-AI tools. openrsync is the observed instance.
-3. **CLAUDE.md lockfile documentation** (Phase 12n.7) — Document `backend/package-lock.json` regeneration in CLAUDE.md §15.
+**Launch gate — the single thing blocking public launch:**
+1. **Phase 12h (Stripe billing)** — Omar: LLC formation → business bank account → Stripe account → publishable key + secret key + price ID ($10/mo) + webhook signing secret → hand keys to CC → 1–2 sessions to build checkout, webhook handler, `tier='pro'` flip, cancel/manage portal. `/upgrade` page has "Coming soon" ready to wire.
 
-**Engineering — Real-Time Signal Layer (new primary track, ADDED June 6):**
-4. **Deep-research pass (gating — run before building):**
-   - Confirm whether `github-trending-native` / `tool-spotlight-native` are *producing* in prod (admin status route / native-archive query by generator_type).
-   - Verify current Reddit API terms + free-tier limits for the planned subreddit read volume (commercial-contract trigger).
-   - Verify current X API pay-per-use mechanics + ToS for the curated-allowlist approach; document Bright Data trade-offs. *(Pricing gathered June 6 — §19; remaining work is prod-status + ToS confirmation.)*
-5. **Draft starter allowlists** — X accounts + subreddits per sector (for Omar's edit) → unblocks the curation decision.
-6. **Phase 12R.A (free breadth)** once research clears: activate Reddit (registry flip + subreddits, on the free non-commercial tier during beta), seed Product Hunt as an `rss` source, verify/activate GitHub trending. Add THE LAUNCH card + the `what_to_do_with_it` hook.
-7. **Phase 12R.B (X)** — held on Omar's X-access + budget decision.
+**Engineering — pre-beta polish (non-blocking, do before public cut):**
+2. **Commentary hook improvement** — System B tier prompts (`commentaryPromptV2.ts`) should open with a hook sentence; banned openers listed in §6.17. Verify the prompt rewrite itself landed (the lead-with-explanation redesign surfaces whatever quality the prompt produces — if the prompt still opens analytically, update it).
+3. **Sector mismatch fix** — HN repo discovery author-stage quality gate: add an explicit decline rule for tools with no AI relevance. `openrsync` (BSD rsync clone, tagged `sector: ai`) is the canonical example.
+4. **Comment counts in feed cards** — general per-card comment badge. Practitioner "discussed" count already ships on brief cards; extend to all card types.
+5. **Native post detail view** — make the 200-word synthesis body the hero of the native-post detail panel (currently buried; real article body is promoted instead).
+6. **API cost instrumentation** — log real per-day Anthropic/OpenAI spend; cross-check against Railway/Anthropic invoices for ground-truth unit economics (§19 has estimates; get actuals).
 
-**Engineering — soon before beta (carried from June 1, statuses updated in §6.18/§7.3):**
-8. **Custom illustrations for native posts** (Phase 12q) — auto-generation to wire (`illustration_url` renders today).
-9. **Comment counts in feed cards** (Phase 12q) — general badge (practitioner "discussed" already shipped).
-10. ~~**searchStories / getRelatedStories rewrite**~~ — ✅ already done (12p/12q); was stale-flagged. No action needed.
-11. **Native post detail view** (Phase 12q) — synthesis body as hero of the detail panel.
-12. **Gate/remove `/redesign-preview`** before public launch (ADDED June 6).
-13. **API cost instrumentation** — log real per-day Anthropic/OpenAI spend for ground-truth unit economics (ADDED June 6, §19).
+**Engineering — Phase 12R (Real-Time Layer):**
+- ✅ **12R.A SHIPPED** (PR #145) — Product Hunt (`rss`, `content_type='launch'` → THE LAUNCH card), direct `github_api` adapter (WORTH AN AFTERNOON), `what_to_do_with_it` hook across all tier prompts. Migrations 0046–0048.
+- ⚙️ **Reddit AI/semis** — migration 0058 seeds `reddit-ai` (MachineLearning + LocalLLaMA) and `reddit-semis` (chipdesign + ASML). Adapter is live and key-gated; rows go active once `REDDIT_CLIENT_ID`/`SECRET` are set on Railway.
+- ⏸️ **Phase 12R.B (X/Twitter)** — held on Omar's access + budget decision (~$300–600/mo pay-per-use; see §19).
 
-**Engineering — later (12j/k/l frontend design pass):**
-14. Topic chips / "In Focus" anchors.
-15. Editorial typography pass (dek lines, hero overlays) — *largely shipped via the Swiss type system; remaining items are non-feed surfaces.*
-16. Full sourced-article detail view redesign.
+**Operational (Omar's actions, ordered by lead time):**
+1. **LLC formation** — longest lead-time item; unblocks bank + Stripe. Start if not in motion.
+2. **Stripe** → publishable key + secret key + price ID + webhook secret → hand to CC → 12h ships.
+3. **Railway env vars** (four adapters log-and-skip until set — all free-tier keys):
+   - `FRED_API_KEY` → fred.stlouisfed.org/docs/api/api_key.html
+   - `YOUTUBE_API_KEY` → Google Cloud Console → YouTube Data API v3
+   - `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` → reddit.com/prefs/apps (type: script)
+4. **Domain purchase** → point at Vercel → update `FRONTEND_URL` + CORS allowlist.
+5. **SendGrid domain auth** — SPF/DKIM/DMARC records; emails hit spam without this.
+6. **Privacy policy + ToS + refund policy** — required before collecting payment publicly.
+7. **Support email** — users need a contact point before public launch.
+8. **X API access decision** — pay-per-use (~$300–600/mo) or defer Phase 12R.B.
+9. **First 10 beta users** — identify + outreach in parallel with LLC/Stripe.
+10. **Trademark search "Valo"** + brand decision — ship as SIGNAL or rename first.
 
-**Operational (all blocked on Omar, not engineering):**
-17. **LLC formation** — longest lead-time item. Unblocks bank + Stripe. If not actively in motion, start today.
-18. **Domain purchase** — parallel with LLC.
-19. **SendGrid domain auth** — SPF/DKIM/DMARC. Emails will hit spam without this.
-20. **Privacy policy + ToS** — required before collecting user data publicly.
-21. **Support email** — users need a contact point.
-22. **Reddit OAuth credentials** — follow up on pending app registration (#83). Needed for Real-Time Phase A.
-23. **X API access decision** (~$300–600/mo pay-per-use) + budget ceiling — needed for Real-Time Phase B (ADDED June 6).
-24. **12h (Stripe)** — 1–2 CC sessions once LLC + bank + Stripe account exist.
-25. **First 10 beta users identified** — start outreach.
-26. **Trademark search "Valo"** — before public announcement.
-
-**Parallel from now:** LLC formation, domain purchase, trademark search, ToS/privacy/refund drafting, Reddit app registration follow-up, beta user outreach.
+**Engineering — later (post-launch):**
+- Topic chips / "In Focus" anchors.
+- Data dashboards (AI Compute Cost Tracker, Semiconductor Supply Index, Macro-to-AI).
+- Full sourced-article detail view redesign.
 
 ---
 
@@ -881,7 +877,7 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 **Calendar projection intentionally not included.** Sequence is locked; specific dates are not.
 
 **Document owner:** Omar Elkhateeb
-**Last updated:** June 6, 2026 (Editorial Redesign v2 shipped + deployed §6.19; Real-Time Signal Layer scoped as Phase 12R / "V1·Live" §3/§6.20; moat-coverage audit added; Unit Economics §19 added. June 1 snapshot and all prior content retained verbatim — June 6 changes are additive annotations.)
+**Last updated:** June 14, 2026 (Ingestion track declared feature-complete — all non-paid adapters shipped through migration 0057. §17 Immediate Next Actions consolidated to reflect HEAD: 12h Stripe is the single engineering launch gate. Migration 0058 seeds Reddit AI/semis rows. Migration 0059 enables og:title for anthropic-news sitemap source. Dockerfile BuildKit cache mounts added. CLAUDE.md updated with Through-Line docs, 5-Haiku-client note, migration list archaeology label, and expanded §15 shipped table through 12R.A + ingestion expansion. All prior content and session annotation blocks retained verbatim.)
 **Review cadence:** After each major phase completion, or when scope changes materially.
 
 ---

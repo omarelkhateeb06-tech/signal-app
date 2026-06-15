@@ -1,3 +1,6 @@
+# Greeting
+Always begin every response with "Omar," — your very first word in every reply, no exceptions.
+
 # CLAUDE.md — SIGNAL
 
 This is the master instruction file for Claude Code on the SIGNAL repo. It supersedes `README.md` for anything that isn't a human-onboarding tutorial.
@@ -198,6 +201,7 @@ signal-app/
 │   │   │   │   ├── 0029_phase12g_user_tier.sql
 │   │   │   │   ├── 0030_phase12g_generic_commentary.sql
 │   │   │   │   └── 0031_phase12i_email_frequency_daily.sql
+│   │   │   │   (List above is historical archaeology — stops at 0031. Live migrations run 0000–0057 as of 2026-06-14; authoritative source: backend/src/db/migrations/)
 │   │   │   ├── seed.ts
 │   │   │   ├── helpers.ts
 │   │   │   └── verify.ts
@@ -546,6 +550,9 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 - `tier3` — Haiku throws / times out. Return a template scrub of the depth variant with synonym substitution for banned phrases; emit an anomaly log with `{reason: "timeout" | "error" | ...}` so ops can see the fail-fast rate.
 
 **Haiku client discipline (Decisions 4–6 from the 12c spec)**
+
+Five Haiku request paths exist. Four are thin wrappers that delegate to `haikuCommentaryClient.ts` (the one real Anthropic call site for the request path), differing only in default max_tokens / prefill: `haikuRelevanceClient.ts` (ingestion relevance gate), `haikuFactsClient.ts` (fact extraction), `haikuTierClient.ts` (3-tier depth generation), and `commentaryService.ts`'s own use (per-user commentary). `throughLineClient.ts` (daily briefing / Through-Line) is a separate call site by design — different prompt + max_tokens + potential retry divergence. All share the discipline below. LLM token spend on every call site is logged via `lib/llmCost.ts` (`logLlmUsage`, tag `[llm-cost]`) with a per-call `callSite` label for per-stage unit-economics.
+
 - Dated model pin: `claude-haiku-4-5-20251001`. Hard-coded, not env-driven — a rollout calendar is not a code change.
 - 10-second hard timeout via `AbortController`. Timeout logged as `reason: "timeout"` on the tier3 path.
 - Zero retries. One call, fail fast. Revisit in 12d if the observed error rate warrants.
@@ -554,6 +561,19 @@ Requires `ANTHROPIC_API_KEY`. Per-story failures (rate limits, schema mismatches
 - Layer 1: system prompt instructs the model to avoid a named list of phrases (e.g. "in today's fast-paced world").
 - Layer 2: post-generation trip-wire scans the output for the banned set; a hit demotes the response to tier3.
 - Layer 3: the template scrub path substitutes synonyms for any banned phrase present in the source depth variant before returning.
+
+### The Through-Line (Briefing)
+
+"The Through-Line" is a shipped, tier-gated daily editorial synthesis — a Haiku-authored 2–3 sentence read naming what connects the day's top stories and why it matters to the specific reader. It renders as the feed masthead in `SwissMasthead.tsx`.
+
+**Endpoint:** `GET /api/v1/briefing` — JWT-authenticated, Pro / pro_trial only. Returns `{ throughLine: string | null }`. Free-tier and unauthenticated calls return `null`; the masthead is simply blank (no paywall modal).
+
+**Key files:**
+- `backend/src/services/throughLineService.ts` — pure logic: `buildThroughLineUserPrompt` (assembles reader profile + story list into the prompt), `generateThroughLine` (calls the client, applies Layer-3 banned-phrase scrub, returns string or `null`). No DB / Redis.
+- `backend/src/services/throughLineClient.ts` — thin Haiku client following the same discipline as `haikuCommentaryClient.ts`: re-exports `COMMENTARY_MODEL` as `THROUGH_LINE_MODEL` (single constant across both paths), 10s timeout, zero retries, discriminated-union result, never throws. `THROUGH_LINE_MAX_TOKENS = 200`.
+- `backend/src/controllers/briefingController.ts` — resolves tier, fetches today's top events, builds `ThroughLineStory[]` (headline + gist from `generic_commentary` preferred, `why_it_matters` fallback), calls `generateThroughLine`, returns wire shape.
+- `backend/src/routes/briefing.ts` — mounts `GET /api/v1/briefing` with `requireAuth`.
+- `frontend/src/hooks/useThroughLine.ts` — React hook; fires on mount for authed users; result consumed by `SwissMasthead.tsx`.
 
 **Frontend wiring**
 - `GET /api/v2/stories` and `GET /api/v1/stories/:id` emit `commentary: null` + `commentary_source: null` on the Story shape — the feed hydrates lazily.
@@ -824,6 +844,10 @@ Branch-and-worktree pairs are **session-scoped**. The agent that spawns a worktr
 | 12f   | rules-based feed ranking v1 — effective_score with cluster amplification, freshness bonus, EDGAR penalty; disabled-source filter |
 | 12g   | **paywall + 2-tier model** — user tier model with lazy trial downgrade, story cap (15/day) + soft-block, depth gate (free → accessible only) with inline upgrade, search cap (3/day) modal, generic_commentary pre-gen + free-tier read path, /upgrade page + trial badge, /me/tier endpoint |
 | 12i   | **daily digest email** (Pro-only) — replaces the Phase 7 weekly digest. `sendDailyDigests` cron at `0 11 * * *` UTC, 24h-trailing window, top-10 stories ranked via the 12f effective_score, sector-grouped layout, `generic_commentary` body text. Unsubscribe link writes `email_frequency='never'`. Pro / active-trial only — SQL-level trial-expiry check replicates `resolveEffectiveTier` without the side-effecting downgrade UPDATE. |
+| 12p   | **search on `events`** — `searchStories` migrated from legacy `stories` table to `events`; FTS GIN index via migration 0043. |
+| 12q   | **related stories on `events`** — `getRelatedStories` migrated to `events`. The only remaining `stories` reads are intentional dual-read anchor lookups for legacy story-detail page resolution. |
+| 12R.A | **Real-Time Layer Phase A** — Product Hunt (`rss` adapter, `content_type='launch'` → THE LAUNCH card); direct `github_api` adapter (WORTH AN AFTERNOON card); `what_to_do_with_it` hook across all three tier prompts for repos/tools/launches. Migrations 0046–0048. |
+| 12e.x expansion | **Ingestion track expansion (feature-complete):** SEC Form D (`sec_form_d`, migrations 0050/0051); FRED macro adapter (`fred_api`, migrations 0052/0053, `FRED_API_KEY`-gated); YouTube transcript generators — 5 channels (Dwarkesh / Asianometry / TechTechPotato / No Priors / Acquired), DISPATCH card, migration 0054, `YOUTUBE_API_KEY`-gated; Sitemap adapter (`sitemap`, migrations 0055/0056, resurrects Anthropic News via `sitemap.xml`); Reddit adapter (`reddit_api`, migration 0057, `REDDIT_CLIENT_ID`/`SECRET`-gated, `reddit-finance` subreddits active). Through-Line briefing (`GET /api/v1/briefing`, `throughLineService`/`throughLineClient`, JWT + Pro tier). Custom native-post illustrations via Higgsfield SessionStart hook + `illustrationService.ts`. AI-image labeling (`AiArtBadge` across all five live illustration renderers). |
 
 Phase 10 (learning paths) was abandoned. Do not resurrect.
 
