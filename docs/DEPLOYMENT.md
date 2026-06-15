@@ -88,3 +88,39 @@ For ad-hoc SQL against the dev Neon database, use the Neon web editor. Direct `p
 - `FRONTEND_URL` — stable frontend origin (e.g. the Vercel `git-main` alias)
 - `ALLOWED_ORIGINS` — optional additional exact-match origins, comma-separated
 - `ALLOWED_ORIGIN_PATTERNS` — optional regex overrides for dynamic origins; defaults cover this project's Vercel deploy URLs
+
+### Feature-gated / optional env vars
+
+The adapters and pipelines below **log-and-skip** when their key is absent — the app boots fine without them; the feature is simply inert until the key is set. `envCheck.ts` remains the source of truth for what's hard-required.
+
+- `ANTHROPIC_API_KEY` — Haiku commentary / relevance / facts / tiers / Through-Line / native posts. Without it the request path falls back to template scrubs and ingestion enrichment no-ops.
+- `OPENAI_API_KEY` — `text-embedding-3-small` for cross-source clustering.
+- `FRED_API_KEY` — FRED macro adapter (`fred_api`).
+- `YOUTUBE_API_KEY` — YouTube transcript generators.
+- `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` — Reddit adapter (`reddit_api`); activates `reddit-finance` and the `reddit-ai` / `reddit-semis` sources seeded in migration 0058.
+- `GITHUB_TOKEN` — optional; raises the `github_api` adapter's rate-limit ceiling (works unauthenticated at a lower limit).
+- `LLM_COST_LOG` — set to `0` to silence the `[llm-cost]` spend lines (see below). Any other value (or unset) leaves them on.
+
+## LLM spend instrumentation
+
+Every Anthropic and OpenAI call emits one structured line to stdout (captured in Railway logs), tagged `[llm-cost]`:
+
+```
+[llm-cost] {"provider":"anthropic","callSite":"tier:accessible","model":"claude-haiku-4-5-20251001","inputTokens":1200,"outputTokens":300,"costUsd":0.0027,"priced":true}
+```
+
+`callSite` attributes spend per pipeline stage: `commentary`, `relevance`, `facts`, `tier:<depth>`, `through_line`, `embedding`, `depth_variant` (native authoring shows as `unlabeled`). `priced:false` flags a model with no entry in `lib/llmCost.ts` (`costUsd` is then 0 — add the price).
+
+Reconstruct per-day spend from a log export:
+
+```bash
+# Total USD across all calls in the export
+grep -o '\[llm-cost\] .*' railway-logs.txt | sed 's/^\[llm-cost\] //' \
+  | jq -s 'map(.costUsd) | add'
+
+# Spend grouped by stage (the §19 unit-economics view)
+grep -o '\[llm-cost\] .*' railway-logs.txt | sed 's/^\[llm-cost\] //' \
+  | jq -s 'group_by(.callSite) | map({callSite: .[0].callSite, usd: (map(.costUsd) | add), calls: length})'
+```
+
+This is the ground-truth alternative to the estimates in `ROADMAP.md` §19 — cross-check against the Anthropic / OpenAI invoices.
