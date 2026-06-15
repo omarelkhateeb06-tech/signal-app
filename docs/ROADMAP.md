@@ -655,7 +655,7 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 | Stripe account | Blocked on LLC |
 | ToS / privacy / refund policy | Not done — required before collecting user data publicly |
 | Support email | Not done — users need a contact point |
-| Cookie consent / GDPR | Not done — should-fix before public launch |
+| Cookie consent / GDPR | ✅ Shipped June 14 — consent banner + `hasAnalyticsConsent()` gate (analytics opt-in). Privacy-policy link still to add once that page exists. |
 | Rollback plan | Not documented |
 | Trademark search ("Valo") | Deferred |
 | Reddit app registration | Form submitted, awaiting response (#83) |
@@ -872,7 +872,8 @@ What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-F
 
 **Engineering — later (post-launch):**
 - ~~Topic chips / "In Focus" anchors~~ — ✅ shipped June 14 (LLM extraction → in-focus endpoint → chips bar).
-- Data dashboards (AI Compute Cost Tracker, Semiconductor Supply Index, Macro-to-AI).
+- ✅ **Coverage dashboard shipped June 14** (`/dashboard` — events by sector + daily volume + In Focus, recharts). The market-data modules below remain (need gated feeds).
+- Data dashboards — market modules (AI Compute Cost Tracker, Semiconductor Supply Index, Macro-to-AI) — need FRED/external feeds.
 - Full sourced-article detail view redesign.
 
 ---
