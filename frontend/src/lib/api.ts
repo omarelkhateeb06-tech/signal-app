@@ -312,6 +312,19 @@ export async function getNativeStoriesRequest(
   return res.data.data;
 }
 
+// Phase 12 — "In Focus" topic chips: top topics across recent events.
+export interface InFocusTopic {
+  topic: string;
+  count: number;
+}
+
+export async function getInFocusRequest(): Promise<InFocusTopic[]> {
+  const res = await api.get<{ data: { topics: InFocusTopic[] } }>(
+    "/api/v1/stories/in-focus",
+  );
+  return res.data.data.topics;
+}
+
 export async function getRelatedStoriesRequest(id: string): Promise<Story[]> {
   const res = await api.get<{ data: { stories: Story[] } }>(
     `/api/v1/stories/${id}/related`,

@@ -24,6 +24,7 @@ vi.mock("@/lib/api", () => ({
   listTeamsRequest: vi.fn(),
   getMyProfileRequest: vi.fn(),
   getMyTierRequest: vi.fn(),
+  getInFocusRequest: vi.fn().mockResolvedValue([]),
   extractApiError: (_err: unknown, fallback: string) => fallback,
 }));
 
