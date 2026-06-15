@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Mono, IBM_Plex_Sans, Lora, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 // Design system — the Swiss editorial type stack, matching the briefing
 // design. Four Google Fonts via next/font for zero-runtime-cost subsetting
@@ -73,6 +74,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-bg font-serif text-ink antialiased">
         <QueryProvider>{children}</QueryProvider>
+        <ConsentBanner />
       </body>
     </html>
   );
