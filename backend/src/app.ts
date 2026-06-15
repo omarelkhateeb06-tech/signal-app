@@ -7,6 +7,8 @@ import { apiLimiter, authLimiter, emailLimiter } from "./middleware/rateLimiter"
 import { installSentryErrorHandler } from "./lib/sentry";
 import { apiKeysRouter } from "./routes/apiKeys";
 import { authRouter } from "./routes/auth";
+import { billingRouter } from "./routes/billing";
+import { handleWebhook as billingWebhook } from "./controllers/billingController";
 import { briefingRouter } from "./routes/briefing";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
@@ -75,6 +77,15 @@ export function createApp(): Express {
 
   app.use(helmet());
   app.use(cors(buildCorsOptions()));
+
+  // Stripe webhook must receive the raw body before express.json() parses it.
+  // express.raw() captures the Buffer; billingWebhook verifies the signature.
+  app.post(
+    "/api/v1/billing/webhook",
+    express.raw({ type: "application/json" }),
+    billingWebhook,
+  );
+
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
 
@@ -91,6 +102,7 @@ export function createApp(): Express {
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
+  app.use("/api/v1/billing", billingRouter);
   app.use("/api/v1/briefing", briefingRouter);
 
   // v2 Intelligence API: API-key authenticated, per-key rate limited.

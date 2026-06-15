@@ -6,11 +6,13 @@ import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { useUpdateMyProfile } from "@/hooks/useProfile";
 import {
+  createPortalSession,
   extractApiError,
   getMyProfileRequest,
   updateEmailPreferencesRequest,
   updateMeRequest,
 } from "@/lib/api";
+import { useTier } from "@/hooks/useTier";
 import {
   DEFAULT_DEPTH_PREFERENCE,
   DEPTH_PREFERENCES,
@@ -49,8 +51,12 @@ interface ToastState {
 
 export default function SettingsPage(): JSX.Element {
   const { user, setUser } = useAuth();
+  const tierQuery = useTier();
+  const tier = tierQuery.data?.tier;
 
   const [loading, setLoading] = useState(true);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
@@ -606,6 +612,43 @@ export default function SettingsPage(): JSX.Element {
           </button>
         </div>
       </section>
+
+      {/* Phase 12h — subscription management for paying users */}
+      {(tier === "pro" || tier === "pro_trial") && (
+        <section className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
+          <div>
+            <h2 className="text-lg font-semibold">Subscription</h2>
+            <p className="text-xs text-muted-foreground">
+              Manage your plan, payment method, or cancel.
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={async () => {
+                setPortalLoading(true);
+                setPortalError(null);
+                try {
+                  const { url } = await createPortalSession();
+                  window.location.href = url;
+                } catch (e) {
+                  setPortalError(extractApiError(e, "Couldn't open billing portal."));
+                  setPortalLoading(false);
+                }
+              }}
+              disabled={portalLoading}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {portalLoading ? "Opening…" : "Manage billing"}
+            </button>
+            {portalError && (
+              <p className="text-sm text-destructive" role="alert">
+                {portalError}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {toast && (
         <Toast

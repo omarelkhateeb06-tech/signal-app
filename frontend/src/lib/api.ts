@@ -101,6 +101,11 @@ export async function createCheckoutSession(
   return res.data.data;
 }
 
+export async function createPortalSession(): Promise<CheckoutSession> {
+  const res = await api.post<{ data: CheckoutSession }>("/api/v1/billing/portal");
+  return res.data.data;
+}
+
 export interface SignupInput {
   email: string;
   password: string;

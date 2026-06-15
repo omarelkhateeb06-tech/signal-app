@@ -129,6 +129,9 @@ export const users = pgTable("users", {
   tier: text("tier").$type<UserTier>().notNull().default("pro_trial"),
   trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
   tierChangedAt: timestamp("tier_changed_at", { withTimezone: true }),
+  // Phase 12h — Stripe billing. Both null until first successful checkout.
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
