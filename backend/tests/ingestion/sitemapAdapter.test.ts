@@ -61,6 +61,32 @@ function errorResponse(status: number): Response {
   } as unknown as Response;
 }
 
+// A streaming HTML response so the adapter's og:title reader can pull bytes
+// off `body.getReader()` (the og:title scan reads the first ~4KB).
+function htmlResponse(html: string): Response {
+  const bytes = new TextEncoder().encode(html);
+  let sent = false;
+  return {
+    status: 200,
+    headers: { get: () => "text/html" },
+    text: async () => html,
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) return { done: true, value: undefined };
+          sent = true;
+          return { done: false, value: bytes };
+        },
+        cancel: async () => undefined,
+      }),
+    },
+  } as unknown as Response;
+}
+
+function pageWithOgTitle(title: string): string {
+  return `<!DOCTYPE html><html><head><meta property="og:title" content="${title}"><title>ignored</title></head><body>x</body></html>`;
+}
+
 // Route fetches by URL substring → an XML body or an HTTP error code.
 function installFetchMock(routes: Array<[string, string | number]>): jest.Mock {
   const fn = jest.fn(async (url: string) => {
@@ -254,5 +280,76 @@ describe("sitemapAdapter", () => {
     ]);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("capped at maxUrls=2"));
     logSpy.mockRestore();
+  });
+
+  it("fetchOgTitle replaces slug titles with the page og:title", async () => {
+    const fn = jest.fn(async (url: string) => {
+      if (url.includes("sitemap.xml")) {
+        return xmlResponse(
+          urlset([
+            {
+              loc: "https://www.anthropic.com/news/acquires-vercept",
+              lastmod: daysAgoIso(1),
+            },
+          ]),
+        );
+      }
+      return htmlResponse(
+        pageWithOgTitle("Anthropic Acquires Vercept to Build Agentic Browsing"),
+      );
+    });
+    global.fetch = fn as unknown as typeof fetch;
+
+    const result = await sitemapAdapter(
+      makeCtx({ config: { pathPrefix: "/news/", fetchOgTitle: true } }),
+    );
+    expect(result.candidates[0]!.title).toBe(
+      "Anthropic Acquires Vercept to Build Agentic Browsing",
+    );
+    // Both the sitemap AND the article page were fetched (slug-only mode would
+    // never touch the article URL).
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the slug title when og:title is missing or the page fails", async () => {
+    const fn = jest.fn(async (url: string) => {
+      if (url.includes("sitemap.xml")) {
+        return xmlResponse(
+          urlset([
+            { loc: "https://www.anthropic.com/news/no-og-tag", lastmod: daysAgoIso(1) },
+            { loc: "https://www.anthropic.com/news/page-errors", lastmod: daysAgoIso(2) },
+          ]),
+        );
+      }
+      if (url.includes("page-errors")) return errorResponse(500);
+      return htmlResponse(
+        "<!DOCTYPE html><html><head><title>no og here</title></head><body>x</body></html>",
+      );
+    });
+    global.fetch = fn as unknown as typeof fetch;
+
+    const result = await sitemapAdapter(
+      makeCtx({ config: { pathPrefix: "/news/", fetchOgTitle: true } }),
+    );
+    const byUrl = Object.fromEntries(
+      result.candidates.map((c) => [c.url, c.title]),
+    );
+    expect(byUrl["https://www.anthropic.com/news/no-og-tag"]).toBe("No Og Tag");
+    expect(byUrl["https://www.anthropic.com/news/page-errors"]).toBe("Page Errors");
+  });
+
+  it("does not fetch article pages when fetchOgTitle is off", async () => {
+    const fn = installFetchMock([
+      [
+        "sitemap.xml",
+        urlset([
+          { loc: "https://www.anthropic.com/news/acquires-vercept", lastmod: daysAgoIso(1) },
+        ]),
+      ],
+    ]);
+    const result = await sitemapAdapter(makeCtx());
+    expect(result.candidates[0]!.title).toBe("Acquires Vercept");
+    // Only the sitemap fetch — the article page is never touched.
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
