@@ -594,7 +594,7 @@ Priority-ranked list of design/editorial patterns to implement in SIGNAL, derive
 > | 7 | Native post archive page | ✅ `/archive` |
 > | 8 | Feed card — commentary-as-primary | ✅ SHIPPED (redesign v2) |
 > | 9 | Native detail — synthesis-as-hero | 🟡 confirm in detail panel |
-> | 10 | Topic chips / "In Focus" | ⏳ Phase 13+ |
+> | 10 | Topic chips / "In Focus" | ✅ SHIPPED June 14 (LLM extraction → in-focus endpoint → chips bar) |
 > | 11 | Editorial typography pass | ✅ largely shipped (Swiss type system) |
 > | 12 | Data dashboards | ⏳ Phase 13+, post-beta |
 
@@ -846,7 +846,9 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 6. ✅ **API cost instrumentation** — `[llm-cost]` per-call logging (`lib/llmCost.ts`) across every Anthropic/OpenAI call site; aggregation recipes in `docs/DEPLOYMENT.md`.
 7. ✅ **Onboarding copy + team-feed "Load more"** — dropped internal "role-neutral" jargon from the digest opt-in; wired real team-feed pagination (backend already supported it).
 
-What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-FRED-YouTube activation / X), **a real cost-or-design decision** (topic chips need per-event entity-extraction cost; data dashboards), **real user data** (engagement ranking v2, 12o.2–5), or **live prod observation** (Sentry fingerprint grouping #66). The jest open-handle warning (#81) is an accepted `forceExit` tradeoff; worker-failure handling (#67) and search/related (12p/12q) are already done.
+**Decision-gated builds shipped June 14:** (1) **SIGNAL rating v1** — the §1 credibility differentiator, a 0–100 score per event (primary-source tier + quality + corroboration) on the feed kicker + detail. (2) **In Focus topic chips** — LLM entity extraction per event (`events.topics`, off the ingestion hot path) → `GET /api/v1/stories/in-focus` → chips bar atop the ranked stream. Brand stays SIGNAL (Valo deferred to post-trademark). **One-time prod backfill:** `npm run run-topic-extraction --workspace=backend -- --all` (or let the 30-min `TOPIC_EXTRACTION_CRON` scheduler drain it).
+
+What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-FRED-YouTube activation / X), **real user data** (engagement ranking v2, 12o.2–5), or **live prod observation** (Sentry fingerprint grouping #66). Data dashboards remain post-beta. The jest open-handle warning (#81) is an accepted `forceExit` tradeoff; worker-failure handling (#67) and search/related (12p/12q) are already done.
 
 **Engineering — Phase 12R (Real-Time Layer):**
 - ✅ **12R.A SHIPPED** (PR #145) — Product Hunt (`rss`, `content_type='launch'` → THE LAUNCH card), direct `github_api` adapter (WORTH AN AFTERNOON), `what_to_do_with_it` hook across all tier prompts. Migrations 0046–0048.
@@ -869,7 +871,7 @@ What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-F
 10. **Trademark search "Valo"** + brand decision — ship as SIGNAL or rename first.
 
 **Engineering — later (post-launch):**
-- Topic chips / "In Focus" anchors.
+- ~~Topic chips / "In Focus" anchors~~ — ✅ shipped June 14 (LLM extraction → in-focus endpoint → chips bar).
 - Data dashboards (AI Compute Cost Tracker, Semiconductor Supply Index, Macro-to-AI).
 - Full sourced-article detail view redesign.
 
