@@ -838,12 +838,15 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 **Launch gate — the single thing blocking public launch:**
 1. **Phase 12h (Stripe billing)** — Omar: LLC formation → business bank account → Stripe account → publishable key + secret key + price ID ($10/mo) + webhook signing secret → hand keys to CC → 1–2 sessions to build checkout, webhook handler, `tier='pro'` flip, cancel/manage portal. `/upgrade` page has "Coming soon" ready to wire.
 
-**Engineering — pre-beta polish (non-blocking, do before public cut):**
-2. **Commentary hook improvement** — System B tier prompts (`commentaryPromptV2.ts`) should open with a hook sentence; banned openers listed in §6.17. Verify the prompt rewrite itself landed (the lead-with-explanation redesign surfaces whatever quality the prompt produces — if the prompt still opens analytically, update it).
-3. **Sector mismatch fix** — HN repo discovery author-stage quality gate: add an explicit decline rule for tools with no AI relevance. `openrsync` (BSD rsync clone, tagged `sector: ai`) is the canonical example.
-4. **Comment counts in feed cards** — general per-card comment badge. Practitioner "discussed" count already ships on brief cards; extend to all card types.
-5. **Native post detail view** — make the 200-word synthesis body the hero of the native-post detail panel (currently buried; real article body is promoted instead).
-6. **API cost instrumentation** — log real per-day Anthropic/OpenAI spend; cross-check against Railway/Anthropic invoices for ground-truth unit economics (§19 has estimates; get actuals).
+**Engineering — pre-beta polish: ✅ DONE (June 14 session). The non-blocking engineering queue is now empty.**
+2. ✅ **Commentary hook improvement** — verified live in `commentaryPromptV2.ts` (hook + banned openers; wired via `commentaryService`).
+3. ✅ **Sector mismatch fix** — verified live in `hnRepoPrompt.ts` (AI-relevance gate declines non-AI tools with `not-ai-relevant`).
+4. ✅ **Comment counts in feed cards** — present on every surface (StoryExhibit, StoryCard, SearchResultCard).
+5. ✅ **Native post detail view** — synthesis body now leads as "The Briefing" above the personalized read (`nativeSynthesisBody` + `DetailPanel`).
+6. ✅ **API cost instrumentation** — `[llm-cost]` per-call logging (`lib/llmCost.ts`) across every Anthropic/OpenAI call site; aggregation recipes in `docs/DEPLOYMENT.md`.
+7. ✅ **Onboarding copy + team-feed "Load more"** — dropped internal "role-neutral" jargon from the digest opt-in; wired real team-feed pagination (backend already supported it).
+
+What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-FRED-YouTube activation / X), **a real cost-or-design decision** (topic chips need per-event entity-extraction cost; data dashboards), **real user data** (engagement ranking v2, 12o.2–5), or **live prod observation** (Sentry fingerprint grouping #66). The jest open-handle warning (#81) is an accepted `forceExit` tradeoff; worker-failure handling (#67) and search/related (12p/12q) are already done.
 
 **Engineering — Phase 12R (Real-Time Layer):**
 - ✅ **12R.A SHIPPED** (PR #145) — Product Hunt (`rss`, `content_type='launch'` → THE LAUNCH card), direct `github_api` adapter (WORTH AN AFTERNOON), `what_to_do_with_it` hook across all tier prompts. Migrations 0046–0048.
