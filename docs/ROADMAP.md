@@ -330,12 +330,12 @@ PR #85. Rules-based v1. effective_score composed from sector match, freshness, s
 ### 6.10 Phase 12g ✅ — Paywall Gating
 PR #90. Two-tier model (Free / Pro). 7-day trial. Story cap, depth gate, search cap, soft-block UX, generic_commentary pre-generation, `/upgrade` placeholder.
 
-### 6.11 Phase 12h ⏳ — Payment Integration (Stripe) — LEGAL-BLOCKED
-Blocked on LLC formation. `/upgrade` page has "Coming soon" button ready to wire into Stripe Checkout. Tier model, `useTier` hook, and `users.tier` column all ready.
+### 6.11 Phase 12h ✅ — Payment Integration (Stripe)
+Shipped 2026-06-16. Migration 0061 (`stripe_customer_id`, `stripe_subscription_id` on users). Stripe Checkout (monthly/annual, 7-day trial for first-time subscribers), webhook handler (`checkout.session.completed` → tier flip to pro; `customer.subscription.deleted/updated` → downgrade), billing portal. `/billing/success` and `/billing/cancel` pages. "Manage billing" section in Settings for pro users.
 
-Required before implementation: legal entity, business bank account, Stripe account, ToS, privacy policy, refund policy.
-
-**Estimate:** 1–2 CC sessions once unblocked.
+Env vars to set in Railway: `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`.
+Env vars to set in Vercel: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+After deploy: register webhook at `POST /api/v1/billing/webhook` in Stripe Dashboard, copy signing secret → `STRIPE_WEBHOOK_SECRET`.
 
 ### 6.12 Phase 12i ✅ — Daily Digest Email
 PR #91. Daily Pro-only digest. Migration 0031. `compileDailyDigest` (24h window, top-10 via effective_score, sector-grouped). React Email template. Unsubscribe via `email_frequency='never'`. Weekly digest deleted.

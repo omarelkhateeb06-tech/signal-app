@@ -24,9 +24,6 @@ function requireStripe() {
   return stripe;
 }
 
-const MONTHLY_PRICE_ID = process.env.STRIPE_PRICE_ID;
-const ANNUAL_PRICE_ID = process.env.STRIPE_ANNUAL_PRICE_ID ?? process.env.STRIPE_PRICE_ID;
-
 const checkoutBodySchema = z.object({
   plan: z.enum(["monthly", "annual"]).default("monthly"),
 });
@@ -46,7 +43,10 @@ export async function createCheckoutSession(
 
     const { plan } = checkoutBodySchema.parse(req.body);
 
-    const priceId = plan === "annual" ? ANNUAL_PRICE_ID : MONTHLY_PRICE_ID;
+    const priceId =
+      plan === "annual"
+        ? (process.env.STRIPE_ANNUAL_PRICE_ID ?? process.env.STRIPE_PRICE_ID)
+        : process.env.STRIPE_PRICE_ID;
     if (!priceId) {
       throw new AppError(
         "BILLING_UNAVAILABLE",
