@@ -833,10 +833,10 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 
 ---
 
-## 17. Immediate Next Actions (updated 2026-06-14)
+## 17. Immediate Next Actions (updated 2026-06-16)
 
-**Launch gate — the single thing blocking public launch:**
-1. **Phase 12h (Stripe billing)** — Omar: LLC formation → business bank account → Stripe account → publishable key + secret key + price ID ($10/mo) + webhook signing secret → hand keys to CC → 1–2 sessions to build checkout, webhook handler, `tier='pro'` flip, cancel/manage portal. `/upgrade` page has "Coming soon" ready to wire.
+**Launch gate — billing is now LIVE (test mode):**
+1. ✅ **Phase 12h (Stripe billing)** — shipped 2026-06-16. Stripe Checkout works end-to-end: `/upgrade` button opens hosted checkout, 7-day trial wired, webhook flips `tier='pro'` on `checkout.session.completed`. Test-mode price IDs live in Railway (`STRIPE_PRICE_ID`, `STRIPE_ANNUAL_PRICE_ID`). Switch to live-mode keys + price IDs before public launch (requires LLC/bank account — see Operational below).
 
 **Engineering — pre-beta polish: ✅ DONE (June 14 session). The non-blocking engineering queue is now empty.**
 2. ✅ **Commentary hook improvement** — verified live in `commentaryPromptV2.ts` (hook + banned openers; wired via `commentaryService`).
@@ -848,7 +848,7 @@ Co-founder/collaboration discovery. Decision after V5 behavioral data. May never
 
 **Decision-gated builds shipped June 14:** (1) **SIGNAL rating v1** — the §1 credibility differentiator, a 0–100 score per event (primary-source tier + quality + corroboration) on the feed kicker + detail. (2) **In Focus topic chips** — LLM entity extraction per event (`events.topics`, off the ingestion hot path) → `GET /api/v1/stories/in-focus` → chips bar atop the ranked stream. Brand stays SIGNAL (Valo deferred to post-trademark). **One-time prod backfill:** `npm run run-topic-extraction --workspace=backend -- --all` (or let the 30-min `TOPIC_EXTRACTION_CRON` scheduler drain it).
 
-What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-FRED-YouTube activation / X), **real user data** (engagement ranking v2, 12o.2–5), or **live prod observation** (Sentry fingerprint grouping #66). Data dashboards remain post-beta. The jest open-handle warning (#81) is an accepted `forceExit` tradeoff; worker-failure handling (#67) and search/related (12p/12q) are already done.
+What's left is genuinely blocked, not buildable now: **keys** (live Stripe keys after LLC / Reddit-FRED-YouTube activation / X), **real user data** (engagement ranking v2, 12o.2–5), or **live prod observation** (Sentry fingerprint grouping #66). Data dashboards remain post-beta. The jest open-handle warning (#81) is an accepted `forceExit` tradeoff; worker-failure handling (#67) and search/related (12p/12q) are already done.
 
 **Engineering — Phase 12R (Real-Time Layer):**
 - ✅ **12R.A SHIPPED** (PR #145) — Product Hunt (`rss`, `content_type='launch'` → THE LAUNCH card), direct `github_api` adapter (WORTH AN AFTERNOON), `what_to_do_with_it` hook across all tier prompts. Migrations 0046–0048.
@@ -856,8 +856,8 @@ What's left is genuinely blocked, not buildable now: **keys** (Stripe / Reddit-F
 - ⏸️ **Phase 12R.B (X/Twitter)** — held on Omar's access + budget decision (~$300–600/mo pay-per-use; see §19).
 
 **Operational (Omar's actions, ordered by lead time):**
-1. **LLC formation** — longest lead-time item; unblocks bank + Stripe. Start if not in motion.
-2. **Stripe** → publishable key + secret key + price ID + webhook secret → hand to CC → 12h ships.
+1. **LLC formation** — longest lead-time item; unblocks bank + live Stripe. Start if not in motion.
+2. **Stripe live-mode cutover** — once LLC + bank are ready: create live product/prices → swap `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_ANNUAL_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` in Railway to live values. Engineering is done; only keys change.
 3. **Railway env vars** (four adapters log-and-skip until set — all free-tier keys):
    - `FRED_API_KEY` → fred.stlouisfed.org/docs/api/api_key.html
    - `YOUTUBE_API_KEY` → Google Cloud Console → YouTube Data API v3
