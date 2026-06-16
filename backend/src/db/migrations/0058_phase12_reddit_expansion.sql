@@ -2,13 +2,17 @@
 -- Adds ingestion_sources rows for Reddit AI Research and Semiconductors subreddits.
 -- The reddit_api adapter and ingestionAdapterTypeEnum value already exist (migration 0057).
 -- ON CONFLICT DO NOTHING makes this idempotent on re-run.
+--
+-- Fix vs original: used `name` (does not exist) instead of `display_name` (NOT NULL),
+-- and omitted `sectors` (NOT NULL, no default). Corrected before first successful apply.
 
-INSERT INTO ingestion_sources (slug, name, adapter_type, endpoint, enabled, priority, quality_score, fetch_interval_seconds, config)
+INSERT INTO ingestion_sources (slug, display_name, adapter_type, endpoint, sectors, enabled, priority, quality_score, fetch_interval_seconds, config)
 VALUES
   ('reddit-ai',
    'Reddit – AI Research',
    'reddit_api',
    NULL,
+   '{ai}',
    true,
    3,
    7,
@@ -18,6 +22,7 @@ VALUES
    'Reddit – Semiconductors',
    'reddit_api',
    NULL,
+   '{semiconductors}',
    true,
    3,
    7,
