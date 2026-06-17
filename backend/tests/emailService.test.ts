@@ -68,6 +68,17 @@ describe("emailService", () => {
     expect(result).toEqual({ delivered: true, provider: "sendgrid" });
   });
 
+  it("enables open + click tracking on the SendGrid payload", async () => {
+    process.env.SENDGRID_API_KEY = "SG.test-key";
+    sgSend.mockResolvedValue([{ statusCode: 202 }, {}]);
+    await sendEmail({ to: "u@e.com", subject: "s", html: "<p>Hi</p>" });
+    const args = sgSend.mock.calls[0][0];
+    expect(args.trackingSettings).toEqual({
+      openTracking: { enable: true },
+      clickTracking: { enable: true, enableText: false },
+    });
+  });
+
   it("auto-generates a text body when not provided", async () => {
     process.env.SENDGRID_API_KEY = "SG.test-key";
     sgSend.mockResolvedValue([{ statusCode: 202 }, {}]);

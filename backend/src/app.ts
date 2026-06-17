@@ -9,6 +9,7 @@ import { apiKeysRouter } from "./routes/apiKeys";
 import { authRouter } from "./routes/auth";
 import { billingRouter } from "./routes/billing";
 import { handleWebhook as billingWebhook } from "./controllers/billingController";
+import { postSendgridEventWebhook } from "./controllers/emailEventsController";
 import { briefingRouter } from "./routes/briefing";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
@@ -103,6 +104,10 @@ export function createApp(): Express {
   app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/comments", commentsRouter);
   app.use("/api/v1/teams", teamsRouter);
+  // SendGrid Event Webhook — registered before the emailLimiter-wrapped emails
+  // router so SendGrid's batched event POSTs aren't throttled. Public (SendGrid
+  // can't auth); protected by an optional ?token= shared secret in the handler.
+  app.post("/api/v1/emails/webhook", postSendgridEventWebhook);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
   app.use("/api/v1/billing", billingRouter);
   app.use("/api/v1/briefing", briefingRouter);

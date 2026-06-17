@@ -307,6 +307,34 @@ export const productEvents = pgTable(
   }),
 );
 
+// Append-only email engagement telemetry (Phase 12w) — SendGrid Event Webhook
+// sink for delivered/open/click/bounce/etc. Posted to /api/v1/emails/webhook.
+// `categories` carries the email's SendGrid categories (e.g. ["digest","daily"])
+// so reporting can isolate digest engagement. The partial unique index on
+// sg_event_id (created in migration 0065, dedupes webhook retries) is not
+// re-declared here — drizzle-kit is retired and the runtime path uses an
+// untargeted ON CONFLICT DO NOTHING.
+export const emailEvents = pgTable(
+  "email_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sgEventId: text("sg_event_id"),
+    sgMessageId: text("sg_message_id"),
+    email: text("email").notNull(),
+    eventType: text("event_type").notNull(),
+    url: text("url"),
+    categories: jsonb("categories").$type<string[]>().notNull().default([]),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    emailIdx: index("email_events_email_idx").on(t.email),
+    typeIdx: index("email_events_type_idx").on(t.eventType),
+    occurredIdx: index("email_events_occurred_idx").on(t.occurredAt),
+  }),
+);
+
 // ---------- Writers ----------
 
 export const writers = pgTable("writers", {
@@ -873,6 +901,8 @@ export type EngagementEvent = typeof engagementEvents.$inferSelect;
 export type NewEngagementEvent = typeof engagementEvents.$inferInsert;
 export type ProductEvent = typeof productEvents.$inferSelect;
 export type NewProductEvent = typeof productEvents.$inferInsert;
+export type EmailEvent = typeof emailEvents.$inferSelect;
+export type NewEmailEvent = typeof emailEvents.$inferInsert;
 export type Writer = typeof writers.$inferSelect;
 export type NewWriter = typeof writers.$inferInsert;
 export type Story = typeof stories.$inferSelect;
