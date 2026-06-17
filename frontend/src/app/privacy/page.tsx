@@ -69,7 +69,7 @@ export default function PrivacyPage(): JSX.Element {
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">4. Third-Party Services</h2>
           <p>
-            <strong>Stripe</strong> — payment processing. Stripe's privacy
+            <strong>Stripe</strong> — payment processing. Stripe’s privacy
             policy governs data shared with them.
           </p>
           <p>
@@ -86,9 +86,9 @@ export default function PrivacyPage(): JSX.Element {
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">5. Cookies & Local Storage</h2>
           <p>
-            We use a session JWT stored in your browser's local storage for
+            We use a session JWT stored in your browser’s local storage for
             authentication. We set a cookie consent preference cookie so we
-            don't ask again. We do not use advertising or tracking cookies.
+            don’t ask again. We do not use advertising or tracking cookies.
             Analytics events (upgrade funnel, feature usage) are first-party
             and tied to your account, not third-party ad networks.
           </p>
