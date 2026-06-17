@@ -109,3 +109,25 @@ export const VALID_TOPIC_PAIRS = new Set<string>(
 export function isValidTopicForSector(sector: string, topic: string): boolean {
   return VALID_TOPIC_PAIRS.has(`${sector}:${topic}`);
 }
+
+// Phase 12w — optional firmographics (Screen 2) + acquisition source
+// (Screen 7). Mirrored in frontend/src/lib/onboarding.ts (which adds display
+// labels). The empty string is the wire sentinel for "skipped"; the backend
+// maps it to null at write. Membership enforced by the completeSchema and the
+// DB CHECK constraints in migration 0064.
+export const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-1000", "1000+"] as const;
+export type CompanySize = (typeof COMPANY_SIZES)[number];
+
+export const HOW_DID_YOU_HEAR = [
+  "reddit",
+  "twitter",
+  "linkedin",
+  "hacker_news",
+  "search",
+  "referral",
+  "other",
+] as const;
+export type HowDidYouHear = (typeof HOW_DID_YOU_HEAR)[number];
+
+// Free-text company name cap. Matches the frontend input maxLength.
+export const COMPANY_NAME_MAX_LENGTH = 120;

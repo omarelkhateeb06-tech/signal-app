@@ -191,6 +191,12 @@ export const userProfiles = pgTable("user_profiles", {
   goals: text("goals").array(),
   digestPreference: text("digest_preference").$type<DigestPreference>(),
   timezone: text("timezone"),
+  // Phase 12w — optional firmographics (Screen 2) + acquisition source
+  // (Screen 7). All nullable; opt-in, never gate completion. company_size and
+  // howDidYouHear are CHECK-constrained at the DB layer (migration 0064).
+  company: text("company"),
+  companySize: text("company_size"),
+  howDidYouHear: text("how_did_you_hear"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   profileVersion: integer("profile_version").notNull().default(1),
   // Phase 12i — default flipped from "weekly" to "daily" alongside

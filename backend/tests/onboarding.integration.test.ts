@@ -311,4 +311,70 @@ describe("POST /api/v1/onboarding/complete", () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_INPUT");
   });
+
+  // ---------- Phase 12w — optional firmographics ----------
+
+  it("persists optional firmographics (company, company_size, how_did_you_hear)", async () => {
+    mock.queueSelect([{ id: userId }]); // user exists
+    mock.queueSelect([]); // existing profile: none
+    mock.queueInsert([
+      { userId, completedAt: new Date(), depthPreference: "briefed" },
+    ]); // insert .returning()
+
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(
+        validCompletionPayload({
+          company: "Acme Capital",
+          company_size: "11-50",
+          how_did_you_hear: "reddit",
+        }),
+      );
+
+    expect(res.status).toBe(200);
+    // insertedValues[0] is the user_profiles patch (first insert in the tx).
+    const profile = mock.state.insertedValues[0] as Record<string, unknown>;
+    expect(profile).toMatchObject({
+      company: "Acme Capital",
+      companySize: "11-50",
+      howDidYouHear: "reddit",
+    });
+  });
+
+  it("maps omitted firmographics to null (optional, opt-in)", async () => {
+    mock.queueSelect([{ id: userId }]); // user exists
+    mock.queueSelect([]); // existing profile: none
+    mock.queueInsert([
+      { userId, completedAt: new Date(), depthPreference: "briefed" },
+    ]);
+
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(validCompletionPayload()); // no firmographics
+
+    expect(res.status).toBe(200);
+    const profile = mock.state.insertedValues[0] as Record<string, unknown>;
+    expect(profile.company).toBeNull();
+    expect(profile.companySize).toBeNull();
+    expect(profile.howDidYouHear).toBeNull();
+  });
+
+  it("returns 400 when company_size is an unknown value", async () => {
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(validCompletionPayload({ company_size: "5000000" }));
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_INPUT");
+  });
+
+  it("returns 400 when how_did_you_hear is an unknown value", async () => {
+    const res = await request(app)
+      .post("/api/v1/onboarding/complete")
+      .set(...auth(token))
+      .send(validCompletionPayload({ how_did_you_hear: "billboard" }));
+    expect(res.status).toBe(400);
+  });
 });

@@ -6,8 +6,11 @@ import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
 import { DepthToggle } from "@/components/stories/DepthToggle";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import {
+  COMPANY_NAME_MAX_LENGTH,
+  COMPANY_SIZES,
   DEPTH_PREFERENCES,
   GOALS,
+  HOW_DID_YOU_HEAR,
   ROLES,
   SECTORS,
   SENIORITIES,
@@ -130,7 +133,17 @@ function Screen1(): JSX.Element {
 // now-invalid pick. This runs once per sectors change, not per render.
 
 function Screen2(): JSX.Element {
-  const { sectors, role, setRole, domain, setDomain } = useOnboardingStore();
+  const {
+    sectors,
+    role,
+    setRole,
+    domain,
+    setDomain,
+    company,
+    setCompany,
+    companySize,
+    setCompanySize,
+  } = useOnboardingStore();
   useScreenViewEvent(2);
   const nav = useOnboardingNav(2);
 
@@ -217,6 +230,45 @@ function Screen2(): JSX.Element {
           >
             <option value="">No specific field</option>
             {domainOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+
+        {/* Phase 12w — optional firmographics. Never gate Continue. */}
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
+            Company{" "}
+            <span className="font-normal normal-case text-ink-muted">
+              — optional
+            </span>
+          </legend>
+          <input
+            type="text"
+            className="w-full rounded-md border bg-background p-3 font-medium"
+            placeholder="Where you work"
+            maxLength={COMPANY_NAME_MAX_LENGTH}
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          />
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
+            Company size{" "}
+            <span className="font-normal normal-case text-ink-muted">
+              — optional
+            </span>
+          </legend>
+          <select
+            className="w-full rounded-md border bg-background p-3 font-medium"
+            value={companySize}
+            onChange={(e) => setCompanySize(e.target.value)}
+          >
+            <option value="">Prefer not to say</option>
+            {COMPANY_SIZES.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -540,6 +592,11 @@ function Screen7(): JSX.Element {
         goals: resolvedGoals,
         digest_preference: (store.digestPreference ?? "none") as DigestPreference,
         timezone: store.timezone ?? "UTC",
+        // Phase 12w — optional firmographics (Screen 2) + acquisition source
+        // (Screen 7). "" when skipped; the backend maps it to null.
+        company: store.company,
+        company_size: store.companySize,
+        how_did_you_hear: store.howDidYouHear,
       });
       // Synchronously latch "completed" in sessionStorage BEFORE the
       // router.push to /feed. The abandon beacon (attached in the
@@ -619,6 +676,29 @@ function Screen7(): JSX.Element {
         </p>
         <p>You can change this anytime in Settings.</p>
       </div>
+      {/* Phase 12w — optional self-reported acquisition source. Complements the
+          automatic UTM/referrer attribution captured at signup. Never gates
+          Finish. */}
+      <fieldset className="mt-6 space-y-2">
+        <legend className="text-sm font-semibold uppercase tracking-wide text-ink-muted">
+          How did you hear about us?{" "}
+          <span className="font-normal normal-case text-ink-muted">
+            — optional
+          </span>
+        </legend>
+        <select
+          className="w-full rounded-md border bg-background p-3 font-medium"
+          value={store.howDidYouHear}
+          onChange={(e) => store.setHowDidYouHear(e.target.value)}
+        >
+          <option value="">Prefer not to say</option>
+          {HOW_DID_YOU_HEAR.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </fieldset>
       {store.timezone && (
         <p className="mt-4 text-center text-xs text-ink-muted">
           Detected timezone: {store.timezone}
