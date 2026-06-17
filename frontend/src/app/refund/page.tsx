@@ -59,7 +59,7 @@ export default function RefundPage(): JSX.Element {
             <a href="mailto:omar.elkhateeb@hmautomation.llc" className="text-accent underline">
               omar.elkhateeb@hmautomation.llc
             </a>{" "}
-            with the subject line "Refund request" and your account email
+            with the subject line “Refund request” and your account email
             address. We will respond within 2 business days.
           </p>
         </section>

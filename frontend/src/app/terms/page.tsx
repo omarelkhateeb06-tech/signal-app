@@ -25,8 +25,8 @@ export default function TermsPage(): JSX.Element {
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">1. Acceptance</h2>
           <p>
-            By accessing or using SIGNAL ("Service"), operated by Human Machine
-            Automation LLC ("we," "us," or "our"), you agree to be bound by
+            By accessing or using SIGNAL (“Service”), operated by Human Machine
+            Automation LLC (“we,” “us,” or “our”), you agree to be bound by
             these Terms. If you do not agree, do not use the Service.
           </p>
         </section>
@@ -95,7 +95,7 @@ export default function TermsPage(): JSX.Element {
         <section className="space-y-3">
           <h2 className="font-semibold text-ink">8. Disclaimer</h2>
           <p>
-            The Service is provided "as is" without warranty of any kind. We do
+            The Service is provided “as is” without warranty of any kind. We do
             not guarantee accuracy, completeness, or timeliness of any content.
             Nothing on SIGNAL constitutes financial or investment advice.
           </p>
