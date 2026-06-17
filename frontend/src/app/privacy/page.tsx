@@ -35,12 +35,26 @@ export default function PrivacyPage(): JSX.Element {
           <h2 className="font-semibold text-ink">2. Information We Collect</h2>
           <p>
             <strong>Account data:</strong> email address, password (hashed),
-            name, and the role/sector preferences you provide during onboarding.
+            name, the role/sector preferences you provide during onboarding,
+            and optional company details (company name and size) if you choose
+            to share them.
           </p>
           <p>
             <strong>Usage data:</strong> stories you read, save, or search for;
             commentary depth preferences; feed interaction events. Used solely
             to personalize your experience.
+          </p>
+          <p>
+            <strong>Attribution data:</strong> how you arrived at SIGNAL — the
+            referring site and any campaign (UTM) tags present on your first
+            visit, plus an optional self-reported &ldquo;how did you hear about
+            us.&rdquo; Used to understand which channels bring people to SIGNAL.
+          </p>
+          <p>
+            <strong>Email engagement:</strong> whether you open our emails and
+            which links you click, measured via our email provider (SendGrid).
+            Used to improve the daily digest. You can stop these emails anytime
+            from Settings or any unsubscribe link.
           </p>
           <p>
             <strong>Billing data:</strong> subscription status and Stripe
@@ -73,7 +87,8 @@ export default function PrivacyPage(): JSX.Element {
             policy governs data shared with them.
           </p>
           <p>
-            <strong>SendGrid</strong> — transactional email delivery.
+            <strong>SendGrid</strong> — transactional and digest email
+            delivery, including open/click tracking on emails we send.
           </p>
           <p>
             <strong>Railway / Vercel</strong> — infrastructure hosting.
