@@ -63,6 +63,14 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailSendResult>
     html: payload.html,
     text: payload.text ?? stripHtml(payload.html),
     categories: payload.categories,
+    // Phase 12w — open + click tracking. SendGrid injects an open pixel and
+    // rewrites links; the resulting open/click events are POSTed to the Event
+    // Webhook (/api/v1/emails/webhook) and stored in email_events. enableText
+    // is false so only HTML links are wrapped (plain-text links stay clean).
+    trackingSettings: {
+      openTracking: { enable: true },
+      clickTracking: { enable: true, enableText: false },
+    },
   });
   return { delivered: true, provider: "sendgrid" };
 }
