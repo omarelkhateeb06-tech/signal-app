@@ -28,6 +28,7 @@ This project has **persistent cross-session memory**. A fresh session that ignor
 - **Search/related are on `events`** (Phase 12p/12q) — *not* on legacy `stories`, despite older notes claiming otherwise. The only remaining `stories` reads in `storyController` are intentional dual-read **anchor lookups** so legacy hand-curated story-detail pages still resolve; results come from `events`. (Verified June 2026.)
 - **Archival feed designs were retired** June 2026 (`MagazineFeed`/`SwissFeed`/`TerminalFeed` + `/feed-swiss`, `/feed-b`). Only the production `SwissCommandFeed` and the dev-only `/redesign-preview` remain.
 - **Remaining cosmetic item:** `components/redesign/swiss/` is the *production* feed despite the "redesign" path name — a rename to `components/feed/` is deferred (high-churn, low-risk; this note removes the confusion in the meantime).
+- **Phase 12w — Day-1 Data Capture (shipped June 2026, migrations 0062–0065).** The measurement layer for launch: (1) **`product_events`** + `POST /api/v1/events` (optional-auth) is the product/funnel analytics sink — `frontend/src/lib/analytics.ts`'s `track()` beacon (this was previously POSTing to an unmounted route and silently dropping every event). (2) **First-touch attribution** on `users` (utm_source/medium/campaign, referrer, landing_path, signup_source) — captured client-side in `frontend/src/lib/attribution.ts` (localStorage, first-touch) via `<AttributionCapture/>` in the root layout, sent with signup; `deriveSignupSource` normalizes utm→referrer-host→direct. (3) **Optional firmographics** on `user_profiles` (company, company_size, how_did_you_hear) — onboarding Screen 2 + Screen 7, never gate completion. (4) **`email_events`** + `POST /api/v1/emails/webhook` (SendGrid Event Webhook sink; `emailService` sends with open/click `trackingSettings`). (5) **Admin reporting** — `adminReportingController` at `/admin/reports/{growth,revenue,data-asset,engagement}`. See `docs/LAUNCH_CHECKLIST.md` for the remaining ops steps (SendGrid webhook URL + `SENDGRID_WEBHOOK_TOKEN`, UTM tagging).
 
 When you finish a material change, update ROADMAP.md and rebuild the graphify graph so the next session inherits the truth.
 
@@ -307,13 +308,15 @@ Routers mounted in `app.ts`:
 | `/api/v1/me/api-keys`  | JWT         | self-service API-key CRUD (v2 keys)      |
 | `/api/v1/onboarding`   | JWT         | 7-screen onboarding questionnaire (12b)  |
 | `/api/v1/engagement`   | JWT         | engagement-event capture (clicks/saves → ranking; migration 0049) |
+| `/api/v1/events`       | **optional-auth** (`optionalAuth`) | Phase 12w product/funnel analytics sink — `lib/analytics.ts` beacon → `product_events` (migration 0062); attributes to user when a token is present, else anonymous |
+| `/api/v1/emails/webhook` | public (optional `?token=` = `SENDGRID_WEBHOOK_TOKEN`) | Phase 12w SendGrid Event Webhook → `email_events` (migration 0065); mounted in `app.ts` before `emailLimiter` |
 | `/api/v1/stories`      | JWT         | feed, search, detail, save/unsave, related, commentary, comments-on-story |
 | `/api/v1/comments`     | JWT         | comment CRUD (replies, update, delete)   |
 | `/api/v1/teams`        | JWT + public invite endpoints | team CRUD + members + invites + dashboard + team feed |
 | `/api/v1/emails`       | public + `emailLimiter` | unsubscribe (GET + POST), preferences (JWT) |
 | `/api/v1/briefing`     | JWT         | "The Through-Line" — personalized, tier-gated daily synthesis (`throughLineService`) |
 | `/health`              | none        | liveness                                 |
-| `/admin`               | `ADMIN_USER_IDS` allowlist | ingestion source status / ops (`adminController`) |
+| `/admin`               | `ADMIN_USER_IDS` allowlist | ingestion source status / ops (`adminController`); Phase 12w data-capture reports (`adminReportingController`): `/admin/reports/{growth,revenue,data-asset,engagement}` |
 
 ### v2 (`/api/v2/*`, API-key-authenticated) — the public Intelligence API
 
