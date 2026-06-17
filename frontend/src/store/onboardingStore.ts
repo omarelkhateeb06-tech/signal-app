@@ -45,6 +45,12 @@ export interface OnboardingState {
   // Intl.DateTimeFormat().resolvedOptions().timeZone; stored here so
   // a back-traversal doesn't force re-detection.
   timezone: string | null;
+  // Phase 12w — optional firmographics (Screen 2) + acquisition source
+  // (Screen 7). Empty string = "skipped / prefer not to say"; never gates
+  // Continue. Sent as-is on the wire; the backend maps "" → null.
+  company: string;
+  companySize: string;
+  howDidYouHear: string;
 
   // Actions
   setSectors: (sectors: string[]) => void;
@@ -56,6 +62,9 @@ export interface OnboardingState {
   setGoals: (goals: string[]) => void;
   setDigestPreference: (digest: DigestPreference) => void;
   setTimezone: (tz: string) => void;
+  setCompany: (company: string) => void;
+  setCompanySize: (size: string) => void;
+  setHowDidYouHear: (value: string) => void;
   reset: () => void;
 }
 
@@ -70,6 +79,9 @@ const initialState: Omit<
   | "setGoals"
   | "setDigestPreference"
   | "setTimezone"
+  | "setCompany"
+  | "setCompanySize"
+  | "setHowDidYouHear"
   | "reset"
 > = {
   sectors: INITIAL_SECTORS,
@@ -81,6 +93,9 @@ const initialState: Omit<
   goals: [],
   digestPreference: null,
   timezone: null,
+  company: "",
+  companySize: "",
+  howDidYouHear: "",
 };
 
 export const useOnboardingStore = create<OnboardingState>()(
@@ -96,6 +111,9 @@ export const useOnboardingStore = create<OnboardingState>()(
       setGoals: (goals) => set({ goals }),
       setDigestPreference: (digestPreference) => set({ digestPreference }),
       setTimezone: (timezone) => set({ timezone }),
+      setCompany: (company) => set({ company }),
+      setCompanySize: (companySize) => set({ companySize }),
+      setHowDidYouHear: (howDidYouHear) => set({ howDidYouHear }),
       reset: () => set({ ...initialState }),
     }),
     {

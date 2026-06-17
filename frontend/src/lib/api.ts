@@ -662,6 +662,11 @@ export interface OnboardingCompleteInput {
   goals: string[];
   digest_preference: DigestPreference;
   timezone: string;
+  // Phase 12w — optional firmographics + acquisition source. "" = skipped;
+  // omitted entirely by older callers (backend defaults each to "").
+  company?: string;
+  company_size?: string;
+  how_did_you_hear?: string;
 }
 
 export interface OnboardingEventInput {

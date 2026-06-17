@@ -165,6 +165,35 @@ export const DIGEST_PREFERENCES: readonly LabeledOption[] = [
   { value: "none", label: "No digest" },
 ] as const;
 
+// ---------- Company size (Screen 2, optional) — Phase 12w ----------
+//
+// Optional firmographic. Values mirror backend COMPANY_SIZES; the empty
+// string ("") is the "prefer not to say" / skipped sentinel handled at submit.
+export const COMPANY_SIZES: readonly LabeledOption[] = [
+  { value: "1-10", label: "1–10" },
+  { value: "11-50", label: "11–50" },
+  { value: "51-200", label: "51–200" },
+  { value: "201-1000", label: "201–1,000" },
+  { value: "1000+", label: "1,000+" },
+] as const;
+
+// ---------- How did you hear about SIGNAL (Screen 7, optional) — Phase 12w ----------
+//
+// Self-reported acquisition source — complements the automatic UTM/referrer
+// attribution captured at signup. Values mirror backend HOW_DID_YOU_HEAR.
+export const HOW_DID_YOU_HEAR: readonly LabeledOption[] = [
+  { value: "reddit", label: "Reddit" },
+  { value: "twitter", label: "X / Twitter" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "hacker_news", label: "Hacker News" },
+  { value: "search", label: "A search engine" },
+  { value: "referral", label: "A friend or colleague" },
+  { value: "other", label: "Other" },
+] as const;
+
+// Matches backend COMPANY_NAME_MAX_LENGTH.
+export const COMPANY_NAME_MAX_LENGTH = 120;
+
 // ---------- Email frequency (legacy, used by settings page) ----------
 
 export const EMAIL_FREQUENCIES: readonly { value: EmailFrequency; label: string }[] = [

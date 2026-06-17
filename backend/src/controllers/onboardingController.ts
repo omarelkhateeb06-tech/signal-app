@@ -10,7 +10,10 @@ import {
 } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
 import {
+  COMPANY_NAME_MAX_LENGTH,
+  COMPANY_SIZES,
   GOALS,
+  HOW_DID_YOU_HEAR,
   ROLES,
   SECTORS,
   SENIORITIES,
@@ -75,6 +78,24 @@ const completeSchema = z.object({
   // Screen 7
   digest_preference: z.enum(DIGEST_PREFERENCE_VALUES),
   timezone: z.string().min(1).max(TIMEZONE_MAX_LENGTH),
+  // Phase 12w — optional firmographics (Screen 2) + acquisition source
+  // (Screen 7). Each defaults to "" when the client omits it (older clients,
+  // skipped fields); "" is the "skipped" sentinel and maps to null at write.
+  // company_size / how_did_you_hear validate membership unless empty (mirrors
+  // the domain refine pattern above).
+  company: z.string().max(COMPANY_NAME_MAX_LENGTH).default(""),
+  company_size: z
+    .string()
+    .refine((v) => v === "" || (COMPANY_SIZES as readonly string[]).includes(v), {
+      message: "company_size is not a recognized value",
+    })
+    .default(""),
+  how_did_you_hear: z
+    .string()
+    .refine((v) => v === "" || (HOW_DID_YOU_HEAR as readonly string[]).includes(v), {
+      message: "how_did_you_hear is not a recognized value",
+    })
+    .default(""),
 });
 
 const eventSchema = z.object({
@@ -217,6 +238,10 @@ export async function postOnboardingComplete(
         goals: input.goals,
         digestPreference: input.digest_preference,
         timezone: input.timezone,
+        // Phase 12w — "" sentinel → null (optional, opt-in firmographics).
+        company: input.company || null,
+        companySize: input.company_size || null,
+        howDidYouHear: input.how_did_you_hear || null,
         completedAt: now,
         updatedAt: now,
       };
