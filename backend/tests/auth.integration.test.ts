@@ -70,6 +70,72 @@ describe("auth endpoints", () => {
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe("EMAIL_TAKEN");
     });
+
+    it("persists attribution and derives signup_source from utm_source", async () => {
+      mock.queueSelect([]);
+      mock.queueInsert([{ id: "user-1", email: "a@b.com", name: "Ada" }]);
+      mock.queueInsert([]);
+
+      const res = await request(app)
+        .post("/api/v1/auth/signup")
+        .send({
+          email: "a@b.com",
+          password: "password123",
+          name: "Ada",
+          attribution: {
+            utm_source: "Reddit",
+            utm_medium: "organic",
+            utm_campaign: "r_semiconductors",
+            referrer: "https://www.reddit.com/r/semiconductors",
+            landing_path: "/",
+          },
+        });
+
+      expect(res.status).toBe(201);
+      // insertedValues[0] is the users row (first insert in the signup tx).
+      const userRow = mock.state.insertedValues[0] as Record<string, unknown>;
+      expect(userRow).toMatchObject({
+        utmSource: "Reddit",
+        utmMedium: "organic",
+        utmCampaign: "r_semiconductors",
+        referrer: "https://www.reddit.com/r/semiconductors",
+        landingPath: "/",
+        // explicit utm_source wins, normalized to lowercase
+        signupSource: "reddit",
+      });
+    });
+
+    it("derives signup_source from the referrer host when no utm_source", async () => {
+      mock.queueSelect([]);
+      mock.queueInsert([{ id: "user-1", email: "a@b.com", name: "Ada" }]);
+      mock.queueInsert([]);
+
+      await request(app)
+        .post("/api/v1/auth/signup")
+        .send({
+          email: "a@b.com",
+          password: "password123",
+          name: "Ada",
+          attribution: { referrer: "https://news.ycombinator.com/item?id=1" },
+        });
+
+      const userRow = mock.state.insertedValues[0] as Record<string, unknown>;
+      expect(userRow.signupSource).toBe("news.ycombinator.com");
+    });
+
+    it("defaults signup_source to 'direct' when no attribution is sent", async () => {
+      mock.queueSelect([]);
+      mock.queueInsert([{ id: "user-1", email: "a@b.com", name: "Ada" }]);
+      mock.queueInsert([]);
+
+      await request(app)
+        .post("/api/v1/auth/signup")
+        .send({ email: "a@b.com", password: "password123", name: "Ada" });
+
+      const userRow = mock.state.insertedValues[0] as Record<string, unknown>;
+      expect(userRow.signupSource).toBe("direct");
+      expect(userRow.utmSource).toBeNull();
+    });
   });
 
   describe("POST /api/v1/auth/login", () => {

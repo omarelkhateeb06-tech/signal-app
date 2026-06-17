@@ -13,11 +13,44 @@ import {
 } from "../services/authService";
 import { buildUnsubscribeUrl } from "../services/unsubscribeService";
 
+// Phase 12w — first-touch attribution, captured client-side and sent with the
+// signup. All fields optional + length-capped; a signup with no attribution
+// (direct visit, JS-disabled, private mode) is still valid.
+const attributionSchema = z
+  .object({
+    utm_source: z.string().max(128).optional(),
+    utm_medium: z.string().max(128).optional(),
+    utm_campaign: z.string().max(128).optional(),
+    referrer: z.string().max(512).optional(),
+    landing_path: z.string().max(512).optional(),
+  })
+  .optional();
+
 const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1),
+  attribution: attributionSchema,
 });
+
+// Normalize first-touch attribution into a single channel label for the growth
+// report: explicit utm_source wins; else the external referrer's host; else
+// "direct". The frontend only stores an external referrer (same-origin is
+// filtered), so a present referrer is a real off-site source.
+export function deriveSignupSource(attribution?: {
+  utm_source?: string;
+  referrer?: string;
+}): string {
+  if (attribution?.utm_source) return attribution.utm_source.toLowerCase();
+  if (attribution?.referrer) {
+    try {
+      return new URL(attribution.referrer).host.toLowerCase();
+    } catch {
+      // Malformed referrer — fall through to direct.
+    }
+  }
+  return "direct";
+}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -36,7 +69,7 @@ function toPublicUser(row: { id: string; email: string; name: string | null }): 
 
 export async function signup(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, password, name } = signupSchema.parse(req.body);
+    const { email, password, name, attribution } = signupSchema.parse(req.body);
 
     const existing = await db
       .select({ id: users.id })
@@ -62,6 +95,12 @@ export async function signup(req: Request, res: Response, next: NextFunction): P
           name,
           tier: "pro_trial",
           trialStartedAt: new Date(),
+          utmSource: attribution?.utm_source ?? null,
+          utmMedium: attribution?.utm_medium ?? null,
+          utmCampaign: attribution?.utm_campaign ?? null,
+          referrer: attribution?.referrer ?? null,
+          landingPath: attribution?.landing_path ?? null,
+          signupSource: deriveSignupSource(attribution),
         })
         .returning({ id: users.id, email: users.email, name: users.name });
       if (!user) {

@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { useAuthStore } from "@/store/authStore";
+import type { AttributionData } from "@/lib/attribution";
 import type {
   ApiError,
   AuthResponse,
@@ -110,6 +111,9 @@ export interface SignupInput {
   email: string;
   password: string;
   name: string;
+  // Phase 12w — first-touch attribution, attached by the signup page from
+  // localStorage. Optional: direct/JS-disabled signups omit it.
+  attribution?: AttributionData;
 }
 
 export interface LoginInput {

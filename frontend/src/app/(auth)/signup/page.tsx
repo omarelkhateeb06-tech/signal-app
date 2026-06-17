@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { extractApiError } from "@/lib/api";
+import { getAttribution } from "@/lib/attribution";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -28,6 +30,12 @@ export default function SignupPage(): JSX.Element {
     formState: { errors, isSubmitting },
   } = useForm<SignupFormValues>();
 
+  // Top of the signup funnel — paired with signup_completed below so the
+  // start→finish drop-off is measurable (product_events).
+  useEffect(() => {
+    track("signup_started");
+  }, []);
+
   const onSubmit = handleSubmit(async (values) => {
     setSubmitError(null);
     const parsed = signupSchema.safeParse(values);
@@ -36,7 +44,9 @@ export default function SignupPage(): JSX.Element {
       return;
     }
     try {
-      await signup(parsed.data);
+      const attribution = getAttribution() ?? undefined;
+      await signup({ ...parsed.data, attribution });
+      track("signup_completed", { source: attribution?.utm_source ?? "direct" });
       router.push("/onboarding/1");
     } catch (error) {
       setSubmitError(extractApiError(error, "Signup failed"));
