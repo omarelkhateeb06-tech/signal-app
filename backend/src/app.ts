@@ -14,6 +14,7 @@ import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
 import { emailsRouter } from "./routes/emails";
 import { engagementRouter } from "./routes/engagement";
+import { eventsRouter } from "./routes/events";
 import { onboardingRouter } from "./routes/onboarding";
 import { storiesRouter } from "./routes/stories";
 import { dashboardRouter } from "./routes/dashboard";
@@ -97,6 +98,7 @@ export function createApp(): Express {
   app.use("/api/v1/me/api-keys", apiKeysRouter);
   app.use("/api/v1/onboarding", onboardingRouter);
   app.use("/api/v1/engagement", engagementRouter);
+  app.use("/api/v1/events", eventsRouter);
   app.use("/api/v1/stories", storiesRouter);
   app.use("/api/v1/dashboard", dashboardRouter);
   app.use("/api/v1/comments", commentsRouter);

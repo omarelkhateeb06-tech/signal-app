@@ -267,6 +267,29 @@ export const engagementEvents = pgTable(
   }),
 );
 
+// Append-only product / funnel telemetry (Phase 12w) — upgrade_viewed,
+// checkout_started, signup funnel, theme_toggled. Posted from lib/analytics.ts
+// to /api/v1/events. Distinct from engagement_events: these fire pre-auth
+// (landing, signup funnel), so `userId` is NULLABLE and the FK is ON DELETE
+// SET NULL (the funnel datum outlives the account). Never read on the request
+// path; aggregated by the admin reporting endpoints.
+export const productEvents = pgTable(
+  "product_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    path: text("path"),
+    props: jsonb("props").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    typeCreatedIdx: index("product_events_type_created_idx").on(t.eventType, t.createdAt),
+    userIdx: index("product_events_user_idx").on(t.userId),
+    createdIdx: index("product_events_created_idx").on(t.createdAt),
+  }),
+);
+
 // ---------- Writers ----------
 
 export const writers = pgTable("writers", {
@@ -831,6 +854,8 @@ export type OnboardingEvent = typeof onboardingEvents.$inferSelect;
 export type NewOnboardingEvent = typeof onboardingEvents.$inferInsert;
 export type EngagementEvent = typeof engagementEvents.$inferSelect;
 export type NewEngagementEvent = typeof engagementEvents.$inferInsert;
+export type ProductEvent = typeof productEvents.$inferSelect;
+export type NewProductEvent = typeof productEvents.$inferInsert;
 export type Writer = typeof writers.$inferSelect;
 export type NewWriter = typeof writers.$inferInsert;
 export type Story = typeof stories.$inferSelect;
