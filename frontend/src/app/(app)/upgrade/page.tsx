@@ -298,6 +298,18 @@ export default function UpgradePage(): JSX.Element {
             ? "No charge today · secure checkout via Stripe"
             : "Secure checkout via Stripe · cancel anytime"}
         </p>
+
+        <p className="text-xs text-ink-muted">
+          By subscribing you agree to our{" "}
+          <Link href="/terms" className="underline hover:text-ink hover:no-underline">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-ink hover:no-underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </section>
     </div>
   );
