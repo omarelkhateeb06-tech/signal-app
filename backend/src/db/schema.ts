@@ -132,6 +132,17 @@ export const users = pgTable("users", {
   // Phase 12h — Stripe billing. Both null until first successful checkout.
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  // Phase 12w — first-touch signup attribution (captured client-side into
+  // localStorage on first visit, sent with the signup request). signupSource
+  // is the normalized channel (utm_source ?? referrer-host ?? 'direct') used by
+  // the growth report; the raw fields are kept for drill-down. All nullable —
+  // pre-12w users and direct/attribution-less signups leave them null.
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  referrer: text("referrer"),
+  landingPath: text("landing_path"),
+  signupSource: text("signup_source"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 });
