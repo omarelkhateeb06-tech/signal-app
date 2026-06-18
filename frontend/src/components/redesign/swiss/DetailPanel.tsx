@@ -36,25 +36,6 @@ const ROLE_LABEL: Record<string, string> = Object.fromEntries(
   ROLES.map((r) => [r.value, r.label]),
 );
 
-// Illustrative market context. There is no live market feed yet; these
-// signal the *kind* of product SIGNAL is. Clearly marked "indicative".
-const MARKET_INDICES: ReadonlyArray<{
-  symbol: string;
-  label: string;
-  value: string;
-  delta: string;
-  up: boolean;
-}> = [
-  { symbol: "SOXX", label: "Semis ETF", value: "248.10", delta: "+1.8%", up: true },
-  { symbol: "NVDA", label: "Nvidia", value: "1,204.50", delta: "+2.4%", up: true },
-  { symbol: "TSM", label: "TSMC ADR", value: "182.30", delta: "+0.9%", up: true },
-  { symbol: "ASML", label: "ASML", value: "1,012.70", delta: "-0.6%", up: false },
-  { symbol: "AI-LIQ", label: "Compute Liquidity", value: "94.2", delta: "-1.1%", up: false },
-];
-
-const MANIFESTO =
-  "Artificial intelligence is not a software vertical. It is the substrate the next decade of finance and silicon will be built on — and the people who see the convergence first will own the room.";
-
 function SectionLabel({ children }: { children: string }): JSX.Element {
   return (
     <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">
@@ -211,43 +192,6 @@ function ProfileDefault({
           </p>
         )}
       </div>
-
-      <div>
-        <div className="flex items-baseline justify-between">
-          <SectionLabel>Market Context</SectionLabel>
-          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-muted">
-            indicative
-          </span>
-        </div>
-        <ul className="mt-3 divide-y divide-line border-y border-line">
-          {MARKET_INDICES.map((idx) => (
-            <li
-              key={idx.symbol}
-              className="flex items-center justify-between gap-4 py-2.5"
-            >
-              <div className="min-w-0">
-                <span className="font-mono text-[12px] font-semibold tracking-[0.08em] text-ink">
-                  {idx.symbol}
-                </span>
-                <span className="ml-2 text-[12px] text-ink-muted">{idx.label}</span>
-              </div>
-              <div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
-                <span className="text-ink">{idx.value}</span>
-                <span style={{ color: idx.up ? "var(--finance)" : "var(--err)" }}>
-                  {idx.delta}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <figure className="border-l-[3px] border-accent pl-4">
-        <SectionLabel>The Convergence Manifesto</SectionLabel>
-        <blockquote className="mt-2 font-serif text-[17px] italic leading-relaxed text-ink">
-          “{MANIFESTO}”
-        </blockquote>
-      </figure>
     </div>
   );
 }

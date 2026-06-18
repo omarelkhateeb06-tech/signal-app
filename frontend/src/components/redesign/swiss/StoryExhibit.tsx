@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Lock,
-  MessageSquare,
   Layers,
   ArrowRight,
   Network,
@@ -18,11 +17,10 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import type { Story, FeedGatedStory } from "@/types/story";
-import { sourceDisplayLabel } from "@/lib/feedCard";
 import { deriveCardType, type FeedCardType } from "@/lib/feedCardType";
 import { freshnessTimestamp, isAfter } from "@/lib/feedFreshness";
 import { leadStat } from "@/lib/leadStat";
-import { SECTOR_SHORT, matchPercent, storyTitleAndBrief } from "./swissView";
+import { SECTOR_SHORT, storyTitleAndBrief } from "./swissView";
 import { LockedTeaser } from "./LockedTeaser";
 import { AiArtBadge } from "./AiArtBadge";
 import { SignalRating } from "./SignalRating";
@@ -89,27 +87,18 @@ function TypeLabel({
 function Kicker({
   rank,
   sector,
-  readMinutes,
-  sourceCount,
-  sourceLabel,
-  matchPct,
-  typeNote,
-  commentCount = 0,
   signalRating,
 }: {
   rank: number;
   sector: string;
-  readMinutes: number | null;
-  sourceCount: number;
-  sourceLabel: string | null;
-  matchPct: number;
-  typeNote?: JSX.Element | null;
-  commentCount?: number;
   signalRating?: number | null;
 }): JSX.Element {
-  const sourceNote =
-    !typeNote && sourceCount === 1 && sourceLabel ? `via ${sourceLabel}` : null;
-
+  // Phase 12x — thinned to a headline-first scan line: rank + sector + the one
+  // earned signal (the server-computed SIGNAL rating, tone-graded so low
+  // scores recede). Read-time, source/"via", comment count, and the rank-
+  // derived "% match" were moved off the resting card — match% was fake
+  // precision (rank re-skinned) and was deleted outright; the rest live in the
+  // detail reader on selection (progressive disclosure, not subtraction).
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
       <span className="font-semibold text-accent">
@@ -118,20 +107,6 @@ function Kicker({
       <span className="text-line">{"//"}</span>
       <span className="text-ink-muted">{SECTOR_SHORT[sector] ?? sector}</span>
       {signalRating != null && <SignalRating score={signalRating} variant="compact" />}
-      {readMinutes != null && <span>· {readMinutes} min read</span>}
-      {sourceNote && <span>· {sourceNote}</span>}
-      {typeNote && <span>· {typeNote}</span>}
-      {commentCount > 0 && (
-        <span className="inline-flex items-center gap-1">
-          <MessageSquare className="h-3 w-3" aria-hidden />
-          {commentCount}
-        </span>
-      )}
-      {rank > 1 && (
-        <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
-          {matchPct}% match
-        </span>
-      )}
     </div>
   );
 }
@@ -260,9 +235,6 @@ export function StoryExhibit({
   freshSinceMs,
   showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
-  const sourceCount = Math.max(1, story.sources.length);
-  const matchPct = matchPercent(rank, sourceCount);
-  const readMinutes = story.reading_time_minutes ?? null;
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
   const isNew =
@@ -279,18 +251,6 @@ export function StoryExhibit({
     type === "earnings"
       ? leadStat(story.generic_commentary ?? story.why_it_matters)
       : null;
-
-  const typeNote =
-    type === "practitioner" && story.comment_count > 0 ? (
-      <span className="inline-flex items-center gap-1">
-        <MessageSquare className="h-3 w-3" aria-hidden />
-        {story.comment_count} discussed
-      </span>
-    ) : type === "cluster" ? (
-      <span className="inline-flex items-center gap-1 text-accent">
-        <Layers className="h-3 w-3" aria-hidden />+{sourceCount - 1} more sources
-      </span>
-    ) : null;
 
   const headlineSize = rank <= 3 ? "text-[19px] md:text-[21px]" : "text-[17px]";
 
@@ -312,12 +272,6 @@ export function StoryExhibit({
           <Kicker
             rank={rank}
             sector={story.sector}
-            readMinutes={readMinutes}
-            sourceCount={sourceCount}
-            sourceLabel={sourceDisplayLabel(story)}
-            matchPct={matchPct}
-            typeNote={typeNote}
-            commentCount={type === "practitioner" ? 0 : story.comment_count}
             signalRating={story.signal_rating}
           />
           <h3
@@ -365,8 +319,6 @@ export function FeatureExhibit({
   freshSinceMs,
   showTeaser = false,
 }: StoryExhibitProps): JSX.Element {
-  const sourceCount = Math.max(1, story.sources.length);
-  const matchPct = matchPercent(rank, sourceCount);
   const { title, brief } = storyTitleAndBrief(story);
   const { type, label } = deriveCardType(story);
   const isNew =
@@ -410,9 +362,6 @@ export function FeatureExhibit({
           </span>
           <span className="text-line">{"//"}</span>
           <span>{SECTOR_SHORT[story.sector] ?? story.sector}</span>
-          <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
-            {matchPct}% match
-          </span>
         </div>
         <h3
           className={clsx(
