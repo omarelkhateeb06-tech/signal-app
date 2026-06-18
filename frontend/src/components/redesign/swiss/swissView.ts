@@ -29,21 +29,6 @@ export function sectorColor(sector: string): string {
 }
 
 /**
- * MATCH % derived purely from rank (1-based) and source breadth, per the
- * Swiss spec. Rank 1 with multiple sources lands ~98%; the score decays
- * 4 points per rank and is floored at 50. A small breadth bonus (capped
- * at +8) rewards widely-covered stories.
- */
-export function matchPercent(rank: number, sourceCount: number): number {
-  // Mirrors the board-tuned relevanceFromRank shipped in SwissFeed (#141):
-  // rank-decayed base floored at 50, a small breadth bonus, capped at 98 —
-  // so the number is real (rank-derived) and naturally varies per card.
-  const base = Math.max(50, 95 - (rank - 1) * 4);
-  const breadthBonus = Math.min(8, Math.max(0, sourceCount - 1) * 3);
-  return Math.min(98, base + breadthBonus);
-}
-
-/**
  * Map a SIGNAL rating (0–100, server-computed credibility score) to a band
  * label + a tint class for the badge. Pure; thresholds: 80+ High, 60–79
  * Solid, 40–59 Mixed, <40 Low.

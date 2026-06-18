@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 import type { Story } from "@/types/story";
-import { matchPercent, storyTitleAndBrief, SECTOR_SHORT } from "./swissView";
+import { storyTitleAndBrief, SECTOR_SHORT } from "./swissView";
 import { AiArtBadge } from "./AiArtBadge";
 
 // Redesign v2 — THE CONNECTION hero.
@@ -56,7 +56,6 @@ export function ConnectionHero({
   onSelect,
 }: ConnectionHeroProps): JSX.Element {
   const sourceCount = Math.max(1, story.sources.length);
-  const matchPct = matchPercent(rank, sourceCount);
   const { title, brief } = storyTitleAndBrief(story);
   const art = story.illustration_url ?? story.image_url ?? null;
   const aiArt = art != null && art === story.illustration_url;
@@ -101,9 +100,6 @@ export function ConnectionHero({
           <span className="text-line">{"//"}</span>
           <span>{SECTOR_SHORT[story.sector] ?? story.sector}</span>
           {sourceCount > 1 && <span>· {sourceCount} sources</span>}
-          <span className="border border-accent/40 px-1.5 py-0.5 font-semibold text-accent">
-            {matchPct}% match
-          </span>
         </div>
 
         <h3
