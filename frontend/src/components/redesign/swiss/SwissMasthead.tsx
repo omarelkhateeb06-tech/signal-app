@@ -4,90 +4,60 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 
-// The briefing nameplate. Massive serif "SIGNAL" wordmark, mono edition
-// metadata, and a tracked-sectors / re-calibrate line. The date + issue
-// number are computed client-side (post-mount) to avoid a server/client
-// hydration mismatch on the time-derived values.
+// The briefing nameplate. Phase 12x — compacted from the prior newspaper-
+// cosplay masthead (Vol. IV // Issue N, "Published 05:00 UTC", a Tracked-
+// sectors line) down to the wordmark + a "prepared for / edition" line +
+// refresh + settings, so the CONNECTION hero and first headlines lead the
+// screen instead of sitting six chrome bands down. The "Tracked: <sectors>"
+// line was dropped as redundant with the sector filter directly below. The
+// edition date is computed post-mount to avoid a server/client hydration
+// mismatch on the time-derived value.
 
 interface SwissMastheadProps {
   preparedFor: string;
-  sectors: string[];
   onRefresh: () => void;
   isRefreshing: boolean;
 }
 
-const SECTOR_DISPLAY: Record<string, string> = {
-  ai: "AI",
-  finance: "FINANCE",
-  semiconductors: "SEMICONDUCTORS",
-};
-
-function dayOfYear(d: Date): number {
-  const start = new Date(d.getFullYear(), 0, 0);
-  const diff = d.getTime() - start.getTime();
-  return Math.floor(diff / 86_400_000);
-}
-
 export function SwissMasthead({
   preparedFor,
-  sectors,
   onRefresh,
   isRefreshing,
 }: SwissMastheadProps): JSX.Element {
   const [edition, setEdition] = useState("");
-  const [issue, setIssue] = useState<number | null>(null);
 
   useEffect(() => {
-    const now = new Date();
     setEdition(
       new Intl.DateTimeFormat("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
-      }).format(now),
+      }).format(new Date()),
     );
-    setIssue(dayOfYear(now));
   }, []);
 
-  const tracked =
-    sectors.length > 0
-      ? sectors.map((s) => SECTOR_DISPLAY[s] ?? s.toUpperCase()).join(" · ")
-      : "AI · SEMICONDUCTORS · FINANCE";
-
   return (
-    <header className="shrink-0 border-b-2 border-ink px-6 pb-5 pt-6 md:px-10">
-      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.28em] text-accent">
-        Daily Intelligence Briefing
-      </p>
-
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
-        <h1 className="font-display text-[52px] font-black leading-[0.85] tracking-tight text-ink md:text-[72px]">
-          SIGNAL
-        </h1>
-
-        <div className="flex flex-col items-start gap-0.5 font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink-muted md:items-end">
-          <span>
-            Edition:{" "}
-            <span className="text-ink">{edition || "—"}</span>
-          </span>
-          <span>Published: 05:00 UTC</span>
-          <span>
-            Prepared for:{" "}
-            <span className="font-semibold text-ink underline decoration-accent decoration-2 underline-offset-2">
-              {preparedFor.toUpperCase()}
-            </span>
-          </span>
+    <header className="shrink-0 border-b-2 border-ink px-6 pb-4 pt-5 md:px-10">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+        <div>
+          <p className="font-mono text-[10px] font-medium uppercase tracking-[0.28em] text-accent">
+            Daily Intelligence Briefing
+          </p>
+          <h1 className="mt-1 font-display text-[44px] font-black leading-[0.85] tracking-tight text-ink md:text-[60px]">
+            SIGNAL
+          </h1>
         </div>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line pt-3">
-        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-muted">
-          Vol. IV // Issue {issue ?? "—"}
-          <span className="mx-2 text-line">|</span>
-          Tracked: <span className="text-ink">{tracked}</span>
-        </p>
 
         <div className="flex items-center gap-4">
+          <div className="flex flex-col items-start gap-0.5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-muted md:items-end">
+            <span>
+              Prepared for{" "}
+              <span className="font-semibold text-ink underline decoration-accent decoration-2 underline-offset-2">
+                {preparedFor.toUpperCase()}
+              </span>
+            </span>
+            <span>{edition || "—"}</span>
+          </div>
           <button
             type="button"
             onClick={onRefresh}
@@ -104,7 +74,7 @@ export function SwissMasthead({
             href="/settings"
             className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-accent hover:text-accent-hover hover:no-underline"
           >
-            [Re-Calibrate Feed Profile]
+            Settings
           </Link>
         </div>
       </div>
