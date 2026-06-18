@@ -312,7 +312,6 @@ export function SwissCommandFeed(): JSX.Element {
       <div className="mx-auto flex h-full w-full max-w-[1840px] flex-col px-4 md:px-12 lg:px-20 2xl:px-32">
         <SwissMasthead
           preparedFor={user?.name ?? "Reader"}
-          sectors={profile?.sectors ?? []}
           onRefresh={handleRefresh}
           isRefreshing={isRefreshing}
         />
