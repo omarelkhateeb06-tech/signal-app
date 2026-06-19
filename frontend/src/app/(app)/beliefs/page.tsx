@@ -261,6 +261,15 @@ export default function BeliefsPage(): JSX.Element {
     );
   };
 
+  // A manual run always forces (force=true): an explicit click means "show me
+  // this week's read now". A non-forced run would skip any belief already marked
+  // checked this week — a prior empty/Haiku-failed run, or the pre-hybrid clean
+  // run — and leave the reader dead-ended on an empty state. The 0067 cost guard
+  // still protects any future automated pre-generation path.
+  const handleRunCheck = (): void => {
+    run.mutate(true);
+  };
+
   return (
     <div className="theme-swiss min-h-[calc(100dvh-3.5rem)] bg-bg text-ink">
       <div className="mx-auto max-w-[860px] px-4 py-8 md:px-8">
@@ -285,7 +294,7 @@ export default function BeliefsPage(): JSX.Element {
             {active.length > 0 && (
               <button
                 type="button"
-                onClick={() => run.mutate(hasRun)}
+                onClick={handleRunCheck}
                 disabled={run.isPending}
                 className={GHOST_BTN}
               >
