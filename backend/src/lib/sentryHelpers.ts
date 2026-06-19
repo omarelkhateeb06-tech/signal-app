@@ -49,7 +49,12 @@ export type IngestionStage =
   // unhandled exception in a seam, transient PG/Redis error during
   // status writes, or any other error not caught and surfaced as a
   // failed envelope upstream.
-  | "worker_failed";
+  | "worker_failed"
+  // Phase A⑤ (Tripwire) — position-alert scan soft-failure. Fires from the
+  // enrichment worker tail when matching a newly published event against
+  // readers' active positions fails. Soft (the event is already published);
+  // observability-only. NB: ingestion.candidate_id carries the event id here.
+  | "position_scan";
 
 export interface IngestionStageFailureContext {
   stage: IngestionStage;

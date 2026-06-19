@@ -17,6 +17,7 @@ import { runHeuristicSeam } from "./heuristicSeam";
 import { runRelevanceSeam } from "./relevanceSeam";
 import { runFactsSeam } from "./factsSeam";
 import { handleWorkerFailure } from "./enrichmentWorkerFailure";
+import { scanEventForPositionAlerts } from "./positionAlertScan";
 
 let cachedWorker: Worker<EnrichmentJobInput> | null = null;
 
@@ -50,6 +51,18 @@ async function handle(job: Job<EnrichmentJobInput>): Promise<void> {
   console.log(
     `[signal-backend] [ingestion-enrich:done] candidate=${result.candidateId} terminal=${result.terminalStatus} event=${result.resolvedEventId ?? "none"} failure=${result.failureReason ?? "none"}`,
   );
+
+  // Phase A⑤ (Tripwire) — continuous monitor. When the chain publishes a NEW
+  // event (not a cluster-attach onto an existing one), check it against
+  // readers' active positions and fire alerts. Fails closed internally, so it
+  // never breaks the job; awaited so it runs within the job lifecycle.
+  if (
+    result.terminalStatus === "published" &&
+    result.resolvedEventId &&
+    !result.clusterResult?.matched
+  ) {
+    await scanEventForPositionAlerts(result.resolvedEventId);
+  }
 }
 
 export function startEnrichmentWorker(): Worker<EnrichmentJobInput> | null {
