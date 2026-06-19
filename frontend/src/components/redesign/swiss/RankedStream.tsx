@@ -8,7 +8,6 @@ import { freshBoundaryMs, freshnessTimestamp, isAfter } from "@/lib/feedFreshnes
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { ConnectionHero } from "./ConnectionHero";
 import { FeatureExhibit, GatedExhibit, StoryExhibit } from "./StoryExhibit";
-import { InFocusBar } from "./InFocusBar";
 
 // Left panel: the ranked stream — a scannable, type-aware index. The flagship
 // THE CONNECTION is promoted to a full-width hero at the top; a second
@@ -95,10 +94,9 @@ export function RankedStream({
 
   return (
     <section className="min-w-0 px-6 py-6 md:px-8">
-      <InFocusBar />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex flex-wrap items-center gap-2.5 font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
-          Ranked Stream
+          Today&apos;s Evidence
           {newCount > 0 && (
             <span className="bg-accent px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-bg">
               {newCount} new{isReturning ? " since last visit" : ""}

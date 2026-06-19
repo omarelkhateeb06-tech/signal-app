@@ -6,7 +6,6 @@ import Link from "next/link";
 import { ArrowLeft, Bookmark, Copy } from "lucide-react";
 import { useStoryCommentary, type DepthOverride } from "@/hooks/useStoryCommentary";
 import { useTier } from "@/hooks/useTier";
-import { useThroughLine } from "@/hooks/useThroughLine";
 import { DepthToggle } from "@/components/stories/DepthToggle";
 import { StorySaveButton } from "@/components/stories/StorySaveButton";
 import { ShareButton } from "@/components/stories/ShareButton";
@@ -47,19 +46,14 @@ function SectionLabel({ children }: { children: string }): JSX.Element {
 function ProfileDefault({
   userName,
   profile,
-  topStoryIds,
 }: {
   userName: string | null;
   profile: UserProfile | null;
-  topStoryIds: string[];
 }): JSX.Element {
   const role = profile?.role ? ROLE_LABEL[profile.role] ?? profile.role : null;
   const sectors = profile?.sectors ?? [];
   const savedList = [...useSavedTakeaways().values()];
   const [copied, setCopied] = useState(false);
-
-  const throughLineQuery = useThroughLine(topStoryIds);
-  const tl = throughLineQuery.data;
 
   const handleExport = (): void => {
     if (savedList.length === 0) return;
@@ -80,30 +74,6 @@ function ProfileDefault({
 
   return (
     <div className="space-y-8">
-      {throughLineQuery.isLoading && topStoryIds.length > 0 ? (
-        <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
-          Reading today&apos;s briefing…
-        </p>
-      ) : tl?.through_line || tl?.gated ? (
-        <figure className="border-l-[3px] border-accent bg-accent/[0.05] py-3 pl-4 pr-3">
-          <SectionLabel>The Through-Line</SectionLabel>
-          {tl.gated ? (
-            <Link href="/upgrade" className="mt-2 block hover:no-underline">
-              <p className="font-serif text-[15px] italic leading-relaxed text-ink">
-                The thread connecting today&apos;s stories — written for your role.
-              </p>
-              <span className="mt-2 inline-block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-accent">
-                {tl.upgrade_cta?.message ?? "Unlock with Pro"} →
-              </span>
-            </Link>
-          ) : (
-            <blockquote className="mt-2 font-serif text-[15px] italic leading-relaxed text-ink">
-              {tl.through_line}
-            </blockquote>
-          )}
-        </figure>
-      ) : null}
-
       <div>
         <SectionLabel>Intelligence Profile</SectionLabel>
         <dl className="mt-3 divide-y divide-line border-y border-line">
@@ -389,7 +359,6 @@ interface DetailPanelProps {
   selectedStory: Story | null;
   profile: UserProfile | null;
   userName: string | null;
-  topStoryIds: string[];
   onBack: () => void;
 }
 
@@ -399,16 +368,11 @@ export function DetailPanel({
   selectedStory,
   profile,
   userName,
-  topStoryIds,
   onBack,
 }: DetailPanelProps): JSX.Element {
   return selectedStory ? (
     <StoryDetail story={selectedStory} profile={profile} onBack={onBack} />
   ) : (
-    <ProfileDefault
-      userName={userName}
-      profile={profile}
-      topStoryIds={topStoryIds}
-    />
+    <ProfileDefault userName={userName} profile={profile} />
   );
 }

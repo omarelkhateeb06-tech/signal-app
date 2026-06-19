@@ -8,10 +8,12 @@ import { useStories } from "@/hooks/useStories";
 import { useProfile } from "@/hooks/useProfile";
 import { useAuth } from "@/hooks/useAuth";
 import { useTier } from "@/hooks/useTier";
+import { useThroughLine } from "@/hooks/useThroughLine";
 import { extractApiError } from "@/lib/api";
 import { trackEngagement, flushEngagement } from "@/lib/engagementTracker";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
 import { SwissMasthead } from "./SwissMasthead";
+import { ThroughLineHero } from "./ThroughLineHero";
 import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
 
@@ -178,6 +180,15 @@ export function SwissCommandFeed(): JSX.Element {
     [nonGated],
   );
 
+  // The Through-Line now leads the page (the hero), so its fetch is lifted
+  // here and fired the moment the first page of stories resolves — no longer
+  // waiting on the right panel to mount (the old ProfileDefault waterfall).
+  const throughLineQuery = useThroughLine(topStoryIds, {
+    enabled: topStoryIds.length > 0,
+  });
+  const throughLine = throughLineQuery.data?.through_line ?? null;
+  const heroLoading = isLoading || throughLineQuery.isLoading;
+
   // Right panel: an in-flow column that scrolls within the fixed-height
   // region on ≥lg; a slide-over drawer below lg.
   const detailContainerClass = clsx(
@@ -293,7 +304,6 @@ export function SwissCommandFeed(): JSX.Element {
             selectedStory={selectedStory}
             profile={profile}
             userName={user?.name ?? null}
-            topStoryIds={topStoryIds}
             onBack={() => setSelectedId(null)}
           />
         </div>
@@ -310,10 +320,13 @@ export function SwissCommandFeed(): JSX.Element {
   return (
     <div className="theme-swiss h-[calc(100dvh_-_3.5rem)] overflow-hidden bg-bg text-ink">
       <div className="mx-auto flex h-full w-full max-w-[1840px] flex-col px-4 md:px-12 lg:px-20 2xl:px-32">
-        <SwissMasthead
+        <SwissMasthead onRefresh={handleRefresh} isRefreshing={isRefreshing} />
+        <ThroughLineHero
+          throughLine={throughLine}
+          isLoading={heroLoading}
           preparedFor={user?.name ?? "Reader"}
-          onRefresh={handleRefresh}
-          isRefreshing={isRefreshing}
+          role={profile?.role ?? null}
+          sectors={profile?.sectors ?? []}
         />
         {region}
       </div>
