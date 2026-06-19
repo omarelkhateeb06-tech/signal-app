@@ -32,6 +32,10 @@ import {
 } from "../services/beliefMatchService";
 
 const MAX_BELIEF_LENGTH = 280;
+const MAX_HORIZON_LENGTH = 80;
+const MAX_BREAKER_LENGTH = 280;
+const MIN_CONVICTION = 1;
+const MAX_CONVICTION = 5;
 const VALID_SECTORS = ["ai", "finance", "semiconductors"] as const;
 // Widened from 10: the hybrid matcher does its own relevance ranking over the
 // candidate set (embeddings proved near-orthogonal for short-belief→long-doc
@@ -64,14 +68,22 @@ function gistFor(genericCommentary: string | null, whyItMatters: string): string
 const createSchema = z.object({
   statement: z.string().trim().min(8).max(MAX_BELIEF_LENGTH),
   sector: z.enum(VALID_SECTORS).nullish(),
+  // Tripwire position fields (all optional): how strongly held (1-5), the
+  // bet's time frame, and the explicit falsifier.
+  conviction: z.number().int().min(MIN_CONVICTION).max(MAX_CONVICTION).nullish(),
+  horizon: z.string().trim().max(MAX_HORIZON_LENGTH).nullish(),
+  whatWouldBreakIt: z.string().trim().max(MAX_BREAKER_LENGTH).nullish(),
 });
 
 const updateSchema = z
   .object({
     statement: z.string().trim().min(8).max(MAX_BELIEF_LENGTH).optional(),
     status: z.enum(["active", "revised", "archived"]).optional(),
+    conviction: z.number().int().min(MIN_CONVICTION).max(MAX_CONVICTION).nullish(),
+    horizon: z.string().trim().max(MAX_HORIZON_LENGTH).nullish(),
+    whatWouldBreakIt: z.string().trim().max(MAX_BREAKER_LENGTH).nullish(),
   })
-  .refine((d) => d.statement !== undefined || d.status !== undefined, {
+  .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: "Nothing to update",
   });
 
@@ -131,6 +143,9 @@ export async function createBelief(
         userId,
         statement: parsed.data.statement,
         sector: parsed.data.sector ?? null,
+        conviction: parsed.data.conviction ?? null,
+        horizon: parsed.data.horizon?.trim() || null,
+        whatWouldBreakIt: parsed.data.whatWouldBreakIt?.trim() || null,
       })
       .returning();
     res.status(201).json({ data: { belief: row } });
@@ -178,6 +193,12 @@ export async function updateBelief(
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (parsed.data.statement !== undefined) set.statement = parsed.data.statement;
     if (parsed.data.status !== undefined) set.status = parsed.data.status;
+    if (parsed.data.conviction !== undefined)
+      set.conviction = parsed.data.conviction ?? null;
+    if (parsed.data.horizon !== undefined)
+      set.horizon = parsed.data.horizon?.trim() || null;
+    if (parsed.data.whatWouldBreakIt !== undefined)
+      set.whatWouldBreakIt = parsed.data.whatWouldBreakIt?.trim() || null;
     const [row] = await db
       .update(userBeliefs)
       .set(set)

@@ -355,6 +355,13 @@ export const userBeliefs = pgTable(
     // whether or not a challenge resulted, so re-runs within the same week skip
     // clean beliefs (migration 0067). Nullable = never checked.
     lastCheckedWeekKey: text("last_checked_week_key"),
+    // Tripwire (migration 0069): a belief is a "position" the reader has
+    // staked. conviction (1-5, how strongly held), horizon (the bet's time
+    // frame, e.g. "Q4 2026"), whatWouldBreakIt (the explicit falsifier — also
+    // a strong signal for the matcher). All optional.
+    conviction: integer("conviction"),
+    horizon: text("horizon"),
+    whatWouldBreakIt: text("what_would_break_it"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -394,6 +401,9 @@ export const beliefChallenges = pgTable(
     dissent: text("dissent"),
     sourceHeadline: text("source_headline"),
     response: text("response"),
+    // Tripwire (migration 0069): when this alert was emailed, for at-most-once
+    // delivery. Null = not yet sent.
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     respondedAt: timestamp("responded_at", { withTimezone: true }),
   },
