@@ -17,9 +17,9 @@ import { TrialBadge } from "@/components/layout/TrialBadge";
 // right-rail icons, as before), matching the prior mobile behaviour.
 
 const PRIMARY_NAV: ReadonlyArray<{ href: string; label: string }> = [
-  // Tripwire redesign — Positions is home; the feed is demoted from the
-  // landing to a secondary browse surface.
-  { href: "/beliefs", label: "Positions" },
+  // Belief Evolution — beliefs is home; the feed is demoted from the landing
+  // to a secondary browse surface.
+  { href: "/beliefs", label: "Beliefs" },
   { href: "/feed", label: "Feed" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/saved", label: "Saved" },

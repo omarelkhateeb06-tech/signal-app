@@ -401,6 +401,10 @@ export const beliefChallenges = pgTable(
     dissent: text("dissent"),
     sourceHeadline: text("source_headline"),
     response: text("response"),
+    // Partial B / Belief Evolution (migration 0070): the reader's own note on
+    // how this development moved the belief — the journal layer behind the
+    // evolution timeline. Null = no note.
+    responseNote: text("response_note"),
     // Tripwire (migration 0069): when this alert was emailed, for at-most-once
     // delivery. Null = not yet sent.
     notifiedAt: timestamp("notified_at", { withTimezone: true }),

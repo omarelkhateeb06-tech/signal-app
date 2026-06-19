@@ -110,7 +110,7 @@ export async function createPortalSession(): Promise<CheckoutSession> {
 // ---------- Belief maintenance (the missionary pivot) ----------
 
 export type BeliefStatus = "active" | "revised" | "archived";
-export type ChallengeResponse = "revised" | "held" | "dismissed";
+export type ChallengeResponse = "revised" | "strengthened" | "held" | "dismissed";
 // How a development bears on a belief (migration 0068). The hybrid matcher
 // always classifies the most-relevant development; 'contradicts' is the loud
 // signal, the rest are the weekly radar.
@@ -144,6 +144,9 @@ export interface BeliefChallenge {
   source_headline: string | null;
   event_id: string | null;
   response: ChallengeResponse | null;
+  // Belief Evolution (partial B): the reader's note on how this development
+  // moved the belief. Optional — present once they've responded with a note.
+  response_note?: string | null;
   created_at?: string;
 }
 
@@ -210,12 +213,50 @@ export async function runBeliefChallenges(force = false): Promise<ChallengesResp
 export async function respondToBeliefChallenge(
   id: string,
   response: ChallengeResponse,
+  note?: string | null,
 ): Promise<BeliefChallenge> {
   const res = await api.post<{ data: { challenge: BeliefChallenge } }>(
     `/api/v1/beliefs/challenges/${id}/respond`,
-    { response },
+    { response, note: note?.trim() || undefined },
   );
   return res.data.data.challenge;
+}
+
+// Belief Evolution (partial B): the full history of what's moved a belief over
+// time, with the reader's response + note. Powers the per-belief evolution view.
+export interface BeliefEvolutionEntry {
+  id: string;
+  belief_id: string;
+  relevance: BeliefRelevance;
+  how_to_update: string;
+  dissent: string | null;
+  source_headline: string | null;
+  event_id: string | null;
+  response: ChallengeResponse | null;
+  response_note: string | null;
+  week_key: string;
+  created_at?: string;
+  responded_at?: string | null;
+}
+
+export interface BeliefEvolution {
+  belief: {
+    id: string;
+    statement: string;
+    sector: string | null;
+    status: BeliefStatus;
+    conviction: number | null;
+    horizon: string | null;
+    whatWouldBreakIt: string | null;
+  };
+  evolution: BeliefEvolutionEntry[];
+}
+
+export async function getBeliefEvolution(beliefId: string): Promise<BeliefEvolution> {
+  const res = await api.get<{ data: BeliefEvolution }>(
+    `/api/v1/beliefs/${beliefId}/evolution`,
+  );
+  return res.data.data;
 }
 
 export interface SignupInput {

@@ -87,8 +87,13 @@ const updateSchema = z
     message: "Nothing to update",
   });
 
+const MAX_NOTE_LENGTH = 1000;
 const respondSchema = z.object({
-  response: z.enum(["revised", "held", "dismissed"]),
+  // Belief Evolution (partial B): 'strengthened' is the growth half of the
+  // north star — knowledge reinforced conviction, no revision. 'revised' stays
+  // the update signal. 'note' is the reader's own words on how it moved them.
+  response: z.enum(["revised", "strengthened", "held", "dismissed"]),
+  note: z.string().trim().max(MAX_NOTE_LENGTH).nullish(),
 });
 
 const uuidSchema = z.string().uuid();
@@ -422,15 +427,20 @@ export async function respondToChallenge(
 
     const [challenge] = await db
       .update(beliefChallenges)
-      .set({ response: parsed.data.response, respondedAt: new Date() })
+      .set({
+        response: parsed.data.response,
+        responseNote: parsed.data.note?.trim() || null,
+        respondedAt: new Date(),
+      })
       .where(
         and(eq(beliefChallenges.id, id.data), eq(beliefChallenges.userId, userId)),
       )
       .returning();
     if (!challenge) throw new AppError("NOT_FOUND", "Challenge not found", 404);
 
-    // 'revised' is the north star: the reader updated a belief because SIGNAL
-    // flagged a contradiction. Mark the belief revised + log the event.
+    // North star = a belief that MOVED. 'revised' flips the belief's status and
+    // logs belief_revised. 'strengthened' is the growth half (knowledge hardened
+    // conviction) — logged as belief_strengthened, no status change.
     if (parsed.data.response === "revised") {
       await db
         .update(userBeliefs)
@@ -446,9 +456,79 @@ export async function respondToChallenge(
         eventType: "belief_revised",
         props: { beliefId: challenge.beliefId, challengeId: challenge.id },
       });
+    } else if (parsed.data.response === "strengthened") {
+      await db.insert(productEvents).values({
+        userId,
+        eventType: "belief_strengthened",
+        props: { beliefId: challenge.beliefId, challengeId: challenge.id },
+      });
     }
 
     res.json({ data: { challenge } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ---------- Belief evolution (partial B) ----------
+
+// Every development that's touched a belief over its life (NOT week-scoped) —
+// the matcher's verdicts in time order, with the reader's response + note. This
+// is the data behind the "how your thinking evolved" timeline.
+async function loadBeliefEvolution(
+  userId: string,
+  beliefId: string,
+): Promise<unknown[]> {
+  return db
+    .select({
+      id: beliefChallenges.id,
+      belief_id: beliefChallenges.beliefId,
+      relevance: beliefChallenges.relevance,
+      how_to_update: beliefChallenges.howToUpdate,
+      dissent: beliefChallenges.dissent,
+      source_headline: beliefChallenges.sourceHeadline,
+      event_id: beliefChallenges.eventId,
+      response: beliefChallenges.response,
+      response_note: beliefChallenges.responseNote,
+      week_key: beliefChallenges.weekKey,
+      created_at: beliefChallenges.createdAt,
+      responded_at: beliefChallenges.respondedAt,
+    })
+    .from(beliefChallenges)
+    .where(
+      and(
+        eq(beliefChallenges.userId, userId),
+        eq(beliefChallenges.beliefId, beliefId),
+      ),
+    )
+    .orderBy(desc(beliefChallenges.createdAt));
+}
+
+export async function getBeliefEvolution(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+    const id = uuidSchema.safeParse(req.params.id);
+    if (!id.success) throw new AppError("INVALID_QUERY", "Invalid belief id", 400);
+    const [belief] = await db
+      .select({
+        id: userBeliefs.id,
+        statement: userBeliefs.statement,
+        sector: userBeliefs.sector,
+        status: userBeliefs.status,
+        conviction: userBeliefs.conviction,
+        horizon: userBeliefs.horizon,
+        whatWouldBreakIt: userBeliefs.whatWouldBreakIt,
+      })
+      .from(userBeliefs)
+      .where(and(eq(userBeliefs.id, id.data), eq(userBeliefs.userId, userId)))
+      .limit(1);
+    if (!belief) throw new AppError("NOT_FOUND", "Belief not found", 404);
+    const evolution = await loadBeliefEvolution(userId, id.data);
+    res.json({ data: { belief, evolution } });
   } catch (error) {
     next(error);
   }
