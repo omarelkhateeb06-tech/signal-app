@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth";
 import { billingRouter } from "./routes/billing";
 import { handleWebhook as billingWebhook } from "./controllers/billingController";
 import { postSendgridEventWebhook } from "./controllers/emailEventsController";
+import { beliefsRouter } from "./routes/beliefs";
 import { briefingRouter } from "./routes/briefing";
 import { healthRouter } from "./routes/health";
 import { commentsRouter } from "./routes/comments";
@@ -110,6 +111,7 @@ export function createApp(): Express {
   app.post("/api/v1/emails/webhook", postSendgridEventWebhook);
   app.use("/api/v1/emails", emailLimiter, emailsRouter);
   app.use("/api/v1/billing", billingRouter);
+  app.use("/api/v1/beliefs", beliefsRouter);
   app.use("/api/v1/briefing", briefingRouter);
 
   // v2 Intelligence API: API-key authenticated, per-key rate limited.

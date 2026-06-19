@@ -335,6 +335,69 @@ export const emailEvents = pgTable(
   }),
 );
 
+// ---------- Belief maintenance (the missionary pivot) ----------
+
+// The reader's working assumptions, in their own words. SIGNAL's pivot from
+// a stay-informed feed to a belief-maintenance surface: the unit of value
+// is a belief revised, not a story read. `status` flips to 'revised' when
+// the reader updates a belief after a challenge, or 'archived' when retired.
+export const userBeliefs = pgTable(
+  "user_beliefs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    statement: text("statement").notNull(),
+    sector: text("sector"),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    activeIdx: index("user_beliefs_active_idx").on(t.userId),
+  }),
+);
+
+// A flagged contradiction: a development that materially challenges a belief
+// in a given ISO week. The Haiku matcher writes `howToUpdate` (how the
+// reader's view should change) + `dissent` (the informed counter-view) once
+// per (belief, week); the table doubles as that cache. `response` records
+// the reader's verdict — 'revised' is the north-star event.
+export const beliefChallenges = pgTable(
+  "belief_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    beliefId: uuid("belief_id")
+      .notNull()
+      .references(() => userBeliefs.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    weekKey: text("week_key").notNull(),
+    howToUpdate: text("how_to_update").notNull(),
+    dissent: text("dissent"),
+    sourceHeadline: text("source_headline"),
+    response: text("response"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+  },
+  (t) => ({
+    dedupIdx: uniqueIndex("belief_challenges_dedup_idx").on(
+      t.beliefId,
+      t.weekKey,
+      t.eventId,
+    ),
+    userWeekIdx: index("belief_challenges_user_week_idx").on(t.userId, t.weekKey),
+  }),
+);
+
+export type UserBelief = typeof userBeliefs.$inferSelect;
+export type NewUserBelief = typeof userBeliefs.$inferInsert;
+export type BeliefChallenge = typeof beliefChallenges.$inferSelect;
+export type NewBeliefChallenge = typeof beliefChallenges.$inferInsert;
+
 // ---------- Writers ----------
 
 export const writers = pgTable("writers", {
