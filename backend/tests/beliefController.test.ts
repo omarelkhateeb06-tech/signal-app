@@ -314,6 +314,58 @@ describe("beliefs API", () => {
     ).toBe(false);
   });
 
+  it("respond 'strengthened' logs belief_strengthened with a note, not a revision", async () => {
+    mock.queueInsert([{ id: challengeId, beliefId, userId }]); // challenge update().returning()
+    const res = await request(app)
+      .post(`/api/v1/beliefs/challenges/${challengeId}/respond`)
+      .set(...auth(token))
+      .send({ response: "strengthened", note: "the efficiency gains are real" });
+    expect(res.status).toBe(200);
+    // The reader's note is stored on the challenge.
+    expect(
+      mock.state.updatedRows.some(
+        (r) => r.responseNote === "the efficiency gains are real",
+      ),
+    ).toBe(true);
+    // Growth half of the north star fires; no revision.
+    expect(
+      mock.state.insertedValues.some((v) => v.eventType === "belief_strengthened"),
+    ).toBe(true);
+    expect(
+      mock.state.insertedValues.some((v) => v.eventType === "belief_revised"),
+    ).toBe(false);
+    expect(mock.state.updatedRows.some((r) => r.status === "revised")).toBe(false);
+  });
+
+  it("returns a belief's evolution timeline", async () => {
+    mock.queueSelect([
+      {
+        id: beliefId,
+        statement: "Transformer scaling keeps winning",
+        sector: "ai",
+        status: "active",
+      },
+    ]); // belief ownership lookup
+    mock.queueSelect([
+      {
+        id: challengeId,
+        belief_id: beliefId,
+        relevance: "supports",
+        how_to_update: "Efficiency results reinforce the scaling thesis.",
+        response: "strengthened",
+        response_note: "the efficiency gains are real",
+        source_headline: "A new result strengthens scaling",
+      },
+    ]); // loadBeliefEvolution
+    const res = await request(app)
+      .get(`/api/v1/beliefs/${beliefId}/evolution`)
+      .set(...auth(token));
+    expect(res.status).toBe(200);
+    expect(res.body.data.belief.id).toBe(beliefId);
+    expect(res.body.data.evolution).toHaveLength(1);
+    expect(res.body.data.evolution[0].response_note).toContain("efficiency gains");
+  });
+
   it("requires authentication", async () => {
     const res = await request(app)
       .post("/api/v1/beliefs")

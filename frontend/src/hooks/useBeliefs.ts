@@ -11,12 +11,14 @@ import {
   createBelief,
   deleteBelief,
   getBeliefChallenges,
+  getBeliefEvolution,
   listBeliefs,
   respondToBeliefChallenge,
   runBeliefChallenges,
   updateBelief,
   type Belief,
   type BeliefChallenge,
+  type BeliefEvolution,
   type ChallengeResponse,
   type ChallengesResponse,
 } from "@/lib/api";
@@ -43,6 +45,19 @@ export function useBeliefChallenges(): UseQueryResult<ChallengesResponse, Error>
   });
 }
 
+// The per-belief evolution timeline — every development that's moved it, with
+// the reader's response + note. Enabled on demand (when a belief is expanded).
+export function useBeliefEvolution(
+  beliefId: string | null,
+): UseQueryResult<BeliefEvolution, Error> {
+  return useQuery({
+    queryKey: ["belief-evolution", beliefId],
+    queryFn: () => getBeliefEvolution(beliefId as string),
+    enabled: beliefId != null,
+    staleTime: 60 * 1000,
+  });
+}
+
 export interface BeliefMutations {
   create: UseMutationResult<Belief, Error, CreateBeliefInput>;
   update: UseMutationResult<Belief, Error, { id: string; input: UpdateBeliefInput }>;
@@ -52,7 +67,7 @@ export interface BeliefMutations {
   respond: UseMutationResult<
     BeliefChallenge,
     Error,
-    { id: string; response: ChallengeResponse }
+    { id: string; response: ChallengeResponse; note?: string | null }
   >;
 }
 
@@ -86,8 +101,15 @@ export function useBeliefMutations(): BeliefMutations {
   });
 
   const respond = useMutation({
-    mutationFn: ({ id, response }: { id: string; response: ChallengeResponse }) =>
-      respondToBeliefChallenge(id, response),
+    mutationFn: ({
+      id,
+      response,
+      note,
+    }: {
+      id: string;
+      response: ChallengeResponse;
+      note?: string | null;
+    }) => respondToBeliefChallenge(id, response, note),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["belief-challenges"] });
       void qc.invalidateQueries({ queryKey: ["beliefs"] });

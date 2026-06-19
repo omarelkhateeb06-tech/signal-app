@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createBelief,
   deleteBelief,
+  getBeliefEvolution,
   getChallenges,
   listBeliefs,
   respondToChallenge,
@@ -23,6 +24,9 @@ beliefsRouter.post("/", createBelief);
 beliefsRouter.get("/challenges", getChallenges);
 beliefsRouter.post("/challenges/run", runChallenges);
 beliefsRouter.post("/challenges/:id/respond", respondToChallenge);
+
+// Belief Evolution (partial B): the full history of what's moved a belief.
+beliefsRouter.get("/:id/evolution", getBeliefEvolution);
 
 beliefsRouter.patch("/:id", updateBelief);
 beliefsRouter.delete("/:id", deleteBelief);
