@@ -351,6 +351,10 @@ export const userBeliefs = pgTable(
     statement: text("statement").notNull(),
     sector: text("sector"),
     status: text("status").notNull().default("active"),
+    // ISO-week key of the last "Reconsider" run that checked this belief — set
+    // whether or not a challenge resulted, so re-runs within the same week skip
+    // clean beliefs (migration 0067). Nullable = never checked.
+    lastCheckedWeekKey: text("last_checked_week_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -246,7 +246,12 @@ export async function runChallenges(
         ),
       );
     const done = new Set(existing.map((r) => r.beliefId));
-    const todo = beliefs.filter((b) => !done.has(b.id));
+    // Cost guard: also skip beliefs already checked this week — including ones
+    // that produced no challenge (a clean belief leaves no belief_challenges
+    // row to dedup on, so without the marker it'd be re-sent to Haiku each run).
+    const todo = beliefs.filter(
+      (b) => !done.has(b.id) && b.lastCheckedWeekKey !== weekKey,
+    );
 
     if (todo.length > 0) {
       // Candidate developments: recent, in the reader's sectors.
@@ -304,6 +309,19 @@ export async function runChallenges(
             .onConflictDoNothing();
         }),
       );
+
+      // Mark every belief checked this run (challenged or clean) so re-runs
+      // within the same ISO week skip them — the matcher is the only Haiku
+      // cost on this path.
+      await db
+        .update(userBeliefs)
+        .set({ lastCheckedWeekKey: weekKey, updatedAt: new Date() })
+        .where(
+          inArray(
+            userBeliefs.id,
+            todo.map((b) => b.id),
+          ),
+        );
     }
 
     const challenges = await loadWeekChallenges(userId, weekKey);

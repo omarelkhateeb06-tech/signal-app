@@ -36,6 +36,7 @@ jest.mock("@anthropic-ai/sdk", () => {
 import { createApp } from "../src/app";
 import { generateToken } from "../src/services/authService";
 import { __resetBeliefMatchClientForTests } from "../src/services/beliefMatchClient";
+import { isoWeekKey } from "../src/services/beliefMatchService";
 
 const app = createApp();
 
@@ -162,6 +163,30 @@ describe("beliefs API", () => {
     expect(res.body.data.challenges[0].how_to_update).toContain("sub-quadratic");
     const inserted = mock.state.insertedValues.find((v) => v.howToUpdate);
     expect(inserted).toMatchObject({ beliefId, userId, eventId });
+    // Cost guard: a processed belief is marked checked for the week.
+    expect(mock.state.updatedRows.some((r) => r.lastCheckedWeekKey)).toBe(true);
+  });
+
+  it("runChallenges skips a belief already checked this week (cost guard)", async () => {
+    const week = isoWeekKey(new Date());
+    mock.queueSelect([
+      {
+        id: beliefId,
+        userId,
+        statement: "Transformer scaling keeps winning",
+        sector: "ai",
+        status: "active",
+        lastCheckedWeekKey: week,
+      },
+    ]); // active beliefs — already checked this week
+    mock.queueSelect([]); // existing challenges (none)
+    mock.queueSelect([]); // loadWeekChallenges
+    const res = await request(app)
+      .post("/api/v1/beliefs/challenges/run")
+      .set(...auth(token));
+    expect(res.status).toBe(200);
+    expect(res.body.data.beliefs_checked).toBe(0);
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it("respond 'revised' marks the belief and logs the north-star event", async () => {
