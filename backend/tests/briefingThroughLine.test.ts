@@ -74,12 +74,6 @@ function resetAll(): void {
   setRedis(true);
 }
 
-const queueTierPro = (): void => {
-  mock.queueSelect([{ tier: "pro", trialStartedAt: null }]);
-};
-const queueTierFree = (trialStartedAt: Date | null): void => {
-  mock.queueSelect([{ tier: "free", trialStartedAt }]);
-};
 const queueProfile = (): void => {
   mock.queueSelect([
     {
@@ -121,39 +115,32 @@ describe("GET /api/v1/briefing/through-line", () => {
     token = generateToken(userId, "user@example.com");
   });
 
-  it("(a) free tier → gate envelope, no Haiku call", async () => {
-    queueTierFree(new Date("2026-05-01T00:00:00Z")); // trial already used
-
-    const res = await request(app)
-      .get(`/api/v1/briefing/through-line?storyIds=${idA}`)
-      .set(...auth(token));
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.gated).toBe(true);
-    expect(res.body.data.through_line).toBeNull();
-    expect(res.body.data.upgrade_cta.trial_available).toBe(false);
-    expect(res.body.data.upgrade_cta.message).toContain("$10/month");
-    expect(createMock).not.toHaveBeenCalled();
-  });
-
-  it("(a') free tier, never trialed → trial-offer CTA copy", async () => {
-    queueTierFree(null);
-
-    const res = await request(app)
-      .get(`/api/v1/briefing/through-line?storyIds=${idA}`)
-      .set(...auth(token));
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.gated).toBe(true);
-    expect(res.body.data.upgrade_cta.trial_available).toBe(true);
-    expect(res.body.data.upgrade_cta.message).toBe(
-      "Get the daily Through-Line — try Pro free for 7 days.",
+  // D3 — the Through-Line is the FREE daily hook. The endpoint no longer
+  // branches on tier, so a free reader takes the same cache→generate path
+  // as Pro and is never handed a gate envelope.
+  it("(a) free reader is not gated — gets the Through-Line like everyone else", async () => {
+    queueProfile();
+    getMock.mockResolvedValueOnce(null); // cache miss
+    queueEventRows([eventRow(idA), eventRow(idB)]);
+    setMock.mockResolvedValueOnce("OK");
+    createMock.mockResolvedValueOnce(
+      haikuTextResponse(
+        "Both moves point one way: compute is consolidating, and for your role that narrows vendor options as the roadmap widens.",
+      ),
     );
-    expect(createMock).not.toHaveBeenCalled();
+
+    const res = await request(app)
+      .get(`/api/v1/briefing/through-line?storyIds=${idA},${idB}`)
+      .set(...auth(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.gated).toBeUndefined();
+    expect(res.body.data.source).toBe("haiku");
+    expect(res.body.data.through_line).toContain("compute is consolidating");
+    expect(createMock).toHaveBeenCalledTimes(1);
   });
 
   it("(b) pro tier + cache miss → Haiku called, returns synthesis, source haiku", async () => {
-    queueTierPro();
     queueProfile();
     getMock.mockResolvedValueOnce(null); // cache miss
     queueEventRows([eventRow(idA), eventRow(idB)]); // events lookup resolves both
@@ -181,7 +168,6 @@ describe("GET /api/v1/briefing/through-line", () => {
   });
 
   it("(b') pro tier + cache hit → returns cached, no Haiku call", async () => {
-    queueTierPro();
     queueProfile();
     getMock.mockResolvedValueOnce("Cached through-line.");
 
@@ -196,7 +182,6 @@ describe("GET /api/v1/briefing/through-line", () => {
   });
 
   it("(c) pro tier + Haiku failure → through_line null, source unavailable", async () => {
-    queueTierPro();
     queueProfile();
     getMock.mockResolvedValueOnce(null);
     queueEventRows([eventRow(idA)]);
@@ -213,7 +198,6 @@ describe("GET /api/v1/briefing/through-line", () => {
   });
 
   it("(c') pro tier, none of the ids resolve → unavailable, no Haiku call", async () => {
-    queueTierPro();
     queueProfile();
     getMock.mockResolvedValueOnce(null);
     queueEventRows([]); // events lookup empty
@@ -231,7 +215,6 @@ describe("GET /api/v1/briefing/through-line", () => {
 
   it("(c'') pro tier + Redis unconfigured → unavailable, no Haiku call (cost fuse)", async () => {
     setRedis(false);
-    queueTierPro();
 
     const res = await request(app)
       .get(`/api/v1/briefing/through-line?storyIds=${idA}`)
@@ -244,7 +227,6 @@ describe("GET /api/v1/briefing/through-line", () => {
   });
 
   it("(d) invalid storyIds → 400 INVALID_QUERY", async () => {
-    queueTierPro();
 
     const res = await request(app)
       .get(`/api/v1/briefing/through-line?storyIds=not-a-uuid`)
@@ -256,7 +238,6 @@ describe("GET /api/v1/briefing/through-line", () => {
   });
 
   it("(d') missing storyIds param → 400 INVALID_QUERY", async () => {
-    queueTierPro();
 
     const res = await request(app)
       .get(`/api/v1/briefing/through-line`)
