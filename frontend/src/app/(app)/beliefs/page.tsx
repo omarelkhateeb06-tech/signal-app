@@ -10,6 +10,7 @@ import {
   extractApiError,
   type Belief,
   type BeliefChallenge,
+  type BeliefRelevance,
   type ChallengeResponse,
 } from "@/lib/api";
 
@@ -32,6 +33,58 @@ const PRIMARY_BTN =
 const GHOST_BTN =
   "inline-flex items-center justify-center border border-line px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-ink transition-colors hover:border-ink disabled:cursor-not-allowed disabled:opacity-50";
 
+// How each relevance class is presented. `rank` orders the radar loud-first.
+// Tailwind needs literal class names, so border/text are spelled out (no
+// dynamic `text-${tone}`). All four tones map to real theme tokens.
+interface RelevanceMeta {
+  rank: number;
+  eyebrow: string;
+  badge: string;
+  border: string;
+  text: string;
+  dissentLabel: string;
+}
+const RELEVANCE_META: Record<BeliefRelevance, RelevanceMeta> = {
+  contradicts: {
+    rank: 0,
+    eyebrow: "Reconsider",
+    badge: "Contradicts",
+    border: "border-err",
+    text: "text-err",
+    dissentLabel: "The case it still holds",
+  },
+  pressures: {
+    rank: 1,
+    eyebrow: "Under pressure",
+    badge: "Pressures",
+    border: "border-warn",
+    text: "text-warn",
+    dissentLabel: "The case it still holds",
+  },
+  supports: {
+    rank: 2,
+    eyebrow: "Holding up",
+    badge: "Supports",
+    border: "border-ok",
+    text: "text-ok",
+    dissentLabel: "The caveat",
+  },
+  watch: {
+    rank: 3,
+    eyebrow: "On the radar",
+    badge: "Watch",
+    border: "border-accent",
+    text: "text-accent",
+    dissentLabel: "Why it isn't decisive yet",
+  },
+};
+// Defensive: a pre-hybrid or unexpected value falls back to the calmest tone.
+function metaFor(relevance: BeliefRelevance | undefined): RelevanceMeta {
+  return RELEVANCE_META[relevance as BeliefRelevance] ?? RELEVANCE_META.watch;
+}
+const isLoud = (r: BeliefRelevance): boolean =>
+  r === "contradicts" || r === "pressures";
+
 function SectionLabel({ children }: { children: ReactNode }): JSX.Element {
   return (
     <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
@@ -50,18 +103,30 @@ function ChallengeCard({
   pending: boolean;
 }): JSX.Element {
   const responded = challenge.response != null;
+  const meta = metaFor(challenge.relevance);
   return (
     <article className="border border-ink/80 bg-surface p-5">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
-        You believed
-      </p>
-      <p className="mt-1.5 font-serif text-[19px] leading-snug text-ink">
-        {challenge.statement}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+            You believed
+          </p>
+          <p className="mt-1.5 font-serif text-[19px] leading-snug text-ink">
+            {challenge.statement}
+          </p>
+        </div>
+        <span
+          className={`flex-none border ${meta.border} ${meta.text} px-2 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em]`}
+        >
+          {meta.badge}
+        </span>
+      </div>
 
-      <div className="mt-4 border-l-[3px] border-accent bg-accent/[0.06] py-3 pl-4 pr-3">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
-          Reconsider
+      <div className={`mt-4 border-l-[3px] py-3 pl-4 pr-3 ${meta.border}`}>
+        <p
+          className={`font-mono text-[10px] font-semibold uppercase tracking-[0.16em] ${meta.text}`}
+        >
+          {meta.eyebrow}
         </p>
         <p className="mt-1.5 text-[15px] leading-relaxed text-ink">
           {challenge.how_to_update}
@@ -71,7 +136,7 @@ function ChallengeCard({
       {challenge.dissent && (
         <div className="mt-3">
           <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">
-            The case it still holds
+            {meta.dissentLabel}
           </p>
           <p className="mt-1 max-w-[64ch] font-serif text-[14px] italic leading-relaxed text-ink-muted">
             {challenge.dissent}
@@ -173,6 +238,10 @@ export default function BeliefsPage(): JSX.Element {
   const active = beliefs.filter((b) => b.status === "active");
   const revised = beliefs.filter((b) => b.status === "revised");
   const challenges = challengesQuery.data?.challenges ?? [];
+  const sortedChallenges = [...challenges].sort(
+    (a, b) => metaFor(a.relevance).rank - metaFor(b.relevance).rank,
+  );
+  const loudCount = challenges.filter((c) => isLoud(c.relevance)).length;
   const hasRun = run.isSuccess || challenges.length > 0;
 
   const trimmed = statement.trim();
@@ -204,8 +273,8 @@ export default function BeliefsPage(): JSX.Element {
           </h1>
           <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-muted">
             The working assumptions you&apos;re betting on. Each week SIGNAL
-            checks them against what actually happened — and names the one
-            development that should make you reconsider.
+            checks them against what actually happened — and names where this
+            week&apos;s developments push on them, hardest first.
           </p>
         </header>
 
@@ -216,7 +285,7 @@ export default function BeliefsPage(): JSX.Element {
             {active.length > 0 && (
               <button
                 type="button"
-                onClick={() => run.mutate()}
+                onClick={() => run.mutate(hasRun)}
                 disabled={run.isPending}
                 className={GHOST_BTN}
               >
@@ -238,9 +307,14 @@ export default function BeliefsPage(): JSX.Element {
               <p className="text-[15px] leading-relaxed text-ink-muted">
                 Checking your beliefs against this week&apos;s developments…
               </p>
-            ) : challenges.length > 0 ? (
+            ) : sortedChallenges.length > 0 ? (
               <div className="space-y-4">
-                {challenges.map((c) => (
+                <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-muted">
+                  {loudCount > 0
+                    ? `${loudCount} development${loudCount === 1 ? "" : "s"} pushing on your beliefs this week`
+                    : "Quiet week — nothing's contradicting you, but here's what's adjacent"}
+                </p>
+                {sortedChallenges.map((c) => (
                   <ChallengeCard
                     key={c.id}
                     challenge={c}
@@ -251,8 +325,8 @@ export default function BeliefsPage(): JSX.Element {
               </div>
             ) : hasRun ? (
               <p className="text-[15px] leading-relaxed text-ink-muted">
-                Nothing challenged your beliefs this week. A clean week — your
-                model holds.
+                Nothing relevant surfaced this week — not even adjacent. Re-check
+                later as new developments land.
               </p>
             ) : (
               <p className="text-[15px] leading-relaxed text-ink-muted">

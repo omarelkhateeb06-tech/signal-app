@@ -111,6 +111,10 @@ export async function createPortalSession(): Promise<CheckoutSession> {
 
 export type BeliefStatus = "active" | "revised" | "archived";
 export type ChallengeResponse = "revised" | "held" | "dismissed";
+// How a development bears on a belief (migration 0068). The hybrid matcher
+// always classifies the most-relevant development; 'contradicts' is the loud
+// signal, the rest are the weekly radar.
+export type BeliefRelevance = "contradicts" | "pressures" | "supports" | "watch";
 
 export interface Belief {
   id: string;
@@ -128,6 +132,7 @@ export interface BeliefChallenge {
   belief_id: string;
   statement: string;
   sector: string | null;
+  relevance: BeliefRelevance;
   how_to_update: string;
   dissent: string | null;
   source_headline: string | null;
@@ -177,9 +182,12 @@ export async function getBeliefChallenges(): Promise<ChallengesResponse> {
   return res.data.data;
 }
 
-export async function runBeliefChallenges(): Promise<ChallengesResponse> {
+// `force` triggers a fresh run that bypasses the per-week cost guard and
+// regenerates this week's unresponded signals (the "Re-check" button).
+export async function runBeliefChallenges(force = false): Promise<ChallengesResponse> {
   const res = await api.post<{ data: ChallengesResponse }>(
     "/api/v1/beliefs/challenges/run",
+    force ? { force: true } : undefined,
   );
   return res.data.data;
 }
