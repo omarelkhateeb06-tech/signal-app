@@ -90,6 +90,21 @@ export function SwissCommandFeed(): JSX.Element {
   // story being navigated away from.
   const handleSelect = (id: string): void => {
     const prev = viewRef.current;
+    // Re-clicking the already-open story toggles it closed — no "back to
+    // profile" round-trip. Emit the dwell for the story being closed first.
+    if (selectedId === id) {
+      if (prev) {
+        trackEngagement({
+          event_type: "story_view",
+          event_id: prev.id,
+          dwell_ms: Date.now() - prev.openedAt,
+        });
+        viewRef.current = null;
+      }
+      setSelectedId(null);
+      setDrawerOpen(false);
+      return;
+    }
     if (!prev || prev.id !== id) {
       if (prev) {
         trackEngagement({
