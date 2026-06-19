@@ -3,6 +3,7 @@
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { OnboardingBriefingPreview } from "@/components/onboarding/OnboardingBriefingPreview";
 import { DepthToggle } from "@/components/stories/DepthToggle";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import {
@@ -630,6 +631,9 @@ function Screen7(): JSX.Element {
           legacy morning/evening/none triple is reduced to "daily"
           (the canonical Pro cadence post-12i) vs "never". Default
           to "daily" for fresh signups; users can flip off here. */}
+      <div className="mb-6">
+        <OnboardingBriefingPreview role={store.role} sectors={store.sectors} />
+      </div>
       <div className="grid grid-cols-2 gap-3">
         {[
           { value: "morning", label: "Yes, daily" },
