@@ -609,7 +609,7 @@ function Screen7(): JSX.Element {
       // (Second fix-it: Defect 1.)
       markOnboardingCompletedInSession();
       store.reset();
-      router.push("/feed");
+      router.push("/beliefs");
     } catch (err) {
       setError(extractApiError(err, "Could not complete onboarding"));
     }
