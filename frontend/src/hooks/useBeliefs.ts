@@ -47,7 +47,8 @@ export interface BeliefMutations {
     { id: string; input: { statement?: string; status?: BeliefStatus } }
   >;
   remove: UseMutationResult<void, Error, string>;
-  run: UseMutationResult<ChallengesResponse, Error, void>;
+  // `force` (true on "Re-check") bypasses the per-week cost guard.
+  run: UseMutationResult<ChallengesResponse, Error, boolean | undefined>;
   respond: UseMutationResult<
     BeliefChallenge,
     Error,
@@ -83,7 +84,7 @@ export function useBeliefMutations(): BeliefMutations {
   });
 
   const run = useMutation({
-    mutationFn: runBeliefChallenges,
+    mutationFn: (force?: boolean) => runBeliefChallenges(force ?? false),
     onSuccess: (data) => {
       qc.setQueryData(["belief-challenges"], data);
     },
