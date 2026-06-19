@@ -45,7 +45,15 @@ export interface BeliefMatchEvent {
 }
 
 export interface BeliefMatchInput {
-  belief: { statement: string; sector: string | null };
+  belief: {
+    statement: string;
+    sector: string | null;
+    // The reader's explicit falsifier (Tripwire positions, migration 0069).
+    // When present it's the sharpest signal: a development that satisfies it
+    // leans hard toward "contradicts". Optional — the weekly path and
+    // pre-position beliefs omit it.
+    whatWouldBreakIt?: string | null;
+  };
   events: BeliefMatchEvent[];
 }
 
@@ -85,6 +93,7 @@ export const BELIEF_MATCH_SYSTEM_PROMPT = [
 export function buildBeliefMatchPrompt(input: BeliefMatchInput): string {
   const { belief, events } = input;
   const sector = belief.sector ? belief.sector : "general";
+  const falsifier = belief.whatWouldBreakIt?.trim();
   const eventBlock = events
     .map((e, i) => `${i + 1}. ${e.headline} — ${e.gist}`)
     .join("\n");
@@ -92,6 +101,9 @@ export function buildBeliefMatchPrompt(input: BeliefMatchInput): string {
   return [
     "THE READER'S BELIEF:",
     `"${belief.statement}" (sector: ${sector})`,
+    ...(falsifier
+      ? [`The reader says this belief is proven wrong if: ${falsifier}`]
+      : []),
     "",
     "THIS WEEK'S DEVELOPMENTS:",
     eventBlock,

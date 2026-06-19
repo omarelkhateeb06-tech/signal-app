@@ -60,6 +60,26 @@ describe("beliefMatchService", () => {
   });
 
   describe("buildBeliefMatchPrompt", () => {
+    it("omits the falsifier line when the position has none", () => {
+      const prompt = buildBeliefMatchPrompt(input);
+      expect(prompt).not.toContain("proven wrong if");
+    });
+
+    it("includes the falsifier as a strong signal when present", () => {
+      const prompt = buildBeliefMatchPrompt({
+        ...input,
+        belief: {
+          ...input.belief,
+          whatWouldBreakIt:
+            "A cheaper non-transformer architecture matches frontier quality",
+        },
+      });
+      expect(prompt).toContain("proven wrong if");
+      expect(prompt).toContain("non-transformer architecture");
+    });
+  });
+
+  describe("buildBeliefMatchPrompt", () => {
     it("includes the belief, the numbered events, and the relevance contract", () => {
       const p = buildBeliefMatchPrompt(input);
       expect(p).toContain("Transformer scaling keeps winning");
