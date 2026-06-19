@@ -1,18 +1,20 @@
 // Belief maintenance — the missionary pivot's API.
 //
 // CRUD over the reader's working assumptions, plus the "Reconsider" ritual:
-// runChallenges asks Haiku, per active belief, whether any of the week's top
-// developments materially challenges it, and persists the verdict to
-// belief_challenges (which doubles as the per-week cache). respondToChallenge
-// records the reader's verdict — 'revised' is the north star (a logged
-// belief_revised product_event = an assumption updated).
+// runChallenges asks Haiku, per active belief, which of the week's developments
+// most bears on it and how (contradicts / pressures / supports / watch — the
+// hybrid "loud + radar"), and persists the verdict to belief_challenges (which
+// doubles as the per-week cache). respondToChallenge records the reader's
+// verdict — 'revised' is the north star (a logged belief_revised product_event
+// = an assumption updated).
 //
-// Cost discipline: runChallenges is the only Haiku path here. It skips
-// beliefs already challenged this week, caps beliefs per run, and matches in
-// parallel (each call carries the service's own 10s timeout / fail-closed).
+// Cost discipline: runChallenges is the only Haiku path here. It skips beliefs
+// already checked this week (cost guard), caps beliefs per run, and matches in
+// parallel (each call carries the service's own 10s timeout / fail-closed). A
+// manual "Re-check" (force) bypasses the cost guard for a fresh pulse.
 
 import type { NextFunction, Request, Response } from "express";
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import {
@@ -31,22 +33,32 @@ import {
 
 const MAX_BELIEF_LENGTH = 280;
 const VALID_SECTORS = ["ai", "finance", "semiconductors"] as const;
-const CANDIDATE_EVENT_LIMIT = 10;
+// Widened from 10: the hybrid matcher does its own relevance ranking over the
+// candidate set (embeddings proved near-orthogonal for short-belief→long-doc
+// retrieval, so Haiku ranks instead). A wider recent in-sector set gives it
+// more to find the genuinely-relevant development in.
+const CANDIDATE_EVENT_LIMIT = 30;
 const MAX_BELIEFS_PER_RUN = 10;
 const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Per-candidate gist budget. The first matcher fed one sentence (~220 chars)
+// and stayed blind to the substance; the radar needs enough of the
+// why-it-matters to judge the relationship.
+const GIST_MAX_CHARS = 360;
 
 function requireUserId(req: Request): string {
   if (!req.user) throw new AppError("UNAUTHORIZED", "Not authenticated", 401);
   return req.user.userId;
 }
 
-// One-line gist for the matcher prompt — generic_commentary (role-neutral)
-// preferred, why_it_matters fallback; first sentence, capped.
+// Gist for the matcher prompt — generic_commentary (role-neutral) preferred,
+// why_it_matters fallback; the substance, trimmed to a budget on a word
+// boundary (not just the first sentence — the radar needs enough to judge).
 function gistFor(genericCommentary: string | null, whyItMatters: string): string {
-  const source = (genericCommentary?.trim() || whyItMatters).trim();
-  const breakIdx = source.search(/[.!?\n]/);
-  const slice = breakIdx > 0 ? source.slice(0, breakIdx + 1) : source;
-  return slice.slice(0, 220).trim();
+  const source = (genericCommentary?.trim() || whyItMatters || "").trim();
+  if (source.length <= GIST_MAX_CHARS) return source;
+  const cut = source.slice(0, GIST_MAX_CHARS);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }
 
 const createSchema = z.object({
@@ -81,6 +93,7 @@ async function loadWeekChallenges(
       belief_id: beliefChallenges.beliefId,
       statement: userBeliefs.statement,
       sector: userBeliefs.sector,
+      relevance: beliefChallenges.relevance,
       how_to_update: beliefChallenges.howToUpdate,
       dissent: beliefChallenges.dissent,
       source_headline: beliefChallenges.sourceHeadline,
@@ -222,6 +235,11 @@ export async function runChallenges(
   try {
     const userId = requireUserId(req);
     const weekKey = isoWeekKey(new Date());
+    // Manual "Re-check" forces a fresh run: it bypasses the per-week cost guard
+    // and clears this week's unresponded challenges so the matcher regenerates
+    // them. Challenges the reader already acted on (responded) are kept — both
+    // as north-star data and so we don't re-spend Haiku on settled beliefs.
+    const force = (req.body as { force?: unknown } | undefined)?.force === true;
 
     const beliefs = await db
       .select()
@@ -235,7 +253,20 @@ export async function runChallenges(
       return;
     }
 
-    // Skip beliefs already matched this week (the table is the cache).
+    if (force) {
+      await db
+        .delete(beliefChallenges)
+        .where(
+          and(
+            eq(beliefChallenges.userId, userId),
+            eq(beliefChallenges.weekKey, weekKey),
+            isNull(beliefChallenges.response),
+          ),
+        );
+    }
+
+    // Skip beliefs already matched this week (the table is the cache). After a
+    // forced clear, only responded challenges remain here.
     const existing = await db
       .select({ beliefId: beliefChallenges.beliefId })
       .from(beliefChallenges)
@@ -246,55 +277,77 @@ export async function runChallenges(
         ),
       );
     const done = new Set(existing.map((r) => r.beliefId));
-    // Cost guard: also skip beliefs already checked this week — including ones
-    // that produced no challenge (a clean belief leaves no belief_challenges
-    // row to dedup on, so without the marker it'd be re-sent to Haiku each run).
+    // Cost guard: skip beliefs already checked this week — including clean ones
+    // (a clean belief leaves no belief_challenges row to dedup on, so without
+    // the marker it'd be re-sent to Haiku each run). A forced re-check bypasses
+    // the marker; the `done` set (responded challenges) still wins.
     const todo = beliefs.filter(
-      (b) => !done.has(b.id) && b.lastCheckedWeekKey !== weekKey,
+      (b) => !done.has(b.id) && (force || b.lastCheckedWeekKey !== weekKey),
     );
 
     if (todo.length > 0) {
-      // Candidate developments: recent, in the reader's sectors.
       const [profile] = await db
         .select({ sectors: userProfiles.sectors })
         .from(userProfiles)
         .where(eq(userProfiles.userId, userId))
         .limit(1);
-      const sectors = profile?.sectors ?? [];
+      const userSectors = profile?.sectors ?? [];
       const since = new Date(Date.now() - RECENT_WINDOW_MS);
-      const recent = gte(events.publishedAt, since);
-      const whereClause =
-        sectors.length > 0 ? and(recent, inArray(events.sector, sectors)) : recent;
 
-      const candidateRows = await db
-        .select({
-          id: events.id,
-          headline: events.headline,
-          genericCommentary: events.genericCommentary,
-          whyItMatters: events.whyItMatters,
-        })
-        .from(events)
-        .where(whereClause)
-        .orderBy(desc(events.publishedAt))
-        .limit(CANDIDATE_EVENT_LIMIT);
-
-      const candidates: BeliefMatchEvent[] = candidateRows.map((r) => ({
-        id: r.id,
-        headline: r.headline,
-        gist: gistFor(r.genericCommentary, r.whyItMatters),
-      }));
+      // Candidates are fetched per belief, scoped to the belief's own sector (a
+      // general/null-sector belief falls back to the reader's sectors). This
+      // keeps a finance belief from being crowded out of a shared, mostly-AI
+      // recent set — the diagnosis found recency-only retrieval dropped the
+      // genuinely-relevant development. Retrieval is recency+sector, widened to
+      // 30; embeddings proved near-orthogonal here, so Haiku does the relevance
+      // ranking. (A keyword/FTS recall pass is a future refinement if 30/recent
+      // ever misses.) Memoized on the sector scope (promise, not value) so
+      // same-sector beliefs share one query without a fetch race.
+      const candidateCache = new Map<string, Promise<BeliefMatchEvent[]>>();
+      const candidatesForBelief = (
+        beliefSector: string | null,
+      ): Promise<BeliefMatchEvent[]> => {
+        const scope = beliefSector ? [beliefSector] : userSectors;
+        const key = scope.length > 0 ? [...scope].sort().join(",") : "*";
+        const cached = candidateCache.get(key);
+        if (cached) return cached;
+        const recent = gte(events.publishedAt, since);
+        const whereClause =
+          scope.length > 0 ? and(recent, inArray(events.sector, scope)) : recent;
+        const promise = db
+          .select({
+            id: events.id,
+            headline: events.headline,
+            genericCommentary: events.genericCommentary,
+            whyItMatters: events.whyItMatters,
+          })
+          .from(events)
+          .where(whereClause)
+          .orderBy(desc(events.publishedAt))
+          .limit(CANDIDATE_EVENT_LIMIT)
+          .then((rows) =>
+            rows.map((r) => ({
+              id: r.id,
+              headline: r.headline,
+              gist: gistFor(r.genericCommentary, r.whyItMatters),
+            })),
+          );
+        candidateCache.set(key, promise);
+        return promise;
+      };
 
       // Match each pending belief in parallel (bounded by MAX_BELIEFS_PER_RUN).
       // Each call fails closed, so one bad belief never sinks the run.
       await Promise.all(
         todo.map(async (b) => {
+          const candidates = await candidatesForBelief(b.sector);
+          if (candidates.length === 0) return;
           const verdict = await matchBeliefAgainstEvents({
             belief: { statement: b.statement, sector: b.sector },
             events: candidates,
           });
           if (!verdict) return;
-          const ev =
-            verdict.eventIndex != null ? candidates[verdict.eventIndex - 1] : null;
+          const ev = candidates[verdict.eventIndex - 1] ?? null;
           await db
             .insert(beliefChallenges)
             .values({
@@ -302,7 +355,8 @@ export async function runChallenges(
               userId,
               eventId: ev?.id ?? null,
               weekKey,
-              howToUpdate: verdict.howToUpdate,
+              relevance: verdict.relevance,
+              howToUpdate: verdict.read,
               dissent: verdict.dissent || null,
               sourceHeadline: ev?.headline ?? null,
             })

@@ -136,7 +136,7 @@ describe("beliefs API", () => {
     ]); // candidate events
     createMock.mockResolvedValueOnce(
       haikuText(
-        '{"challenged":true,"event_index":1,"how_to_update":"Treat sub-quadratic architectures as a live threat to the scaling thesis.","dissent":"One benchmark is not a paradigm."}',
+        '{"relevance":"contradicts","event_index":1,"read":"Treat sub-quadratic architectures as a live threat to the scaling thesis.","dissent":"One benchmark is not a paradigm."}',
       ),
     );
     mock.queueSelect([
@@ -144,6 +144,7 @@ describe("beliefs API", () => {
         id: challengeId,
         belief_id: beliefId,
         statement: "Transformer scaling keeps winning",
+        relevance: "contradicts",
         how_to_update:
           "Treat sub-quadratic architectures as a live threat to the scaling thesis.",
         dissent: "One benchmark is not a paradigm.",
@@ -160,9 +161,15 @@ describe("beliefs API", () => {
     expect(res.status).toBe(200);
     expect(createMock).toHaveBeenCalledTimes(1);
     expect(res.body.data.challenges).toHaveLength(1);
+    expect(res.body.data.challenges[0].relevance).toBe("contradicts");
     expect(res.body.data.challenges[0].how_to_update).toContain("sub-quadratic");
     const inserted = mock.state.insertedValues.find((v) => v.howToUpdate);
-    expect(inserted).toMatchObject({ beliefId, userId, eventId });
+    expect(inserted).toMatchObject({
+      beliefId,
+      userId,
+      eventId,
+      relevance: "contradicts",
+    });
     // Cost guard: a processed belief is marked checked for the week.
     expect(mock.state.updatedRows.some((r) => r.lastCheckedWeekKey)).toBe(true);
   });
@@ -187,6 +194,61 @@ describe("beliefs API", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.beliefs_checked).toBe(0);
     expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("runChallenges force re-check bypasses the weekly cost guard", async () => {
+    const week = isoWeekKey(new Date());
+    mock.queueSelect([
+      {
+        id: beliefId,
+        userId,
+        statement: "Transformer scaling keeps winning",
+        sector: "ai",
+        status: "active",
+        lastCheckedWeekKey: week, // already checked — skipped WITHOUT force
+      },
+    ]); // active beliefs
+    mock.queueSelect([]); // existing challenges (unresponded ones just cleared)
+    mock.queueSelect([{ sectors: ["ai"] }]); // profile sectors
+    mock.queueSelect([
+      {
+        id: eventId,
+        headline: "Sub-quadratic model beats GPT-4 at a tenth the compute",
+        genericCommentary: "A state-space architecture matches frontier quality.",
+        whyItMatters: "Cheaper frontier quality.",
+      },
+    ]); // candidate events
+    createMock.mockResolvedValueOnce(
+      haikuText(
+        '{"relevance":"pressures","event_index":1,"read":"Efficiency gains pressure the pure-scaling thesis.","dissent":"One result is not a trend."}',
+      ),
+    );
+    mock.queueSelect([
+      {
+        id: challengeId,
+        belief_id: beliefId,
+        statement: "Transformer scaling keeps winning",
+        relevance: "pressures",
+        how_to_update: "Efficiency gains pressure the pure-scaling thesis.",
+        dissent: "One result is not a trend.",
+        source_headline: "Sub-quadratic model beats GPT-4 at a tenth the compute",
+        event_id: eventId,
+        response: null,
+      },
+    ]); // loadWeekChallenges
+
+    const res = await request(app)
+      .post("/api/v1/beliefs/challenges/run")
+      .set(...auth(token))
+      .send({ force: true });
+
+    expect(res.status).toBe(200);
+    // Marker bypassed: the already-checked belief was matched anyway.
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(res.body.data.beliefs_checked).toBe(1);
+    expect(res.body.data.challenges[0].relevance).toBe("pressures");
+    // The unresponded-challenge clear ran.
+    expect(mock.state.deletes.length).toBe(1);
   });
 
   it("respond 'revised' marks the belief and logs the north-star event", async () => {
