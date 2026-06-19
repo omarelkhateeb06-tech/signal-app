@@ -5,7 +5,12 @@ import { sendEmail, type EmailPayload } from "../services/emailService";
 export const EMAIL_QUEUE_NAME = "signal-emails";
 
 // Phase 12i — "weekly-digest" replaced by "daily-digest".
-export type EmailJobType = "welcome" | "daily-digest" | "password-reset" | "team-invite";
+export type EmailJobType =
+  | "welcome"
+  | "daily-digest"
+  | "password-reset"
+  | "team-invite"
+  | "belief-alert";
 
 export interface EmailJobData {
   type: EmailJobType;
