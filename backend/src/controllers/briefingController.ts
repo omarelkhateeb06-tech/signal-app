@@ -1,19 +1,23 @@
-// "The Through-Line" — Pro-only daily editorial-synthesis endpoint.
+// "The Through-Line" — daily editorial-synthesis endpoint, open to every
+// authenticated reader.
 //
 // Route: GET /api/v1/briefing/through-line?storyIds=<comma uuids>
 // Auth:  requireAuth
 //
 // Response (all under the standard `{ data: ... }` envelope):
-//   Pro / pro_trial, success    → { through_line, source: "haiku" }
-//   Pro / pro_trial, no result  → { through_line: null, source: "unavailable" }
-//   Free                        → { gated: true, through_line: null, upgrade_cta }
+//   success    → { through_line, source: "haiku" }
+//   no result  → { through_line: null, source: "unavailable" }
+//
+// The Through-Line switch-up (D3) made the daily read the FREE hook —
+// every tier gets it. The paywall now sits on depth tiers + per-story
+// personalized commentary + feed breadth, not on the read itself.
 //
 // Cost discipline: Redis is the daily cache AND the cost fuse. When
 // Redis is unconfigured / unreachable we SKIP generation entirely and
 // return "unavailable" — mirroring the §7 "re-enrichment skipped when
 // REDIS_URL unset" fail-open-on-cost convention. With Redis up, the
 // per-(user, profile_version, utc-date) cache bounds Haiku to ≤1 call
-// per Pro reader per day.
+// per reader per day.
 
 import type { NextFunction, Request, Response } from "express";
 import { eq, inArray } from "drizzle-orm";
@@ -21,8 +25,6 @@ import { z } from "zod";
 import { db } from "../db";
 import { events, stories, userProfiles } from "../db/schema";
 import { AppError } from "../middleware/errorHandler";
-import { resolveEffectiveTier } from "../middleware/requireTier";
-import { buildUpgradeCta } from "../services/paywallService";
 import { getRedis, isRedisConfigured } from "../lib/redis";
 import {
   generateThroughLine,
@@ -93,28 +95,6 @@ export async function getThroughLine(
       );
     }
     const { storyIds } = parseResult.data;
-
-    // ---- Tier gate (also lazy-downgrades expired pro_trial → free) ----
-    const { tier, trialStartedAt } = await resolveEffectiveTier(userId);
-    if (tier === "free") {
-      const trialAvailable = !trialStartedAt;
-      const cta = buildUpgradeCta(trialAvailable);
-      res.json({
-        data: {
-          gated: true,
-          through_line: null,
-          upgrade_cta: {
-            trial_available: trialAvailable,
-            // Through-Line-specific trial copy; the no-trial branch reuses
-            // the shared "$10/month" message.
-            message: trialAvailable
-              ? "Get the daily Through-Line — try Pro free for 7 days."
-              : cta.message,
-          },
-        },
-      });
-      return;
-    }
 
     // ---- Cost fuse: no Redis → no generation ----
     // Redis is both the daily cache and the per-reader cost cap. Without
