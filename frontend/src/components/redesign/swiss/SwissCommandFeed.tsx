@@ -12,7 +12,6 @@ import { useThroughLine } from "@/hooks/useThroughLine";
 import { extractApiError } from "@/lib/api";
 import { trackEngagement, flushEngagement } from "@/lib/engagementTracker";
 import { isGatedFeedItem, type FeedItem, type Story } from "@/types/story";
-import { SwissMasthead } from "./SwissMasthead";
 import { ThroughLineHero } from "./ThroughLineHero";
 import { RankedStream } from "./RankedStream";
 import { DetailPanel } from "./DetailPanel";
@@ -198,6 +197,9 @@ export function SwissCommandFeed(): JSX.Element {
     drawerOpen ? "translate-x-0" : "translate-x-full",
     // ≥lg: in-flow flex column that scrolls independently of the left
     "lg:static lg:z-auto lg:w-auto lg:max-w-none lg:flex-1 lg:translate-x-0 lg:min-h-0 lg:overflow-y-auto lg:border-l lg:shadow-none lg:transition-none",
+    // Desktop: keep the feed full-width until a story is opened, so no
+    // default panel competes with the Through-Line for the briefing moment.
+    !selectedStory && "lg:hidden",
   );
 
   const footer = (
@@ -273,7 +275,10 @@ export function SwissCommandFeed(): JSX.Element {
         {/* Left: ranked index — scrolls independently */}
         <div
           ref={leftScrollRef}
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto lg:flex-[1.5] lg:border-r lg:border-line"
+          className={clsx(
+            "min-h-0 min-w-0 flex-1 overflow-y-auto",
+            selectedStory && "lg:flex-[1.5] lg:border-r lg:border-line",
+          )}
         >
           <RankedStream
             items={items}
@@ -320,13 +325,14 @@ export function SwissCommandFeed(): JSX.Element {
   return (
     <div className="theme-swiss h-[calc(100dvh_-_3.5rem)] overflow-hidden bg-bg text-ink">
       <div className="mx-auto flex h-full w-full max-w-[1840px] flex-col px-4 md:px-12 lg:px-20 2xl:px-32">
-        <SwissMasthead onRefresh={handleRefresh} isRefreshing={isRefreshing} />
         <ThroughLineHero
           throughLine={throughLine}
           isLoading={heroLoading}
           preparedFor={user?.name ?? "Reader"}
           role={profile?.role ?? null}
           sectors={profile?.sectors ?? []}
+          onRefresh={handleRefresh}
+          isRefreshing={isRefreshing}
         />
         {region}
       </div>
