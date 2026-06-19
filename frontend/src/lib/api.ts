@@ -107,6 +107,94 @@ export async function createPortalSession(): Promise<CheckoutSession> {
   return res.data.data;
 }
 
+// ---------- Belief maintenance (the missionary pivot) ----------
+
+export type BeliefStatus = "active" | "revised" | "archived";
+export type ChallengeResponse = "revised" | "held" | "dismissed";
+
+export interface Belief {
+  id: string;
+  statement: string;
+  sector: string | null;
+  status: BeliefStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Shape of a challenge row from loadWeekChallenges (snake_case aliases,
+// joined to its belief's statement/sector).
+export interface BeliefChallenge {
+  id: string;
+  belief_id: string;
+  statement: string;
+  sector: string | null;
+  how_to_update: string;
+  dissent: string | null;
+  source_headline: string | null;
+  event_id: string | null;
+  response: ChallengeResponse | null;
+  created_at?: string;
+}
+
+export interface ChallengesResponse {
+  week: string;
+  challenges: BeliefChallenge[];
+  beliefs_checked?: number;
+}
+
+export async function listBeliefs(): Promise<Belief[]> {
+  const res = await api.get<{ data: { beliefs: Belief[] } }>("/api/v1/beliefs");
+  return res.data.data.beliefs;
+}
+
+export async function createBelief(input: {
+  statement: string;
+  sector?: string | null;
+}): Promise<Belief> {
+  const res = await api.post<{ data: { belief: Belief } }>("/api/v1/beliefs", input);
+  return res.data.data.belief;
+}
+
+export async function updateBelief(
+  id: string,
+  input: { statement?: string; status?: BeliefStatus },
+): Promise<Belief> {
+  const res = await api.patch<{ data: { belief: Belief } }>(
+    `/api/v1/beliefs/${id}`,
+    input,
+  );
+  return res.data.data.belief;
+}
+
+export async function deleteBelief(id: string): Promise<void> {
+  await api.delete(`/api/v1/beliefs/${id}`);
+}
+
+export async function getBeliefChallenges(): Promise<ChallengesResponse> {
+  const res = await api.get<{ data: ChallengesResponse }>(
+    "/api/v1/beliefs/challenges",
+  );
+  return res.data.data;
+}
+
+export async function runBeliefChallenges(): Promise<ChallengesResponse> {
+  const res = await api.post<{ data: ChallengesResponse }>(
+    "/api/v1/beliefs/challenges/run",
+  );
+  return res.data.data;
+}
+
+export async function respondToBeliefChallenge(
+  id: string,
+  response: ChallengeResponse,
+): Promise<BeliefChallenge> {
+  const res = await api.post<{ data: { challenge: BeliefChallenge } }>(
+    `/api/v1/beliefs/challenges/${id}/respond`,
+    { response },
+  );
+  return res.data.data.challenge;
+}
+
 export interface SignupInput {
   email: string;
   password: string;
