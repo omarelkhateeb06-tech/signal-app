@@ -85,6 +85,44 @@ describe("beliefs API", () => {
     expect(mock.state.insertedValues[0]).toMatchObject({ userId, sector: "ai" });
   });
 
+  it("creates a position with conviction, horizon, and a falsifier", async () => {
+    mock.queueInsert([
+      {
+        id: beliefId,
+        userId,
+        statement: "TSMC N2 ramp stays on schedule",
+        sector: "semiconductors",
+        status: "active",
+      },
+    ]);
+    const res = await request(app)
+      .post("/api/v1/beliefs")
+      .set(...auth(token))
+      .send({
+        statement: "TSMC N2 ramp stays on schedule",
+        sector: "semiconductors",
+        conviction: 4,
+        horizon: "Q4 2026",
+        whatWouldBreakIt: "A public slip of the N2 ramp date",
+      });
+    expect(res.status).toBe(201);
+    expect(mock.state.insertedValues[0]).toMatchObject({
+      userId,
+      conviction: 4,
+      horizon: "Q4 2026",
+      whatWouldBreakIt: "A public slip of the N2 ramp date",
+    });
+  });
+
+  it("rejects an out-of-range conviction", async () => {
+    const res = await request(app)
+      .post("/api/v1/beliefs")
+      .set(...auth(token))
+      .send({ statement: "A perfectly valid statement", conviction: 9 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("INVALID_BODY");
+  });
+
   it("rejects a too-short belief", async () => {
     const res = await request(app)
       .post("/api/v1/beliefs")
