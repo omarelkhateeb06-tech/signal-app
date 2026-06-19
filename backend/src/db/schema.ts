@@ -380,6 +380,16 @@ export const beliefChallenges = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
     weekKey: text("week_key").notNull(),
+    // How the triggering development bears on the belief (migration 0068):
+    // 'contradicts' (genuine refutation — the loud signal), 'pressures' (real
+    // tension, not refutation), 'supports' (confirming), 'watch' (adjacent,
+    // not yet moving the belief). The hybrid matcher always classifies; only a
+    // truly-irrelevant week yields no row. Pre-hybrid rows backfilled to
+    // 'contradicts'.
+    relevance: text("relevance").notNull().default("contradicts"),
+    // The directional "read" for any relevance — how to update on a refutation,
+    // what the confirmation/tension means otherwise. (Column name predates the
+    // hybrid; kept stable to avoid a rename migration.)
     howToUpdate: text("how_to_update").notNull(),
     dissent: text("dissent"),
     sourceHeadline: text("source_headline"),

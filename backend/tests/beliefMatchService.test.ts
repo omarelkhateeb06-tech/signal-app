@@ -60,32 +60,46 @@ describe("beliefMatchService", () => {
   });
 
   describe("buildBeliefMatchPrompt", () => {
-    it("includes the belief, the numbered events, and the JSON contract", () => {
+    it("includes the belief, the numbered events, and the relevance contract", () => {
       const p = buildBeliefMatchPrompt(input);
       expect(p).toContain("Transformer scaling keeps winning");
       expect(p).toContain("1. Sub-quadratic model beats GPT-4");
       expect(p).toContain("2. Fed holds rates");
-      expect(p).toContain("challenged");
+      expect(p).toContain("relevance");
     });
   });
 
   describe("matchBeliefAgainstEvents", () => {
-    it("returns a verdict when the model flags a material challenge", async () => {
+    it("returns a loud verdict when the model flags a contradiction", async () => {
       createMock.mockResolvedValueOnce(
         haikuText(
-          '{"challenged":true,"event_index":1,"how_to_update":"Treat sub-quadratic architectures as a live threat to the scaling thesis.","dissent":"One benchmark is not a paradigm shift."}',
+          '{"relevance":"contradicts","event_index":1,"read":"Treat sub-quadratic architectures as a live threat to the scaling thesis.","dissent":"One benchmark is not a paradigm shift."}',
         ),
       );
       const v = await matchBeliefAgainstEvents(input);
       expect(v).not.toBeNull();
+      expect(v?.relevance).toBe("contradicts");
       expect(v?.eventIndex).toBe(1);
-      expect(v?.howToUpdate).toContain("sub-quadratic");
+      expect(v?.read).toContain("sub-quadratic");
       expect(v?.dissent).toContain("benchmark");
     });
 
-    it("returns null when not challenged", async () => {
+    it("returns a radar verdict for a non-contradiction (watch)", async () => {
       createMock.mockResolvedValueOnce(
-        haikuText('{"challenged":false,"event_index":null,"how_to_update":"","dissent":""}'),
+        haikuText(
+          '{"relevance":"watch","event_index":2,"read":"An adjacent macro move worth tracking.","dissent":""}',
+        ),
+      );
+      const v = await matchBeliefAgainstEvents(input);
+      expect(v?.relevance).toBe("watch");
+      expect(v?.eventIndex).toBe(2);
+      expect(v?.read).toContain("adjacent");
+      expect(v?.dissent).toBe("");
+    });
+
+    it("returns null when relevance is 'none'", async () => {
+      createMock.mockResolvedValueOnce(
+        haikuText('{"relevance":"none","event_index":null,"read":"","dissent":""}'),
       );
       expect(await matchBeliefAgainstEvents(input)).toBeNull();
     });
@@ -95,20 +109,34 @@ describe("beliefMatchService", () => {
       expect(await matchBeliefAgainstEvents(input)).toBeNull();
     });
 
-    it("drops a 'challenged' verdict with no substance", async () => {
+    it("fails closed on an unknown relevance label", async () => {
       createMock.mockResolvedValueOnce(
-        haikuText('{"challenged":true,"event_index":1,"how_to_update":"   ","dissent":"x"}'),
+        haikuText('{"relevance":"maybe","event_index":1,"read":"x","dissent":""}'),
       );
       expect(await matchBeliefAgainstEvents(input)).toBeNull();
     });
 
-    it("clamps an out-of-range event_index to null", async () => {
+    it("drops a verdict with an empty read", async () => {
       createMock.mockResolvedValueOnce(
-        haikuText('{"challenged":true,"event_index":9,"how_to_update":"Reconsider it.","dissent":""}'),
+        haikuText('{"relevance":"pressures","event_index":1,"read":"   ","dissent":"x"}'),
       );
-      const v = await matchBeliefAgainstEvents(input);
-      expect(v?.eventIndex).toBeNull();
-      expect(v?.howToUpdate).toBe("Reconsider it.");
+      expect(await matchBeliefAgainstEvents(input)).toBeNull();
+    });
+
+    it("drops a verdict whose event_index is out of range", async () => {
+      createMock.mockResolvedValueOnce(
+        haikuText('{"relevance":"pressures","event_index":9,"read":"Reconsider it.","dissent":""}'),
+      );
+      expect(await matchBeliefAgainstEvents(input)).toBeNull();
+    });
+
+    it("drops a verdict with a null event_index (no card to point at)", async () => {
+      createMock.mockResolvedValueOnce(
+        haikuText(
+          '{"relevance":"pressures","event_index":null,"read":"Reconsider it.","dissent":""}',
+        ),
+      );
+      expect(await matchBeliefAgainstEvents(input)).toBeNull();
     });
 
     it("returns null (no client call) when there are no events", async () => {

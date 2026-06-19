@@ -1,13 +1,23 @@
 // Belief-match service — pure logic for the "Reconsider" ritual.
 //
-// Given one of the reader's working beliefs and a short list of the week's
-// developments, ask Haiku whether any MATERIALLY challenges the belief, and
-// if so how the reader's view should update + the informed dissent. No DB,
-// no Redis — the controller owns persistence and the per-week cache.
+// Hybrid "loud + radar": given one of the reader's working beliefs and a short
+// list of the week's developments, ask Haiku to pick the SINGLE most relevant
+// development and classify how it bears on the belief:
 //
-// Discipline: strict judging. The product dies if it cries wolf, so the
-// prompt forbids manufacturing a contradiction and the parser fails closed
-// (any parse/shape error → "no challenge", never a fabricated one).
+//   contradicts — genuine refutation (the loud signal; the original behavior)
+//   pressures   — real tension, not refutation
+//   supports    — confirming evidence
+//   watch       — adjacent, not yet moving the belief
+//
+// The first matcher was contradiction-only, so it stayed silent most weeks for
+// long-horizon beliefs and read as dead. The radar always returns a pulse —
+// but stays honest: "contradicts" must be earned, and "none" is returned when
+// nothing is even tangentially relevant. No DB, no Redis — the controller owns
+// persistence and the per-week cache.
+//
+// Discipline: the parser fails closed. Any parse/shape error, an empty read,
+// or a missing/out-of-range event index → null (no signal), never a fabricated
+// one.
 
 import { z } from "zod";
 import {
@@ -15,11 +25,22 @@ import {
   type BeliefMatchClientDeps,
 } from "./beliefMatchClient";
 
+// The four stored relevance classes (the matcher may also answer "none", which
+// is a no-signal sentinel and never persisted). Mirrors the CHECK constraint in
+// migration 0068 and the Drizzle column default.
+export const BELIEF_RELEVANCE = [
+  "contradicts",
+  "pressures",
+  "supports",
+  "watch",
+] as const;
+export type BeliefRelevance = (typeof BELIEF_RELEVANCE)[number];
+
 export interface BeliefMatchEvent {
   id: string;
   headline: string;
-  // One-line gist — generic_commentary preferred, why_it_matters fallback;
-  // the controller resolves this before handing it over.
+  // Short gist — generic_commentary preferred, why_it_matters fallback;
+  // the controller resolves and trims this before handing it over.
   gist: string;
 }
 
@@ -29,10 +50,14 @@ export interface BeliefMatchInput {
 }
 
 export interface BeliefMatchVerdict {
-  // 1-based index into the input events of the single most challenging
-  // development, or null when the challenge is not tied to one item.
-  eventIndex: number | null;
-  howToUpdate: string;
+  // 1-based index into the input events of the single most relevant
+  // development. Always present — a signal with no event is dropped upstream.
+  eventIndex: number;
+  relevance: BeliefRelevance;
+  // The directional read: what this development means for the belief, in the
+  // direction the relevance implies.
+  read: string;
+  // The honest counter-view (may be empty).
   dissent: string;
 }
 
@@ -41,12 +66,17 @@ export interface BeliefMatchServiceDeps {
 }
 
 export const BELIEF_MATCH_SYSTEM_PROMPT = [
-  "You are a sharp, sceptical domain analyst for SIGNAL, an intelligence product for professionals in AI, finance, and semiconductors.",
-  "A reader has stated a working belief. Given recent developments, judge whether any one of them MATERIALLY challenges, contradicts, or should update that belief.",
-  "Be strict. Only flag a genuine, material challenge — not loosely-related or merely on-topic news. Most weeks, most beliefs are NOT challenged; saying 'not challenged' is the common, correct answer.",
-  "Never invent or inflate a contradiction to seem useful. A product that cries wolf is worthless.",
-  "When you do flag one, be specific and plain: how the view should change, and the strongest honest case it still holds. No hype, no hedging.",
-].join(" ");
+  "You are a sharp, skeptical domain analyst for SIGNAL, an intelligence product for professionals in AI, finance, and semiconductors.",
+  "A reader has stated a working belief — a forward-looking assumption they are betting on. Given this week's developments in their field, find the SINGLE development most relevant to that belief and judge how it bears on it.",
+  "Classify the relationship with exactly one label:",
+  '- "contradicts": genuine evidence the belief is wrong or weakening. Reserve this for real refutation, not mild tension.',
+  '- "pressures": real tension — it raises the bar for the belief to hold, or cuts against it, but does not refute it.',
+  '- "supports": evidence the belief is holding or strengthening.',
+  '- "watch": adjacent and worth tracking, but it does not yet move the belief either way.',
+  'Pick the most relevant development and classify it honestly. Most weeks the honest label is "pressures", "supports", or "watch" — "contradicts" is rare and must be earned. Never inflate a relationship to seem useful: a product that cries wolf is worthless, and so is one that fakes confirmation.',
+  'Return "none" ONLY if not a single development is even tangentially relevant to the belief.',
+  "Write plainly and specifically — name the development and the mechanism. No hype, no hedging, no filler.",
+].join("\n");
 
 /**
  * Build the user prompt: the belief + the week's developments, with a strict
@@ -63,19 +93,19 @@ export function buildBeliefMatchPrompt(input: BeliefMatchInput): string {
     "THE READER'S BELIEF:",
     `"${belief.statement}" (sector: ${sector})`,
     "",
-    "RECENT DEVELOPMENTS:",
+    "THIS WEEK'S DEVELOPMENTS:",
     eventBlock,
     "",
-    "Does any single development materially challenge, contradict, or warrant updating this belief?",
+    "Pick the single most relevant development to this belief and classify how it bears on it.",
     "Respond with ONLY a JSON object — no prose, no code fence:",
-    '{"challenged": true|false, "event_index": <1-based number of the single most challenging development, or null>, "how_to_update": "<if challenged: 1-2 sentences on how the reader should update their view; else empty>", "dissent": "<if challenged: one sentence of the strongest honest case the belief still holds; else empty>"}',
+    '{"relevance": "contradicts" | "pressures" | "supports" | "watch" | "none", "event_index": <1-based number of the chosen development, or null when relevance is "none">, "read": "<1-2 sentences: what this development means for the belief, in the direction the relevance implies>", "dissent": "<one honest sentence of the counter-view — for contradicts/pressures, the strongest case the belief still holds; for supports, the caveat against over-updating; for watch, why it is not decisive yet>"}',
   ].join("\n");
 }
 
 const VerdictSchema = z.object({
-  challenged: z.boolean(),
+  relevance: z.enum(["contradicts", "pressures", "supports", "watch", "none"]),
   event_index: z.number().int().positive().nullable().optional(),
-  how_to_update: z.string().optional().default(""),
+  read: z.string().optional().default(""),
   dissent: z.string().optional().default(""),
 });
 
@@ -95,9 +125,10 @@ function parseVerdict(text: string): z.infer<typeof VerdictSchema> | null {
 }
 
 /**
- * Judge one belief against the week's developments. Returns a verdict when a
- * material challenge is found, or null otherwise (including every failure
- * mode: client error, empty body, unparseable output, no events). Never
+ * Judge one belief against the week's developments. Returns the radar verdict
+ * (most-relevant development + relevance + read + dissent), or null when there
+ * is no signal — "none", no events, or any failure mode (client error, empty
+ * body, unparseable output, empty read, missing/out-of-range index). Never
  * throws — failing closed is correct here (silence beats a false alarm).
  */
 export async function matchBeliefAgainstEvents(
@@ -115,19 +146,21 @@ export async function matchBeliefAgainstEvents(
   if (!result.ok) return null;
 
   const verdict = parseVerdict(result.text);
-  if (!verdict || !verdict.challenged) return null;
+  if (!verdict || verdict.relevance === "none") return null;
 
-  const howToUpdate = verdict.how_to_update.trim();
-  if (howToUpdate.length === 0) return null; // challenged but no substance → drop
+  const read = verdict.read.trim();
+  if (read.length === 0) return null; // classified but no substance → drop
 
-  // Clamp the event index to the input range; out-of-range → not tied to one.
+  // A radar signal must point at a specific development; a missing or
+  // out-of-range index means we can't tie it to a card, so drop it (fail
+  // closed) rather than surface a sourceless read.
   const idx = verdict.event_index ?? null;
-  const eventIndex =
-    idx != null && idx >= 1 && idx <= input.events.length ? idx : null;
+  if (idx == null || idx < 1 || idx > input.events.length) return null;
 
   return {
-    eventIndex,
-    howToUpdate,
+    eventIndex: idx,
+    relevance: verdict.relevance,
+    read,
     dissent: verdict.dissent.trim(),
   };
 }
