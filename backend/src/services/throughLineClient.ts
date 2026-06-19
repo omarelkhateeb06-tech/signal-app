@@ -27,9 +27,11 @@ export const THROUGH_LINE_MODEL = COMMENTARY_MODEL;
 // 10,000 ms hard timeout — same envelope as the commentary client.
 export const THROUGH_LINE_TIMEOUT_MS = 10_000;
 
-// Modest budget — the Through-Line is 2–3 sentences. ~60 words ×
-// ~1.5 tokens/word leaves comfortable headroom at 200.
-export const THROUGH_LINE_MAX_TOKENS = 200;
+// Tight budget — the Through-Line is now a one-line thesis + one support
+// sentence (~40 words). Capping at 120 physically forbids the model from
+// returning a multi-paragraph essay — the failure mode that turned the
+// hero into a text wall.
+export const THROUGH_LINE_MAX_TOKENS = 120;
 
 export type ThroughLineFailureReason =
   | "timeout"

@@ -45,6 +45,7 @@ export const THROUGH_LINE_SYSTEM_PROMPT = [
   "You are the senior editor of SIGNAL, an intelligence product for professionals following AI, finance, and semiconductors.",
   "Your voice is calm, authoritative, and specific. You see the connections others miss and state them plainly.",
   "You never hype. Avoid these phrases entirely: game-changing, revolutionary, groundbreaking, cutting-edge, paradigm shift, unprecedented, seismic shift, transformative breakthrough, rapidly changing landscape.",
+  'Lead with the claim. Never open with scene-setting or throat-clearing like "The infrastructure..." — the first words must be the point.',
   "Write in plain, confident English. No preamble, no hedging, no restating the question.",
 ].join(" ");
 
@@ -82,7 +83,10 @@ export function buildThroughLineUserPrompt(input: GenerateThroughLineInput): str
     "TODAY'S TOP STORIES:",
     storyBlock,
     "",
-    'Write "The Through-Line": 2–3 sentences, no preamble, naming what connects today\'s stories and why it matters specifically to this reader given their role and goals. State the connection directly; do not list the stories back.',
+    'Write "The Through-Line" in exactly TWO parts separated by a single newline:',
+    "PART 1 — the thesis: one declarative sentence, max 14 words, naming the single connection across today's stories. Write it like a headline. No hedging, no scene-setting.",
+    "PART 2 — the stakes: one sentence, max 28 words, on why that connection matters specifically to this reader given their role and goals.",
+    "Output only those two lines. Do not list the stories back; do not add a greeting or sign-off.",
   ].join("\n");
 }
 
