@@ -16,7 +16,7 @@ export default function AuthLayout({
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated) {
-      router.replace("/feed");
+      router.replace("/beliefs");
     }
   }, [hasHydrated, isAuthenticated, router]);
 

@@ -17,10 +17,14 @@ import {
   updateBelief,
   type Belief,
   type BeliefChallenge,
-  type BeliefStatus,
   type ChallengeResponse,
   type ChallengesResponse,
 } from "@/lib/api";
+
+// Input shapes are derived from the api.ts wrappers so the position fields
+// (conviction/horizon/whatWouldBreakIt) stay in sync without restating them.
+type CreateBeliefInput = Parameters<typeof createBelief>[0];
+type UpdateBeliefInput = Parameters<typeof updateBelief>[1];
 
 // Belief maintenance — the reader's working assumptions + the weekly
 // "Reconsider" ritual. The challenges query is a passive read of what's
@@ -40,12 +44,8 @@ export function useBeliefChallenges(): UseQueryResult<ChallengesResponse, Error>
 }
 
 export interface BeliefMutations {
-  create: UseMutationResult<Belief, Error, { statement: string; sector?: string | null }>;
-  update: UseMutationResult<
-    Belief,
-    Error,
-    { id: string; input: { statement?: string; status?: BeliefStatus } }
-  >;
+  create: UseMutationResult<Belief, Error, CreateBeliefInput>;
+  update: UseMutationResult<Belief, Error, { id: string; input: UpdateBeliefInput }>;
   remove: UseMutationResult<void, Error, string>;
   // `force` (true on "Re-check") bypasses the per-week cost guard.
   run: UseMutationResult<ChallengesResponse, Error, boolean | undefined>;
@@ -68,13 +68,8 @@ export function useBeliefMutations(): BeliefMutations {
   });
 
   const update = useMutation({
-    mutationFn: ({
-      id,
-      input,
-    }: {
-      id: string;
-      input: { statement?: string; status?: BeliefStatus };
-    }) => updateBelief(id, input),
+    mutationFn: ({ id, input }: { id: string; input: UpdateBeliefInput }) =>
+      updateBelief(id, input),
     onSuccess: invalidateBeliefs,
   });
 

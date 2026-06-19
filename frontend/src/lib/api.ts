@@ -121,6 +121,12 @@ export interface Belief {
   statement: string;
   sector: string | null;
   status: BeliefStatus;
+  // Position fields (Tripwire redesign, migration 0069). Conviction is 1-5;
+  // horizon is the bet's time frame (free text); whatWouldBreakIt is the
+  // explicit falsifier. All nullable — a bare claim is still a valid position.
+  conviction: number | null;
+  horizon: string | null;
+  whatWouldBreakIt: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -155,6 +161,9 @@ export async function listBeliefs(): Promise<Belief[]> {
 export async function createBelief(input: {
   statement: string;
   sector?: string | null;
+  conviction?: number | null;
+  horizon?: string | null;
+  whatWouldBreakIt?: string | null;
 }): Promise<Belief> {
   const res = await api.post<{ data: { belief: Belief } }>("/api/v1/beliefs", input);
   return res.data.data.belief;
@@ -162,7 +171,13 @@ export async function createBelief(input: {
 
 export async function updateBelief(
   id: string,
-  input: { statement?: string; status?: BeliefStatus },
+  input: {
+    statement?: string;
+    status?: BeliefStatus;
+    conviction?: number | null;
+    horizon?: string | null;
+    whatWouldBreakIt?: string | null;
+  },
 ): Promise<Belief> {
   const res = await api.patch<{ data: { belief: Belief } }>(
     `/api/v1/beliefs/${id}`,

@@ -112,10 +112,10 @@ describe("Onboarding step dispatcher", () => {
   });
 
   // Regression for Issue #5 — on Finish, the mutation must invalidate
-  // PROFILE_QUERY_KEY *before* the router.push("/feed") fires, or the
+  // PROFILE_QUERY_KEY *before* the router.push("/beliefs") fires, or the
   // (app) layout reads stale onboarding_completed: false and bounces
   // back to /onboarding/1.
-  it("Screen 7: Finish invalidates the profile cache before pushing to /feed", async () => {
+  it("Screen 7: Finish invalidates the profile cache before pushing to /beliefs", async () => {
     paramsMock.current = { step: "7" };
     const store = useOnboardingStore.getState();
     store.setSectors(["ai"]);
@@ -144,7 +144,7 @@ describe("Onboarding step dispatcher", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: PROFILE_QUERY_KEY });
     });
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/feed");
+      expect(pushMock).toHaveBeenCalledWith("/beliefs");
     });
   });
 });

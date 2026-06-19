@@ -36,7 +36,7 @@ export default function LoginPage(): JSX.Element {
     }
     try {
       await login(parsed.data);
-      router.push("/feed");
+      router.push("/beliefs");
     } catch (error) {
       setSubmitError(extractApiError(error, "Login failed"));
     }

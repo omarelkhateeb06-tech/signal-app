@@ -618,7 +618,7 @@ export default function HomePage(): JSX.Element {
 
   useEffect(() => {
     if (hasHydrated && isAuthenticated) {
-      router.replace("/feed");
+      router.replace("/beliefs");
     }
   }, [hasHydrated, isAuthenticated, router]);
 
